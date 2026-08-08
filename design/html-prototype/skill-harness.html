@@ -1,0 +1,834 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>하네스 설치 및 MCP 등록</title>
+  <style>
+    :root {
+      --moon: #f3f6ff;
+      --herb: #cef26d;
+      --harbor: #3770bf;
+      --ink: #102033;
+      --panel: #ffffff;
+      --soft: #e8f2ff;
+      --muted: #40546f;
+      --line: #d5e5fb;
+      --green: #1f6b5f;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: var(--moon);
+      color: var(--ink);
+      font-family: Pretendard, "Noto Sans KR", "Malgun Gothic", system-ui, sans-serif;
+      word-break: keep-all;
+      overflow-wrap: break-word;
+      line-break: strict;
+      letter-spacing: 0;
+    }
+
+    a, button { font: inherit; }
+
+    main {
+      width: min(1180px, calc(100% - 32px));
+      min-height: calc(100vh - 16px);
+      margin: 0 auto;
+      padding: 8px 0 16px;
+      display: grid;
+      gap: 12px;
+    }
+
+    .topbar,
+    .intro-panel,
+    .install-panel,
+    .panel {
+      border-radius: 24px;
+      background: var(--panel);
+      box-shadow: 0 18px 45px rgba(55,112,191,.12);
+    }
+
+    .topbar {
+      min-height: 68px;
+      padding: 8px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: flex-start;
+      gap: 14px;
+    }
+
+    .back {
+      width: 42px;
+      height: 42px;
+      min-height: 42px;
+      padding: 0;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 999px;
+      background: var(--soft);
+      color: #244d85;
+      font-size: 14px;
+      font-weight: 900;
+      text-decoration: none;
+      transition: transform .14s ease, box-shadow .14s ease, background-color .14s ease;
+    }
+
+    .top-actions {
+      margin-left: auto;
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .top-link {
+      min-height: 38px;
+      padding: 0 14px;
+      display: inline-flex;
+      align-items: center;
+      border-radius: 999px;
+      background: var(--soft);
+      color: #244d85;
+      font-size: 14px;
+      font-weight: 900;
+      text-decoration: none;
+      white-space: nowrap;
+      transition: transform .14s ease, box-shadow .14s ease, background-color .14s ease;
+    }
+
+    .back:hover,
+    .back:focus-visible,
+    .top-link:hover,
+    .top-link:focus-visible {
+      transform: translateY(-1px);
+      box-shadow: 0 8px 18px rgba(55,112,191,.16);
+    }
+
+    .back:focus-visible,
+    .top-title:focus-visible,
+    .top-link:focus-visible,
+    .button:focus-visible {
+      outline: 3px solid rgba(55,112,191,.28);
+      outline-offset: 3px;
+    }
+
+    .back:active,
+    .top-link:active {
+      transform: translateY(1px) scale(.99);
+      box-shadow: inset 0 0 0 2px rgba(55,112,191,.2);
+    }
+
+    .top-title {
+      min-width: 0;
+      display: grid;
+      grid-template-columns: 38px minmax(0, 1fr);
+      gap: 12px;
+      align-items: center;
+      flex: 1 1 auto;
+      color: inherit;
+      text-decoration: none;
+      border-radius: 16px;
+    }
+
+    .back svg {
+      width: 21px;
+      height: 21px;
+      stroke-width: 2.6;
+    }
+
+    .gg-mark {
+      width: 38px;
+      height: 38px;
+      display: grid;
+      place-items: center;
+      border-radius: 11px;
+      background: linear-gradient(135deg, var(--harbor), #244d85);
+      color: #ffffff;
+      font-style: normal;
+      font-size: 15px;
+      line-height: 1;
+      font-weight: 900;
+      box-shadow: inset 0 0 0 2px rgba(255,255,255,.18);
+    }
+
+    .top-title strong {
+      display: block;
+      font-size: 24px;
+      line-height: 30px;
+      font-weight: 900;
+    }
+
+    .top-title span {
+      display: block;
+      margin-top: 1px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 18px;
+      font-weight: 800;
+    }
+
+    h1 {
+      margin: 0;
+      max-width: 680px;
+      font-size: 30px;
+      line-height: 1.2;
+      font-weight: 900;
+    }
+
+    .intro-panel {
+      min-height: 132px;
+      padding: 24px;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 20px;
+      border: 2px solid rgba(55,112,191,.18);
+    }
+
+    .intro-panel p {
+      max-width: 780px;
+      margin: 10px 0 0;
+      color: var(--muted);
+      font-size: 15px;
+      line-height: 1.65;
+      font-weight: 800;
+    }
+
+    .intro-badge {
+      min-height: 40px;
+      padding: 0 16px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 999px;
+      background: var(--herb);
+      color: var(--ink);
+      font-size: 14px;
+      font-weight: 900;
+      white-space: nowrap;
+    }
+
+    .install-panel p,
+    .panel p,
+    li {
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.55;
+      font-weight: 700;
+    }
+
+    .install-panel {
+      padding: 22px;
+      display: grid;
+      grid-template-columns: minmax(260px, .7fr) minmax(0, 1fr);
+      gap: 18px;
+      border: 3px solid rgba(31,107,95,.35);
+    }
+
+    .tool-selector {
+      display: grid;
+      gap: 10px;
+      align-content: start;
+    }
+
+    .tool-selector h2,
+    .tool-detail h2 {
+      margin: 0;
+      font-size: 22px;
+      line-height: 1.35;
+      font-weight: 900;
+    }
+
+    .tool-selector > p {
+      margin: 2px 0 6px;
+    }
+
+    .tool-option {
+      width: 100%;
+      min-height: 58px;
+      padding: 10px 12px;
+      display: grid;
+      grid-template-columns: 42px minmax(0, 1fr) auto;
+      gap: 12px;
+      align-items: center;
+      border: 2px solid transparent;
+      border-radius: 18px;
+      background: var(--soft);
+      color: var(--ink);
+      text-align: left;
+      cursor: pointer;
+      transition: transform .14s ease, border-color .14s ease, background-color .14s ease, box-shadow .14s ease;
+    }
+
+    .tool-option:hover,
+    .tool-option:focus-visible {
+      transform: translateY(-2px);
+      border-color: var(--harbor);
+      background: #fbfdff;
+      box-shadow: 0 10px 20px rgba(55,112,191,.16);
+    }
+
+    .tool-option.active {
+      border-color: var(--green);
+      background: #fbfdff;
+      box-shadow: inset 0 0 0 1px rgba(31,107,95,.2);
+    }
+
+    .tool-option i {
+      width: 42px;
+      height: 42px;
+      display: grid;
+      place-items: center;
+      border-radius: 999px;
+      background: #ffffff;
+      color: #244d85;
+      font-style: normal;
+      font-size: 14px;
+      font-weight: 900;
+    }
+
+    .tool-option.active i {
+      background: var(--herb);
+      color: var(--ink);
+    }
+
+    .tool-option strong {
+      display: block;
+      font-size: 15px;
+      line-height: 1.2;
+      font-weight: 900;
+    }
+
+    .tool-option span {
+      color: #244d85;
+      font-size: 12px;
+      line-height: 1.35;
+      font-weight: 800;
+    }
+
+    .tool-option em {
+      color: var(--green);
+      font-style: normal;
+      font-size: 12px;
+      font-weight: 900;
+      white-space: nowrap;
+    }
+
+    .tool-detail {
+      min-height: 246px;
+      padding: 22px;
+      display: grid;
+      align-content: start;
+      gap: 14px;
+      border-radius: 20px;
+      background: #fbfdff;
+      border: 1px solid var(--line);
+    }
+
+    .detail-list {
+      display: grid;
+      gap: 8px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .detail-list li {
+      min-height: 42px;
+      padding: 9px 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      border-radius: 14px;
+      background: var(--soft);
+    }
+
+    .detail-list b {
+      color: var(--ink);
+      font-weight: 900;
+      text-align: right;
+    }
+
+    .install-actions {
+      margin-top: 4px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .button {
+      width: fit-content;
+      min-height: 42px;
+      margin-top: auto;
+      padding: 0 16px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 999px;
+      border: 0;
+      background: var(--harbor);
+      color: #ffffff;
+      font-size: 15px;
+      font-weight: 900;
+      text-decoration: none;
+      cursor: pointer;
+      transition: transform .14s ease, box-shadow .14s ease, background-color .14s ease;
+    }
+
+    .button.primary {
+      background: var(--green);
+    }
+
+    .button.secondary {
+      background: var(--soft);
+      color: #244d85;
+    }
+
+    .button:hover,
+    .button:focus-visible {
+      transform: translateY(-2px);
+      box-shadow: 0 10px 20px rgba(55,112,191,.22);
+    }
+
+    .button:active {
+      transform: translateY(1px) scale(.99);
+      box-shadow: inset 0 0 0 2px rgba(255,255,255,.34);
+    }
+
+    .button.is-running {
+      background: var(--herb);
+      color: var(--ink);
+      box-shadow: 0 12px 28px rgba(206,242,109,.32);
+    }
+
+    .run-status {
+      padding: 22px;
+      display: grid;
+      gap: 14px;
+      border: 2px solid var(--harbor);
+    }
+
+    .run-status[hidden] {
+      display: none;
+    }
+
+    .status-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+    }
+
+    .status-head h2 {
+      margin: 0;
+      font-size: 24px;
+      line-height: 1.35;
+      font-weight: 900;
+    }
+
+    .status-head p {
+      max-width: 760px;
+      margin: 6px 0 0;
+      color: var(--muted);
+      font-size: 15px;
+      line-height: 1.65;
+      font-weight: 700;
+    }
+
+    .status-badge {
+      min-height: 34px;
+      padding: 0 13px;
+      display: inline-flex;
+      align-items: center;
+      border-radius: 999px;
+      background: var(--herb);
+      color: var(--ink);
+      font-size: 13px;
+      font-weight: 900;
+      white-space: nowrap;
+    }
+
+    .progress {
+      height: 10px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: var(--soft);
+    }
+
+    .progress span {
+      width: 42%;
+      height: 100%;
+      display: block;
+      border-radius: inherit;
+      background: var(--green);
+    }
+
+    .run-steps {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .run-step {
+      min-height: 70px;
+      padding: 14px;
+      border-radius: 18px;
+      background: var(--soft);
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.45;
+      font-weight: 800;
+    }
+
+    .run-step.active {
+      background: #fbfdff;
+      outline: 2px solid var(--harbor);
+    }
+
+    .run-step strong {
+      display: block;
+      margin-bottom: 4px;
+      color: var(--ink);
+      font-size: 15px;
+      font-weight: 900;
+    }
+
+    .wide-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 14px;
+    }
+
+    .status-check {
+      padding: 22px;
+      display: grid;
+      gap: 16px;
+      border: 3px solid rgba(55,112,191,.28);
+    }
+
+    .status-check .status-head {
+      align-items: center;
+    }
+
+    .status-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .status-card {
+      min-height: 128px;
+      padding: 14px;
+      display: grid;
+      align-content: space-between;
+      gap: 10px;
+      border-radius: 18px;
+      background: var(--soft);
+    }
+
+    .status-card strong {
+      display: block;
+      color: var(--ink);
+      font-size: 16px;
+      line-height: 1.35;
+      font-weight: 900;
+    }
+
+    .status-card span {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.5;
+      font-weight: 800;
+    }
+
+    .status-card .mini {
+      width: fit-content;
+      min-height: 30px;
+      padding: 0 10px;
+      display: inline-flex;
+      align-items: center;
+      border-radius: 999px;
+      background: #ffffff;
+      color: #244d85;
+      font-size: 12px;
+      font-style: normal;
+      font-weight: 900;
+    }
+
+    .status-actions {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .panel {
+      padding: 22px;
+    }
+
+    .panel h2 {
+      margin: 0;
+      font-size: 23px;
+      line-height: 1.35;
+      font-weight: 900;
+    }
+
+    .steps,
+    .feature-list {
+      display: grid;
+      gap: 10px;
+      margin: 14px 0 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .steps li,
+    .feature-list li {
+      min-height: 44px;
+      padding: 10px 12px;
+      border-radius: 14px;
+      background: var(--soft);
+    }
+
+    .mcp-register-button {
+      margin-top: 18px;
+    }
+
+    #mcp {
+      outline: 3px solid var(--green);
+      box-shadow: 0 20px 48px rgba(31,107,95,.16);
+    }
+
+    code {
+      padding: 2px 6px;
+      border-radius: 8px;
+      background: #ffffff;
+      color: #244d85;
+      font-family: Consolas, "Courier New", monospace;
+      word-break: break-all;
+    }
+
+    @media (max-width: 960px) {
+      main {
+        width: calc(100% - 28px);
+        padding: 8px 0 12px;
+      }
+
+      .topbar {
+        align-items: stretch;
+        flex-direction: column;
+        padding: 14px;
+      }
+
+      .install-panel,
+      .wide-grid,
+      .status-grid,
+      .run-steps {
+        grid-template-columns: 1fr;
+      }
+
+      .intro-panel {
+        grid-template-columns: 1fr;
+      }
+
+      h1 {
+        font-size: 29px;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .tool-option,
+      .button,
+      .back,
+      .top-link {
+        transition: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header class="topbar">
+      <a class="top-title" href="./first-screen-gg-v2-1.html" aria-label="홈으로 이동">
+        <i class="gg-mark" aria-hidden="true">경</i>
+        <div>
+          <strong>하네스 설치 및 MCP 등록</strong>
+          <span>AI로 만든 개발 소스의 보안 위험을 빠르게 확인합니다.</span>
+        </div>
+      </a>
+      <div class="top-actions">
+        <a class="top-link" href="https://github.com/Lex6won/vibe_harness_codex" target="_blank" rel="noreferrer">하네스 GitHub</a>
+        <a class="top-link" href="https://github.com/Lex6won/vibecode-checker" target="_blank" rel="noreferrer">체커 GitHub</a>
+      </div>
+    </header>
+
+    <section class="intro-panel" aria-labelledby="install-title">
+      <div>
+        <h1 id="install-title">설치할 하네스를 선택하세요.</h1>
+        <p>하네스는 AI 개발 도구에 설계, 구현, 테스트, 검증 흐름을 연결하고 체커 MCP를 함께 쓰도록 돕는 실행 환경입니다. ChatGPT 데스크톱의 Codex는 Codex 설정으로 함께 연결하고, Claude Desktop은 별도 확장으로 연결합니다.</p>
+      </div>
+      <span class="intro-badge">대상 선택 후 설치</span>
+    </section>
+
+    <section class="panel status-check" id="pc-check" aria-labelledby="pc-check-title">
+      <div class="status-head">
+        <div>
+          <h2 id="pc-check-title">내 PC 설치 상태를 확인하세요.</h2>
+          <p>하네스와 체커가 공식 GitHub 기준 최신인지, MCP가 현재 AI 도구에 연결되어 있는지 먼저 확인합니다.</p>
+        </div>
+        <span class="status-badge">읽기 전용 점검</span>
+      </div>
+      <div class="status-grid" aria-label="설치 상태 확인 항목">
+        <article class="status-card">
+          <div><strong>하네스</strong><span>로컬 커밋과 GitHub main을 비교합니다.</span></div>
+          <em class="mini">git 상태</em>
+        </article>
+        <article class="status-card">
+          <div><strong>체커</strong><span>gvskb 버전, doctor, 룰셋 상태를 확인합니다.</span></div>
+          <em class="mini">보안 엔진</em>
+        </article>
+        <article class="status-card">
+          <div><strong>MCP 연결</strong><span>Codex, Claude Code, Claude Desktop 설정을 확인합니다.</span></div>
+          <em class="mini">개발 중 점검</em>
+        </article>
+        <article class="status-card">
+          <div><strong>네트워크</strong><span>GitHub 접근과 업데이트 가능 여부를 확인합니다.</span></div>
+          <em class="mini">온라인 환경</em>
+        </article>
+      </div>
+      <div class="status-actions">
+        <button class="button primary" type="button" data-run="내 PC 상태 점검" data-desc="하네스 경로, 체커 버전, MCP 설정, GitHub 연결 상태를 읽기 전용으로 확인합니다. 문제가 있으면 업데이트 또는 재등록이 필요한 항목만 알려줍니다.">상태 점검 시작</button>
+        <button class="button secondary" type="button" data-run="하네스·체커 업데이트 준비" data-desc="공식 GitHub 저장소 기준으로 하네스와 체커의 변경 여부를 확인하고, 적용 전 변경 내용을 먼저 보여줍니다. 업데이트 실행은 사용자 승인 후 진행합니다.">업데이트 확인</button>
+      </div>
+    </section>
+
+    <section class="install-panel" aria-label="하네스 도구 선택">
+      <div class="tool-selector" role="radiogroup" aria-label="설치할 도구 선택">
+        <h2>어디에 설치할까요?</h2>
+        <p>하네스 내용은 같고, 선택한 도구에 맞는 연결 설정만 달라집니다.</p>
+        <button class="tool-option active" type="button" role="radio" aria-checked="true" data-tool-title="ChatGPT 데스크톱·Codex용 하네스 설치" data-tool-kind="Codex 공통 설정" data-tool-entry="~/.codex/config.toml 또는 .codex/config.toml" data-tool-action="ChatGPT 데스크톱·Codex용 하네스 설치">
+          <i>C</i><span><strong>ChatGPT 데스크톱 · Codex</strong><span>Codex MCP 설정 공유</span></span><em>선택됨</em>
+        </button>
+        <button class="tool-option" type="button" role="radio" aria-checked="false" data-tool-title="Claude Code용 하네스 설치" data-tool-kind="Claude Code 프로젝트 설정" data-tool-entry=".mcp.json, .claude/CLAUDE.md" data-tool-action="Claude Code용 하네스 설치">
+          <i>CL</i><span><strong>Claude Code</strong><span>Claude 호환본</span></span><em>선택</em>
+        </button>
+        <button class="tool-option" type="button" role="radio" aria-checked="false" data-tool-title="Claude Desktop용 하네스 연결" data-tool-kind="Desktop Extension" data-tool-entry=".mcpb 확장 또는 Desktop Extensions" data-tool-action="Claude Desktop용 하네스 연결">
+          <i>CD</i><span><strong>Claude Desktop</strong><span>별도 데스크톱 확장</span></span><em>선택</em>
+        </button>
+        <button class="tool-option" type="button" role="radio" aria-checked="false" data-tool-title="Lovable용 하네스 설치" data-tool-kind="산출물 정렬" data-tool-entry="adapters/lovable" data-tool-action="Lovable용 하네스 설치">
+          <i>L</i><span><strong>Lovable</strong><span>프로토타입 정렬</span></span><em>선택</em>
+        </button>
+      </div>
+
+      <div class="tool-detail" aria-live="polite">
+        <h2 id="toolTitle">ChatGPT 데스크톱·Codex용 하네스 설치</h2>
+        <p>공식 하네스를 내려받아 선택한 AI 개발 도구의 설정에 연결합니다. 설치 전 변경 내용을 먼저 확인하고, 설치 후 체커 MCP 호출 가능 여부를 검증합니다.</p>
+        <ul class="detail-list">
+          <li><span>적용 기준</span><b>공식 GitHub 하네스</b></li>
+          <li><span>공통 흐름</span><b>설계 · 구현 · 테스트 · 검증</b></li>
+          <li><span>도구별 연결</span><b id="toolEntry">~/.codex/config.toml 또는 .codex/config.toml</b></li>
+          <li><span>설치 방식</span><b id="toolKind">Codex 공통 설정</b></li>
+        </ul>
+        <div class="install-actions">
+          <button class="button primary" id="installButton" type="button" data-run="ChatGPT 데스크톱·Codex용 하네스 설치" data-desc="선택한 AI 개발 도구가 하네스와 체커 MCP를 사용할 수 있도록 설정합니다. 적용 전 변경 내용을 보여주고 사용자 확인 후 진행합니다.">선택한 하네스 설치</button>
+          <a class="button secondary" href="https://github.com/Lex6won/vibe_harness_codex" target="_blank" rel="noreferrer">설치 기준 보기</a>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel run-status" id="runStatus" aria-live="polite" hidden>
+      <div class="status-head">
+        <div>
+          <h2 id="runTitle">진행상황</h2>
+          <p id="runDesc">선택한 하네스의 준비 상태와 다음 확인 항목을 보여드립니다.</p>
+        </div>
+        <span class="status-badge">진행 중</span>
+      </div>
+      <div class="progress" aria-hidden="true"><span></span></div>
+      <div class="run-steps" aria-label="현재 진행 절차">
+        <div class="run-step active"><strong>대상 확인</strong>선택한 도구와 설치 위치를 확인합니다.</div>
+        <div class="run-step"><strong>변경 미리보기</strong>추가 또는 수정될 설정을 보여줍니다.</div>
+        <div class="run-step"><strong>실행 승인</strong>사용자 확인 후 설치 또는 등록을 진행합니다.</div>
+        <div class="run-step"><strong>연결 검증</strong>하네스와 MCP 호출 가능 여부를 확인합니다.</div>
+      </div>
+    </section>
+
+    <section class="wide-grid">
+      <div class="panel" id="mcp">
+        <h2>체커 MCP 등록</h2>
+        <p>개발 중에도 보안 점검을 바로 호출합니다.</p>
+        <ul class="feature-list" aria-label="MCP 등록 후 가능한 일">
+          <li>코드 조각 점검: <code>scan_code</code></li>
+          <li>프로젝트 폴더 점검: <code>scan_path</code></li>
+          <li>제출 보고서 생성: <code>render_report</code></li>
+        </ul>
+        <button class="button primary mcp-register-button" type="button" data-run="체커 MCP 등록" data-desc="개발 중 코드 조각, 프로젝트 폴더, 제출 보고서 생성을 바로 호출할 수 있도록 체커 MCP를 등록합니다.">MCP 등록 시작</button>
+      </div>
+
+      <div class="panel">
+        <h2>업데이트 기준</h2>
+        <p>최신 여부는 공식 저장소와 로컬 설치본을 비교해 판단합니다.</p>
+        <ul class="steps">
+          <li>하네스: <code>git -C &lt;harness&gt; pull origin main</code></li>
+          <li>체커: <code>git -C &lt;checker&gt; pull origin main</code></li>
+          <li>업데이트 후 <code>gg-validate.ps1</code>와 체커 상태를 다시 확인</li>
+          <li>경기도처럼 온라인 환경이면 GitHub 접근과 방화벽 허용 상태를 함께 확인</li>
+        </ul>
+      </div>
+    </section>
+  </main>
+  <script>
+    const runStatus = document.querySelector("#runStatus");
+    const runTitle = document.querySelector("#runTitle");
+    const runDesc = document.querySelector("#runDesc");
+    const toolTitle = document.querySelector("#toolTitle");
+    const toolKind = document.querySelector("#toolKind");
+    const toolEntry = document.querySelector("#toolEntry");
+    const installButton = document.querySelector("#installButton");
+
+    document.querySelectorAll(".tool-option").forEach((button) => {
+      button.addEventListener("click", () => {
+        document.querySelectorAll(".tool-option").forEach((item) => {
+          item.classList.remove("active");
+          item.setAttribute("aria-checked", "false");
+          item.querySelector("em").textContent = "선택";
+        });
+
+        button.classList.add("active");
+        button.setAttribute("aria-checked", "true");
+        button.querySelector("em").textContent = "선택됨";
+
+        toolTitle.textContent = button.dataset.toolTitle;
+        toolKind.textContent = button.dataset.toolKind;
+        toolEntry.textContent = button.dataset.toolEntry;
+        installButton.dataset.run = button.dataset.toolAction;
+        installButton.dataset.desc = `${button.dataset.toolAction} 설정을 준비합니다. 적용 전 변경 내용을 보여주고 사용자 확인 후 진행합니다.`;
+        installButton.textContent = "선택한 하네스 설치";
+        installButton.classList.remove("is-running");
+      });
+    });
+
+    document.querySelectorAll("[data-run]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const name = button.dataset.run;
+        document.querySelectorAll("[data-run]").forEach((item) => {
+          item.classList.remove("is-running");
+          item.textContent = item.dataset.originalLabel || item.textContent;
+        });
+        button.dataset.originalLabel = button.dataset.originalLabel || button.textContent;
+        button.textContent = "진행 중";
+        button.classList.add("is-running");
+        runTitle.textContent = `${name} 진행상황`;
+        runDesc.textContent = button.dataset.desc || `${name}을 선택했습니다. 설치 전 변경 내용을 먼저 보여주고, 사용자 확인 후 적용한 뒤 연결 검증 결과를 제공합니다.`;
+        runStatus.hidden = false;
+        runStatus.scrollIntoView({ behavior: "smooth", block: "center" });
+      });
+    });
+  </script>
+</body>
+</html>

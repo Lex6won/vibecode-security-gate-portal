@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <title>Safe Pattern Fixture</title>
+  </head>
+  <body>
+    <h1>Safe Pattern Fixture</h1>
+    <p id="message"></p>
+    <script type="module">
+      import { renderSafe } from "/static/safe-ui.js";
+      renderSafe(new URLSearchParams(location.search).get("message") || "");
+    </script>
+  </body>
+</html>

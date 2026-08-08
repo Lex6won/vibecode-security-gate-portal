@@ -1,0 +1,615 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>공공 바이브코딩 보안 체커 도움말</title>
+  <style>
+    :root {
+      --moon: #f3f6ff;
+      --herb: #cef26d;
+      --harbor: #3770bf;
+      --ink: #102033;
+      --panel: #ffffff;
+      --soft: #e8f2ff;
+      --muted: #40546f;
+      --line: #d5e5fb;
+      --green: #1f6b5f;
+      --warn: #8a5b00;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-width: 320px;
+      min-height: 100vh;
+      background: var(--moon);
+      color: var(--ink);
+      font-family: Pretendard, "Noto Sans KR", "Malgun Gothic", system-ui, sans-serif;
+      word-break: keep-all;
+      overflow-wrap: break-word;
+      line-break: strict;
+      letter-spacing: 0;
+    }
+
+    a, button, input { font: inherit; }
+
+    main {
+      width: min(1180px, calc(100% - 32px));
+      min-height: calc(100vh - 16px);
+      margin: 0 auto;
+      padding: 8px 0 10px;
+      display: grid;
+      gap: 12px;
+    }
+
+    .topbar,
+    .hero,
+    .quick-card,
+    .board,
+    .side-card {
+      border-radius: 24px;
+      background: var(--panel);
+      box-shadow: 0 18px 45px rgba(55,112,191,.12);
+    }
+
+    .topbar {
+      min-height: 68px;
+      padding: 8px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: flex-start;
+      gap: 14px;
+    }
+
+    .back {
+      width: 42px;
+      height: 42px;
+      min-height: 42px;
+      padding: 0;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 999px;
+      background: var(--soft);
+      color: #244d85;
+      font-size: 14px;
+      font-weight: 900;
+      text-decoration: none;
+      white-space: nowrap;
+      transition: transform .14s ease, box-shadow .14s ease, background-color .14s ease;
+    }
+
+    .top-actions {
+      margin-left: auto;
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .top-link {
+      min-height: 38px;
+      padding: 0 14px;
+      display: inline-flex;
+      align-items: center;
+      border-radius: 999px;
+      background: var(--soft);
+      color: #244d85;
+      font-size: 14px;
+      font-weight: 900;
+      text-decoration: none;
+      white-space: nowrap;
+      transition: transform .14s ease, box-shadow .14s ease, background-color .14s ease;
+    }
+
+    .back:hover,
+    .back:focus-visible,
+    .top-link:hover,
+    .top-link:focus-visible {
+      transform: translateY(-1px);
+      box-shadow: 0 8px 18px rgba(55,112,191,.16);
+    }
+
+    .top-title {
+      min-width: 0;
+      display: grid;
+      grid-template-columns: 38px minmax(0, 1fr);
+      gap: 12px;
+      align-items: center;
+      flex: 1 1 auto;
+      color: inherit;
+      text-decoration: none;
+      border-radius: 16px;
+    }
+
+    .back svg {
+      width: 21px;
+      height: 21px;
+      stroke-width: 2.6;
+    }
+
+    .gg-mark {
+      width: 38px;
+      height: 38px;
+      display: grid;
+      place-items: center;
+      border-radius: 11px;
+      background: linear-gradient(135deg, var(--harbor), #244d85);
+      color: #ffffff;
+      font-style: normal;
+      font-size: 15px;
+      line-height: 1;
+      font-weight: 900;
+      box-shadow: inset 0 0 0 2px rgba(255,255,255,.18);
+    }
+
+    .top-title strong {
+      display: block;
+      font-size: 24px;
+      line-height: 30px;
+      font-weight: 900;
+    }
+
+    .top-title span {
+      display: block;
+      margin-top: 1px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 18px;
+      font-weight: 800;
+    }
+
+    .hero {
+      min-height: 158px;
+      padding: 22px 26px;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 320px;
+      gap: 22px;
+      align-items: center;
+    }
+
+    .eyebrow {
+      width: fit-content;
+      min-height: 30px;
+      padding: 0 12px;
+      display: inline-flex;
+      align-items: center;
+      border-radius: 999px;
+      background: var(--soft);
+      color: #244d85;
+      font-size: 12px;
+      font-weight: 900;
+    }
+
+    h1 {
+      max-width: 680px;
+      margin: 10px 0 0;
+      font-size: 29px;
+      line-height: 1.22;
+      font-weight: 900;
+    }
+
+    .hero p,
+    .quick-card p,
+    .side-card p {
+      margin: 10px 0 0;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.55;
+      font-weight: 700;
+    }
+
+    .search-box {
+      min-height: 56px;
+      padding: 8px 8px 8px 18px;
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 10px;
+      align-items: center;
+      border-radius: 20px;
+      background: var(--moon);
+    }
+
+    .search-box input {
+      min-width: 0;
+      border: 0;
+      outline: 0;
+      background: transparent;
+      color: var(--ink);
+      font-size: 15px;
+      font-weight: 800;
+    }
+
+    .search-box button,
+    .button {
+      min-height: 42px;
+      padding: 0 16px;
+      border: 0;
+      border-radius: 999px;
+      background: var(--green);
+      color: #ffffff;
+      font-weight: 900;
+      text-decoration: none;
+      white-space: nowrap;
+      cursor: pointer;
+      transition: transform .14s ease, box-shadow .14s ease;
+    }
+
+    .search-box button:hover,
+    .search-box button:focus-visible,
+    .button:hover,
+    .button:focus-visible {
+      transform: translateY(-1px);
+      box-shadow: 0 10px 22px rgba(31,107,95,.22);
+    }
+
+    .back:focus-visible,
+    .top-title:focus-visible,
+    .top-link:focus-visible,
+    .search-box button:focus-visible,
+    .button:focus-visible,
+    .tab:focus-visible,
+    .open-link:focus-visible {
+      outline: 3px solid rgba(55,112,191,.28);
+      outline-offset: 3px;
+    }
+
+    .back:active,
+    .top-link:active,
+    .search-box button:active,
+    .button:active,
+    .open-link:active {
+      transform: translateY(1px) scale(.99);
+      box-shadow: inset 0 0 0 2px rgba(255,255,255,.34);
+    }
+
+    .quick-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .quick-card {
+      min-height: 110px;
+      padding: 16px;
+      display: grid;
+      align-content: start;
+      gap: 8px;
+      border: 1px solid transparent;
+      transition: transform .14s ease, border-color .14s ease, background-color .14s ease;
+    }
+
+    .quick-card:hover,
+    .quick-card:focus-within {
+      transform: translateY(-2px);
+      border-color: var(--harbor);
+      background: #fbfdff;
+    }
+
+    .quick-icon {
+      width: 38px;
+      height: 38px;
+      display: grid;
+      place-items: center;
+      border-radius: 999px;
+      background: var(--herb);
+      color: var(--ink);
+      font-weight: 900;
+    }
+
+    .quick-card h2,
+    .board h2,
+    .side-card h2 {
+      margin: 0;
+      font-size: 21px;
+      line-height: 1.35;
+      font-weight: 900;
+    }
+
+    .content-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 320px;
+      gap: 12px;
+      align-items: start;
+    }
+
+    .board,
+    .side-card {
+      padding: 18px;
+    }
+
+    .board {
+      outline: 3px solid var(--harbor);
+      box-shadow: 0 20px 48px rgba(55,112,191,.16);
+    }
+
+    .tabs {
+      margin: 14px 0;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .tab {
+      min-height: 34px;
+      padding: 0 12px;
+      border-radius: 999px;
+      border: 0;
+      background: var(--soft);
+      color: #244d85;
+      font-size: 13px;
+      font-weight: 900;
+      cursor: pointer;
+      transition: transform .14s ease, box-shadow .14s ease, background-color .14s ease;
+    }
+
+    .tab.active {
+      background: var(--herb);
+      color: var(--ink);
+      box-shadow: inset 0 0 0 2px var(--ink), 0 10px 22px rgba(206,242,109,.28);
+    }
+
+    .tab:hover,
+    .tab:focus-visible {
+      transform: translateY(-1px);
+      box-shadow: 0 8px 18px rgba(55,112,191,.14);
+    }
+
+    .tab:active {
+      transform: translateY(1px) scale(.99);
+      box-shadow: inset 0 0 0 2px var(--ink);
+    }
+
+    .post-list {
+      display: grid;
+      gap: 10px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .post {
+      min-height: 68px;
+      padding: 12px;
+      display: grid;
+      grid-template-columns: 92px minmax(0, 1fr) auto;
+      gap: 12px;
+      align-items: center;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: #fbfdff;
+      transition: transform .14s ease, border-color .14s ease, box-shadow .14s ease;
+    }
+
+    .post:hover,
+    .post:focus-within {
+      transform: translateY(-1px);
+      border-color: var(--harbor);
+      box-shadow: 0 12px 24px rgba(55,112,191,.12);
+    }
+
+    .label {
+      min-height: 28px;
+      padding: 0 9px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 999px;
+      background: var(--soft);
+      color: #244d85;
+      font-size: 12px;
+      font-weight: 900;
+      white-space: nowrap;
+    }
+
+    .label.warn {
+      background: #fff4d6;
+      color: var(--warn);
+    }
+
+    .post strong {
+      display: block;
+      font-size: 16px;
+      line-height: 1.4;
+      font-weight: 900;
+    }
+
+    .post span {
+      display: block;
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.5;
+      font-weight: 800;
+    }
+
+    .open-link {
+      color: var(--harbor);
+      font-size: 13px;
+      font-weight: 900;
+      text-decoration: none;
+      white-space: nowrap;
+      transition: transform .14s ease, color .14s ease;
+      display: inline-flex;
+    }
+
+    .open-link:hover,
+    .open-link:focus-visible {
+      transform: translateY(-1px);
+      color: #244d85;
+    }
+
+    .side-list {
+      display: grid;
+      gap: 10px;
+      margin: 14px 0 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .side-list li {
+      min-height: 44px;
+      padding: 10px 12px;
+      border-radius: 14px;
+      background: var(--moon);
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+      font-weight: 800;
+    }
+
+    @media (max-width: 960px) {
+      main {
+        width: calc(100% - 28px);
+        padding: 8px 0 12px;
+      }
+
+      .topbar,
+      .hero {
+        align-items: stretch;
+        flex-direction: column;
+      }
+
+      .hero,
+      .quick-grid,
+      .content-grid {
+        grid-template-columns: 1fr;
+      }
+
+      h1 { font-size: 29px; }
+
+      .post {
+        grid-template-columns: 1fr;
+        align-items: start;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .back,
+      .top-link,
+      .search-box button,
+      .button,
+      .quick-card,
+      .tab,
+      .post,
+      .open-link {
+        transition: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header class="topbar">
+      <a class="top-title" href="./first-screen-gg-v2-1.html" aria-label="홈으로 이동">
+        <i class="gg-mark" aria-hidden="true">경</i>
+        <div>
+          <strong>도움말</strong>
+          <span>AI로 만든 개발 소스의 보안 위험을 빠르게 확인합니다.</span>
+        </div>
+      </a>
+      <div class="top-actions">
+        <a class="top-link" href="https://github.com/Lex6won/vibecode-checker" target="_blank" rel="noreferrer">체커 GitHub</a>
+        <a class="top-link" href="https://github.com/Lex6won/vibe_harness_codex" target="_blank" rel="noreferrer">하네스 GitHub</a>
+      </div>
+    </header>
+
+    <section class="hero">
+      <div>
+        <span class="eyebrow">도움말 센터</span>
+        <h1>필요한 도움말을 바로 찾으세요.</h1>
+        <p>검사 대상, 점검 방식, 보고서, 오류 해결을 빠르게 확인합니다.</p>
+      </div>
+      <div class="search-box" role="search">
+        <input aria-label="도움말 검색어" placeholder="예: 제출 점검, GitHub URL, MCP 등록">
+        <button type="button">검색</button>
+      </div>
+    </section>
+
+    <section class="quick-grid" aria-label="빠른 도움말">
+      <article class="quick-card">
+        <div class="quick-icon">1</div>
+        <h2>처음 이용</h2>
+        <p>검사 대상 선택 방법</p>
+      </article>
+      <article class="quick-card">
+        <div class="quick-icon">2</div>
+        <h2>검사 방식</h2>
+        <p>점검 방식 차이</p>
+      </article>
+      <article class="quick-card">
+        <div class="quick-icon">3</div>
+        <h2>결과 제출</h2>
+        <p>제출 파일 확인</p>
+      </article>
+      <article class="quick-card">
+        <div class="quick-icon">4</div>
+        <h2>문제 해결</h2>
+        <p>오류 해결 순서</p>
+      </article>
+    </section>
+
+    <section class="content-grid">
+      <div class="board">
+        <h2>도움말 게시판</h2>
+        <div class="tabs" aria-label="도움말 분류">
+          <button class="tab active" type="button">전체</button>
+          <button class="tab" type="button">검사 전</button>
+          <button class="tab" type="button">점검 방식</button>
+          <button class="tab" type="button">보고서</button>
+          <button class="tab" type="button">오류 해결</button>
+        </div>
+        <ul class="post-list">
+          <li class="post">
+            <span class="label">검사 전</span>
+            <div><strong>폴더, 압축파일, GitHub URL 중 무엇을 선택해야 하나요?</strong><span>내 PC 소스는 폴더, 제출용 묶음은 압축파일, 원격 저장소는 GitHub URL을 사용합니다.</span></div>
+            <a class="open-link" href="#">보기</a>
+          </li>
+          <li class="post">
+            <span class="label">점검 방식</span>
+            <div><strong>빠른 점검, 표준 점검, 제출 점검은 어떻게 다른가요?</strong><span>빠른 점검은 개발 중 확인, 표준 점검은 제출 전 기본 검사, 제출 점검은 제출 패키지까지 생성합니다.</span></div>
+            <a class="open-link" href="#">보기</a>
+          </li>
+          <li class="post">
+            <span class="label">보고서</span>
+            <div><strong>검사 후 어떤 파일을 확인해야 하나요?</strong><span>HTML 보고서로 내용을 확인하고, JSON 증거 보고서와 제출 ZIP은 제출 또는 이력 관리에 사용합니다.</span></div>
+            <a class="open-link" href="#">보기</a>
+          </li>
+          <li class="post">
+            <span class="label warn">오류 해결</span>
+            <div><strong>GitHub 연결이나 의존성 점검이 실패하면 어떻게 하나요?</strong><span>네트워크 연결, 방화벽 허용, 저장소 접근 권한, 최신 룰셋 상태를 순서대로 확인합니다.</span></div>
+            <a class="open-link" href="#">보기</a>
+          </li>
+          <li class="post">
+            <span class="label">설치·업데이트</span>
+            <div><strong>하네스와 체커가 최신인지 어떻게 확인하나요?</strong><span>상태 점검에서 하네스 커밋, 체커 버전, MCP 연결, GitHub 접근 상태를 먼저 확인한 뒤 필요한 항목만 업데이트합니다.</span></div>
+            <a class="open-link" href="./skill-harness.html#pc-check">보기</a>
+          </li>
+        </ul>
+      </div>
+
+      <aside class="side-card">
+        <h2>제출 전 확인</h2>
+        <p>점검이 끝나면 결과를 바로 제출하지 말고 보고서 내용을 먼저 확인합니다.</p>
+        <ul class="side-list">
+          <li>수정 필요 항목이 0건인지 확인</li>
+          <li>사람 검토 필요 항목이 남아 있는지 확인</li>
+          <li>의존성 취약점 점검 완료 여부 확인</li>
+          <li>HTML 보고서와 JSON 증거 보고서 생성 여부 확인</li>
+        </ul>
+        <p><a class="button" href="./security-scan.html">보안점검으로 이동</a></p>
+      </aside>
+    </section>
+  </main>
+  <script>
+    document.querySelectorAll(".tabs .tab").forEach((tab) => {
+      tab.addEventListener("click", () => {
+        document.querySelectorAll(".tabs .tab").forEach((item) => item.classList.remove("active"));
+        tab.classList.add("active");
+      });
+    });
+  </script>
+</body>
+</html>

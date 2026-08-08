@@ -1,0 +1,28 @@
+# Runtime
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+node_modules/
+
+# Generated reports
+.check-reports/
+reports/
+dist/
+outbox/
+
+# Local data
+*.db
+*.sqlite
+uploads/
+tmp/
+
+# Secrets
+.env
+*.local
+
+# OS/editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

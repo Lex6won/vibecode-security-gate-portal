@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <title>Citizen Benefit Intake Fixture</title>
+    <script>
+      const params = new URLSearchParams(location.search);
+      document.addEventListener("DOMContentLoaded", () => {
+        document.getElementById("result").innerHTML = params.get("q") || "";
+      });
+    </script>
+  </head>
+  <body>
+    <h1>Citizen Benefit Intake Fixture</h1>
+    <p>Query: {{ query | safe }}</p>
+    <p>Resident: {{ sample.rrn }} / {{ sample.phone }}</p>
+    <p>API: {{ api_key }}</p>
+    <img src="http://example.com/insecure-logo.png" alt="mixed content fixture" />
+    <div id="result"></div>
+  </body>
+</html>

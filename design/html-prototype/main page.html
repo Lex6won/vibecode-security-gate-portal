@@ -1,0 +1,741 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>공공 바이브코딩 보안 체커</title>
+  <style>
+    :root {
+      --moon: #f3f6ff;
+      --herb: #cef26d;
+      --harbor: #3770bf;
+      --ice: #8dc2ff;
+      --ink: #102033;
+      --panel: #ffffff;
+      --soft: #e8f2ff;
+      --muted: #40546f;
+      --line: #d5e5fb;
+      --green: #1f6b5f;
+      --space-page: 28px;
+      --space-panel: 24px;
+      --space-gap: 16px;
+      --radius-xl: 28px;
+      --radius-lg: 24px;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-width: 320px;
+      min-height: 100vh;
+      background: var(--moon);
+      color: var(--ink);
+      font-family: Pretendard, "Noto Sans KR", "Malgun Gothic", system-ui, sans-serif;
+      word-break: keep-all;
+      overflow-wrap: break-word;
+      line-break: strict;
+      letter-spacing: 0;
+    }
+
+    button,
+    a {
+      font: inherit;
+    }
+
+    .screen {
+      width: min(1180px, calc(100% - 32px));
+      min-height: calc(100vh - 16px);
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      padding: 8px 0 16px;
+      background: var(--moon);
+    }
+
+    .workspace {
+      min-width: 0;
+      min-height: 100%;
+      display: grid;
+      grid-template-rows: auto minmax(294px, .9fr) minmax(270px, .82fr);
+      gap: 12px;
+      align-content: stretch;
+    }
+
+    .topbar {
+      min-height: 68px;
+      padding: 8px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      border-radius: var(--radius-lg);
+      background: var(--panel);
+      box-shadow: 0 18px 45px rgba(55, 112, 191, 0.12);
+    }
+
+    .brand-home {
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      color: inherit;
+      text-decoration: none;
+    }
+
+    .gg-mark {
+      width: 38px;
+      height: 38px;
+      flex: 0 0 auto;
+      display: grid;
+      place-items: center;
+      border-radius: 11px;
+      background: linear-gradient(135deg, var(--harbor), #244d85);
+      color: #ffffff;
+      font-style: normal;
+      font-size: 15px;
+      line-height: 1;
+      font-weight: 900;
+      box-shadow: inset 0 0 0 2px rgba(255,255,255,.18);
+    }
+
+    .brand-copy {
+      min-width: 0;
+      display: block;
+    }
+
+    .brand-home strong {
+      display: block;
+      font-size: 24px;
+      line-height: 30px;
+      font-weight: 900;
+    }
+
+    .brand-copy > span {
+      display: block;
+      margin-top: 1px;
+      font-size: 13px;
+      line-height: 18px;
+      color: var(--muted);
+      font-weight: 800;
+    }
+
+    .state {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex: 0 0 auto;
+    }
+
+    .pill {
+      min-height: 34px;
+      padding: 0 13px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 999px;
+      background: var(--soft);
+      color: #244d85;
+      font-size: 12px;
+      line-height: 16px;
+      font-weight: 900;
+      white-space: nowrap;
+      text-decoration: none;
+      border: 1px solid transparent;
+      transition: background-color .16s ease, border-color .16s ease, transform .16s ease;
+    }
+
+    .pill:hover,
+    .pill:focus-visible {
+      border-color: var(--harbor);
+      background: #ffffff;
+      transform: translateY(-1px);
+    }
+
+    .pill:focus-visible,
+    .ghost-button:focus-visible,
+    .button:focus-visible,
+    .repo-link:focus-visible {
+      outline: 3px solid rgba(55,112,191,.28);
+      outline-offset: 3px;
+    }
+
+    .pill:active,
+    .ghost-button:active,
+    .repo-link:active {
+      transform: translateY(1px) scale(.99);
+      box-shadow: inset 0 0 0 2px rgba(55,112,191,.2);
+    }
+
+    .pill.ok {
+      background: var(--herb);
+      color: var(--ink);
+    }
+
+    .hero {
+      min-height: 290px;
+      padding: 28px 30px;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 360px;
+      gap: 32px;
+      align-items: center;
+      border-radius: var(--radius-xl);
+      background: var(--panel);
+      box-shadow: 0 18px 45px rgba(55, 112, 191, 0.12);
+    }
+
+    .hero-copy {
+      min-width: 0;
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      min-height: 30px;
+      padding: 0 12px;
+      border-radius: 999px;
+      background: var(--soft);
+      color: #244d85;
+      font-size: 12px;
+      line-height: 16px;
+      font-weight: 900;
+    }
+
+    h1 {
+      max-width: 680px;
+      margin: 0;
+      font-size: 29px;
+      line-height: 1.28;
+      font-weight: 900;
+      color: var(--ink);
+    }
+
+    .hero-copy p {
+      max-width: 640px;
+      margin: 18px 0 0;
+      color: var(--muted);
+      font-size: 15px;
+      line-height: 1.72;
+      font-weight: 600;
+    }
+
+    .hero-actions {
+      margin-top: 36px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .ghost-button {
+      min-height: 42px;
+      padding: 0 16px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 999px;
+      background: var(--soft);
+      color: #244d85;
+      text-decoration: none;
+      font-size: 15px;
+      font-weight: 900;
+      transition: background-color .16s ease, transform .16s ease, box-shadow .16s ease;
+    }
+
+    .ghost-button:hover,
+    .ghost-button:focus-visible {
+      background: #ffffff;
+      box-shadow: 0 10px 22px rgba(55,112,191,.18);
+      transform: translateY(-1px);
+    }
+
+    .hero-image-card {
+      min-width: 0;
+      min-height: 224px;
+      position: relative;
+      overflow: hidden;
+      border-radius: 22px;
+      background: var(--moon);
+    }
+
+    .hero-image-card::after {
+      content: "";
+      width: 150px;
+      height: 150px;
+      position: absolute;
+      right: 28px;
+      top: 24px;
+      border-radius: 999px;
+      border: 2px solid rgba(206,242,109,.72);
+      animation: symbolPulse 3.8s ease-in-out infinite;
+      pointer-events: none;
+    }
+
+    .hero-image {
+      width: 100%;
+      height: 100%;
+      min-height: 224px;
+      display: block;
+      object-fit: cover;
+      object-position: 60% center;
+    }
+
+    .symbol-card {
+      position: absolute;
+      left: 16px;
+      bottom: 16px;
+      min-width: 148px;
+      padding: 10px 12px;
+      display: grid;
+      gap: 4px;
+      border-radius: 16px;
+      background: rgba(255,255,255,.92);
+      border: 1px solid rgba(213,229,251,.9);
+      box-shadow: 0 14px 30px rgba(55,112,191,.14);
+    }
+
+    .symbol-card strong {
+      color: var(--ink);
+      font-size: 14px;
+      font-weight: 900;
+    }
+
+    .symbol-card span {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 900;
+    }
+
+    @keyframes symbolPulse {
+      0%, 100% { transform: scale(.88); opacity: .2; }
+      50% { transform: scale(1.05); opacity: .74; }
+    }
+
+    .choice-strip {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .strip-item {
+      min-height: 64px;
+      padding: 12px 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      border-radius: 18px;
+      background: var(--panel);
+      box-shadow: 0 14px 32px rgba(55, 112, 191, 0.10);
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+      font-weight: 800;
+    }
+
+    .strip-item strong {
+      display: block;
+      color: var(--ink);
+      font-size: 15px;
+      font-weight: 900;
+    }
+
+    .strip-badge {
+      min-height: 28px;
+      padding: 0 10px;
+      display: inline-flex;
+      align-items: center;
+      border-radius: 999px;
+      background: var(--herb);
+      color: var(--ink);
+      font-size: 12px;
+      font-weight: 900;
+      white-space: nowrap;
+    }
+
+    .choices {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .choice {
+      min-height: 100%;
+      padding: 24px 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      border: 0;
+      border-radius: var(--radius-lg);
+      background: var(--panel);
+      box-shadow: 0 18px 45px rgba(55, 112, 191, 0.10);
+      outline: 2px solid transparent;
+      transition: transform .16s ease, outline-color .16s ease, background-color .16s ease, box-shadow .16s ease;
+    }
+
+    .choice:hover,
+    .choice:focus-within {
+      transform: translateY(-3px);
+      outline-color: var(--ice);
+      background: #fbfdff;
+      box-shadow: 0 22px 52px rgba(55, 112, 191, 0.18);
+    }
+
+    .choice:active {
+      transform: translateY(-1px);
+      outline-color: var(--harbor);
+      box-shadow: 0 12px 28px rgba(55,112,191,.14);
+    }
+
+    .choice.primary {
+      outline: 3px solid var(--green);
+      background: #fbfdff;
+      box-shadow: 0 22px 54px rgba(31,107,95,.18);
+    }
+
+    .choice-head {
+      min-width: 0;
+      display: grid;
+      grid-template-columns: 44px minmax(0, 1fr);
+      gap: 14px;
+      align-items: start;
+    }
+
+    .num {
+      width: 42px;
+      height: 42px;
+      display: grid;
+      place-items: center;
+      border-radius: 999px;
+      background: var(--soft);
+      color: #244d85;
+      font-size: 16px;
+      font-weight: 900;
+    }
+
+    .primary .num {
+      background: var(--harbor);
+      color: #ffffff;
+    }
+
+    .choice:nth-child(3) .num {
+      background: var(--herb);
+      color: var(--ink);
+    }
+
+    .choice h2 {
+      margin: 0;
+      font-size: 21px;
+      line-height: 1.38;
+      font-weight: 900;
+      color: var(--ink);
+    }
+
+    .choice p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.76;
+      font-weight: 700;
+    }
+
+    .action {
+      margin-top: auto;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+      flex-wrap: nowrap;
+    }
+
+    .button {
+      min-width: 104px;
+      min-height: 42px;
+      padding: 0 14px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 999px;
+      background: var(--harbor);
+      color: #ffffff;
+      text-decoration: none;
+      font-size: 14px;
+      line-height: 20px;
+      font-weight: 900;
+      white-space: nowrap;
+      transition: background-color .16s ease, transform .16s ease, box-shadow .16s ease;
+    }
+
+    .button:hover,
+    .button:focus-visible {
+      background: #244d85;
+      box-shadow: 0 10px 24px rgba(55, 112, 191, 0.24);
+      transform: translateY(-1px);
+    }
+
+    .button:active {
+      transform: translateY(1px) scale(.99);
+      box-shadow: inset 0 0 0 2px rgba(255,255,255,.34);
+    }
+
+    .primary .button {
+      background: var(--green);
+    }
+
+    .primary .button:hover,
+    .primary .button:focus-visible {
+      background: #155347;
+    }
+
+    .hint {
+      min-height: 28px;
+      padding: 0 9px;
+      display: inline-flex;
+      align-items: center;
+      border-radius: 999px;
+      background: var(--soft);
+      color: #244d85;
+      font-size: 12px;
+      line-height: 16px;
+      font-weight: 900;
+      white-space: nowrap;
+    }
+
+    .repo-link {
+      min-height: 28px;
+      padding: 0 9px;
+      display: inline-flex;
+      align-items: center;
+      border-radius: 999px;
+      background: #ffffff;
+      color: #244d85;
+      border: 1px solid var(--line);
+      font-size: 12px;
+      line-height: 16px;
+      font-weight: 900;
+      text-decoration: none;
+      white-space: nowrap;
+      transition: transform .16s ease, border-color .16s ease, box-shadow .16s ease;
+    }
+
+    .repo-link:hover,
+    .repo-link:focus-visible {
+      transform: translateY(-1px);
+      border-color: var(--harbor);
+      box-shadow: 0 8px 18px rgba(55,112,191,.16);
+    }
+
+    .output-panel {
+      padding: 16px;
+      display: grid;
+      grid-template-columns: 240px repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      align-items: stretch;
+      border-radius: var(--radius-lg);
+      background: var(--panel);
+      box-shadow: 0 18px 45px rgba(55, 112, 191, 0.10);
+    }
+
+    .output-title {
+      display: grid;
+      align-content: center;
+      gap: 6px;
+    }
+
+    .output-title strong {
+      font-size: 20px;
+      line-height: 1.35;
+      font-weight: 900;
+    }
+
+    .output-title span,
+    .output-card span {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.55;
+      font-weight: 800;
+    }
+
+    .output-card {
+      min-height: 86px;
+      padding: 14px;
+      border-radius: 18px;
+      background: var(--moon);
+    }
+
+    .output-card strong {
+      display: block;
+      margin-bottom: 6px;
+      font-size: 16px;
+      line-height: 1.35;
+      font-weight: 900;
+    }
+
+    @media (max-width: 960px) {
+      .screen {
+        width: calc(100% - 28px);
+        min-height: auto;
+        grid-template-columns: 1fr;
+        padding: 8px 0 12px;
+        gap: 0;
+      }
+
+      .workspace {
+        padding: 0;
+        min-height: auto;
+        grid-template-rows: auto;
+        gap: 10px;
+      }
+
+      .topbar,
+      .hero {
+        align-items: stretch;
+        flex-direction: column;
+      }
+
+      .hero {
+        grid-template-columns: 1fr;
+        min-height: 0;
+        padding: 22px;
+      }
+
+      .choice {
+        min-height: 190px;
+      }
+
+      h1 {
+        font-size: 30px;
+      }
+
+      .choices,
+      .choice-strip,
+      .output-panel {
+        grid-template-columns: 1fr;
+      }
+
+      .output-panel {
+        padding: 14px;
+      }
+
+      .action {
+        flex-wrap: wrap;
+      }
+    }
+
+    @media (min-width: 961px) and (max-width: 1100px) {
+      .choices,
+      .choice-strip {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .hero-image-card::after {
+        animation: none;
+      }
+
+      .pill,
+      .ghost-button,
+      .choice,
+      .button,
+      .repo-link {
+        transition: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="screen">
+    <main class="workspace">
+      <header class="topbar">
+        <a class="brand-home" href="./first-screen-gg-v2-1.html" aria-label="홈으로 이동">
+          <i class="gg-mark" aria-hidden="true">경</i>
+          <span class="brand-copy">
+            <strong>공공 바이브코딩 보안 체커</strong>
+            <span>AI로 만든 개발 소스의 보안 위험을 빠르게 확인합니다.</span>
+          </span>
+        </a>
+        <div class="state" aria-label="현재 상태">
+          <a class="pill ok" href="./skill-harness.html#pc-check" title="하네스, 체커, MCP 연결, GitHub 접근 상태를 확인합니다.">상태 점검</a>
+          <a class="pill" href="https://github.com/Lex6won/vibecode-checker" target="_blank" rel="noreferrer">체커 GitHub</a>
+          <a class="pill" href="./help.html" title="사용법과 제출 전 점검 절차를 확인합니다.">도움말</a>
+        </div>
+      </header>
+
+      <section class="hero" aria-labelledby="start-title">
+        <div class="hero-copy">
+          <h1 id="start-title">오늘 할 일을 선택하세요.</h1>
+          <p>빠른 점검, 표준 점검, MCP 등록, 관리자 현황 중 필요한 작업만 바로 시작합니다.</p>
+          <div class="hero-actions">
+            <a class="button" href="./security-scan.html?mode=standard">표준 점검 시작</a>
+            <a class="ghost-button" href="./security-scan.html?mode=quick">빠른 점검</a>
+            <a class="ghost-button" href="./skill-harness.html#mcp">MCP 등록</a>
+            <a class="ghost-button" href="./skill-harness.html#pc-check">설치 상태</a>
+          </div>
+        </div>
+        <aside class="hero-image-card" aria-label="경기도청 보안 점검 상징 이미지">
+          <img class="hero-image" src="./assets/images/gg-hero-symbol-security.png" alt="경기도청을 연상시키는 공공 보안 점검 상징 이미지">
+          <div class="symbol-card">
+            <strong>경기도청</strong>
+            <span>보안 점검 · 제출 준비</span>
+          </div>
+        </aside>
+      </section>
+
+      <section class="choices" aria-label="핵심 기능 선택">
+        <article class="choice">
+          <div class="choice-head">
+            <div class="num">1</div>
+            <h2>빠른 점검</h2>
+          </div>
+          <p>개발 중 위험 신호만 먼저 확인합니다.</p>
+          <div class="action">
+            <a class="button" href="./security-scan.html?mode=quick">바로 점검</a>
+            <span class="hint">개발 중</span>
+          </div>
+        </article>
+
+        <article class="choice primary">
+          <div class="choice-head">
+            <div class="num">2</div>
+            <h2>표준 점검</h2>
+          </div>
+          <p>코드와 의존성을 검사하고 보고서를 만듭니다.</p>
+          <div class="action">
+            <a class="button" href="./security-scan.html?mode=standard">검사하기</a>
+            <span class="hint">권장</span>
+            <a class="repo-link" href="https://github.com/Lex6won/vibecode-checker" target="_blank" rel="noreferrer" title="체커 GitHub 저장소를 엽니다.">GitHub</a>
+          </div>
+        </article>
+
+        <article class="choice">
+          <div class="choice-head">
+            <div class="num">3</div>
+            <h2>하네스<br>및 MCP 등록</h2>
+          </div>
+          <p>개발 도구에 하네스와 체커 MCP를 연결합니다.</p>
+          <div class="action">
+            <a class="button" href="./skill-harness.html#mcp">설정하기</a>
+            <span class="hint">개발 중 점검</span>
+            <a class="repo-link" href="https://github.com/Lex6won/vibe_harness_codex" target="_blank" rel="noreferrer" title="하네스 GitHub 저장소를 엽니다.">GitHub</a>
+          </div>
+        </article>
+
+        <article class="choice">
+          <div class="choice-head">
+            <div class="num">4</div>
+            <h2>관리자<br>현황 확인</h2>
+          </div>
+          <p>점검 이력과 제출 가능 상태를 확인합니다.</p>
+          <div class="action">
+            <a class="button" href="./admin-login.html">총괄 로그인</a>
+            <span class="hint">권한 필요</span>
+          </div>
+        </article>
+      </section>
+
+    </main>
+  </div>
+</body>
+</html>
