@@ -15,8 +15,10 @@ assert.ok(pickerSource, "modern folder-picker C# source must be present in serve
 assert.ok(serverSource.includes("FOS_PICKFOLDERS") === false, "use the typed PickFolders option instead of an unverified flag literal");
 assert.ok(serverSource.includes("FileDialogOptions.PickFolders"), "folder picker must enable the modern PickFolders option");
 assert.ok(!serverSource.includes("BrowseForFolder"), "legacy Shell BrowseForFolder must not be used");
+assert.match(serverSource, /Guid\("43826D1E-E718-42EE-BC55-A1E261C37BFE"\), InterfaceType\(ComInterfaceType\.InterfaceIsIUnknown\)\]\s+private interface IShellItem/);
+assert.match(serverSource, /Guid\("42F85136-DB7E-439C-85F1-E4075D135FC8"\), InterfaceType\(ComInterfaceType\.InterfaceIsIUnknown\)\]\s+private interface IFileDialog/);
 
-const command = `$source = @'\n${pickerSource[1]}\n'@\nAdd-Type -TypeDefinition $source\n[Console]::Out.Write('compiled')`;
+const command = `$source = @'\n${pickerSource[1]}\n'@\nAdd-Type -TypeDefinition $source\n$probe = [PortalFolderPicker]::Probe()\nif ([string]::IsNullOrWhiteSpace($probe) -or -not (Test-Path -LiteralPath $probe)) { throw 'shell-item probe failed' }\n[Console]::Out.Write('compiled-and-probed')`;
 const result = spawnSync(powerShell, ["-NoProfile", "-STA", "-Command", command], {
   cwd: root,
   encoding: "utf8",
@@ -24,5 +26,5 @@ const result = spawnSync(powerShell, ["-NoProfile", "-STA", "-Command", command]
 });
 
 assert.equal(result.status, 0, `modern folder picker must compile: ${result.stderr || result.stdout}`);
-assert.equal(result.stdout.trim(), "compiled", `modern folder picker probe failed: ${result.stderr || result.stdout}`);
-console.log(JSON.stringify({ status: "passed", check: "modern_windows_folder_picker" }));
+assert.equal(result.stdout.trim(), "compiled-and-probed", `modern folder picker probe failed: ${result.stderr || result.stdout}`);
+console.log(JSON.stringify({ status: "passed", check: "modern_windows_folder_picker_and_shell_item" }));

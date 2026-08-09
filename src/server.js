@@ -174,7 +174,7 @@ public static class PortalFolderPicker {
 
   private enum SigDn : uint { FileSystemPath = 0x80058000 }
 
-  [ComImport, Guid("D57C7288-D4AD-4768-BE02-9D969532D960"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+  [ComImport, Guid("43826D1E-E718-42EE-BC55-A1E261C37BFE"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
   private interface IShellItem {
     [PreserveSig] int BindToHandler(IntPtr pbc, ref Guid bhid, ref Guid riid, out IntPtr ppv);
     [PreserveSig] int GetParent(out IShellItem ppsi);
@@ -213,6 +213,25 @@ public static class PortalFolderPicker {
 
   [ComImport, Guid("DC1C5A9C-E88A-4DDE-A5A1-60F82A20AEF7")]
   private class FileOpenDialog { }
+
+  [DllImport("shell32.dll", CharSet = CharSet.Unicode, PreserveSig = true)]
+  private static extern int SHCreateItemFromParsingName(
+    string path,
+    IntPtr bindContext,
+    ref Guid iid,
+    out IShellItem item
+  );
+
+  public static string Probe() {
+    string folder = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
+    Guid iid = new Guid("43826D1E-E718-42EE-BC55-A1E261C37BFE");
+    IShellItem item;
+    if (SHCreateItemFromParsingName(folder, IntPtr.Zero, ref iid, out item) != 0 || item == null) return null;
+    IntPtr path;
+    if (item.GetDisplayName(SigDn.FileSystemPath, out path) != 0 || path == IntPtr.Zero) return null;
+    try { return Marshal.PtrToStringUni(path); }
+    finally { Marshal.FreeCoTaskMem(path); }
+  }
 
   public static string Pick(string title) {
     IFileDialog dialog = (IFileDialog)new FileOpenDialog();
