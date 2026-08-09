@@ -189,6 +189,13 @@ async function scenarioBrowserSelectedTargets(fixture) {
 }
 
 async function scenarioHarnessAndMcp() {
+  const harnessVersion = await fetchJson("/api/local/version-status?target=harness");
+  assert.ok(["current", "update_available", "check_unavailable", "not_installed"].includes(harnessVersion.status));
+  assert.ok(["최신 버전입니다.", "업데이트가 필요합니다.", "설치되어 있지 않습니다."].includes(harnessVersion.message) || harnessVersion.status === "check_unavailable");
+
+  const checkerVersion = await fetchJson("/api/local/version-status?target=checker");
+  assert.ok(["current", "update_available", "check_unavailable", "not_installed"].includes(checkerVersion.status));
+
   const status = await fetchJson("/api/local/status");
   assert.equal(status.project_harness.status, "applied");
   assert.equal(status.execution_gate.guard_script, "configured");

@@ -155,20 +155,27 @@ async function assertPageControls(pagePath) {
 
 async function assertApiBackedButtons() {
   await fetchText("/api/local/status");
+  await fetchText("/api/local/version-status?target=harness");
+  await fetchText("/api/local/version-status?target=checker");
   await fetchText("/api/local/update/preview", { method: "POST" });
   await fetchText("/api/local/mcp/register", { method: "POST" });
 }
 
 async function assertLocalPickerContract() {
   const html = await fetchText("/scan");
-  assert.ok(!html.includes('id="saveLocationPrompt"'), "scan page must not show an intermediate save-location modal");
-  assert.ok(!html.includes('id="selectSaveLocation"'), "scan page must use the direct save-location button");
-  assert.ok(html.includes('saveButton.addEventListener("click", chooseSaveLocation)'), "save-location button must open the picker directly");
-  assert.ok(html.includes('await chooseSaveLocation();'), "scan start must request a save location directly when missing");
+  assert.ok(html.includes('id="saveLocationPrompt"'), "scan page must explain why a save location is required before opening the browser picker");
+  assert.ok(html.includes('점검결과를 저장할 위치를 선택해 주세요.'), "save-location prompt must use the approved user wording");
+  assert.ok(html.includes('saveButton.addEventListener("click", () => requestSaveLocation())'), "save-location button must show the save-location explanation first");
+  assert.ok(html.includes('requestSaveLocation(mode);'), "scan start must request a save location before opening the browser picker");
+  assert.ok(html.includes('selectSaveLocation.addEventListener("click", async () =>') && html.includes('await chooseSaveLocation();'), "save-location prompt confirmation must open the browser directory picker");
   assert.ok(html.includes('id="folderPickerInput" type="file" webkitdirectory multiple'), "folder selection must use the browser Explorer picker");
   assert.ok(html.includes('id="archivePickerInput" type="file" accept=".zip,application/zip"'), "ZIP selection must use the browser Explorer picker");
   assert.ok(html.includes('const picker = activeTarget === "folder" ? folderPickerInput : archivePickerInput') && html.includes('picker.click()'), "folder selection button must open the browser file picker");
   assert.ok(html.includes('fetch("/api/local/upload-target"'), "browser-selected source files must be sent to the local scanner");
+  assert.ok(html.includes('id="targetProgress"'), "source selection must show immediate progress feedback");
+  assert.ok(html.includes('state: "선택 창 여는 중"') && html.includes('state: "파일 읽는 중"'), "source selection must explain picker and file-reading progress");
+  assert.ok(html.includes('id="confirmTargetProgress"') && html.includes('확인하고 점검 시작'), "prepared source must require a clear confirmation before the queued scan starts");
+  assert.ok(html.includes('confirmTargetProgress.addEventListener("click", async () =>'), "source preparation confirmation must be wired");
   assert.ok(html.includes('window.showDirectoryPicker'), "report save location must use the browser directory picker");
   assert.ok(html.includes('targetSelectionInFlight'), "native target picker must prevent duplicate picker windows");
 }

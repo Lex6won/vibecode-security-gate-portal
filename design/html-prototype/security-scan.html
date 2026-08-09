@@ -383,6 +383,33 @@
       background: #fffaf0;
     }
 
+    .selection-progress {
+      margin-top: 20px;
+      padding: 18px;
+      border-radius: 18px;
+      background: var(--soft);
+    }
+
+    .selection-progress strong {
+      display: block;
+      color: var(--ink);
+      font-size: 17px;
+      line-height: 1.35;
+      font-weight: 900;
+    }
+
+    .selection-progress p {
+      margin: 7px 0 0;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.55;
+      font-weight: 800;
+    }
+
+    .selection-progress .progress-track {
+      margin-top: 16px;
+    }
+
     @keyframes scan-spin {
       to { transform: rotate(360deg); }
     }
@@ -877,6 +904,41 @@
     </div>
   </section>
 
+  <section class="modal" id="saveLocationPrompt" aria-labelledby="saveLocationPromptTitle" hidden>
+    <div class="modal-card">
+      <div class="modal-head">
+        <div>
+          <h2 id="saveLocationPromptTitle">점검결과를 저장할 위치를 선택해 주세요.</h2>
+          <p>점검을 시작하려면 HTML, JSON, ZIP 결과물을 저장할 폴더를 먼저 선택해야 합니다.</p>
+        </div>
+        <button class="modal-close" id="closeSaveLocationPrompt" type="button" aria-label="저장 위치 선택 안내 닫기">×</button>
+      </div>
+      <div class="modal-actions">
+        <button class="button secondary" id="cancelSaveLocation" type="button">나중에 선택</button>
+        <button class="button primary" id="selectSaveLocation" type="button">저장 위치 선택</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="modal" id="targetProgress" aria-labelledby="targetProgressTitle" aria-live="polite" hidden>
+    <div class="modal-card">
+      <div class="modal-head">
+        <div>
+          <h2 id="targetProgressTitle">검사 대상을 준비하고 있습니다.</h2>
+          <p id="targetProgressDescription">선택 창을 열고 있습니다.</p>
+        </div>
+      </div>
+      <div class="selection-progress">
+        <strong id="targetProgressState">선택 창 여는 중</strong>
+        <p id="targetProgressDetail">Windows 탐색기에서 검사할 소스를 선택해 주세요.</p>
+        <div class="progress-track" aria-hidden="true"><span id="targetProgressBar"></span></div>
+      </div>
+      <div class="modal-actions" id="targetProgressActions" hidden>
+        <button class="button primary" id="confirmTargetProgress" type="button">확인</button>
+      </div>
+    </div>
+  </section>
+
   <script>
     const targetHelp = document.querySelector("#targetHelp");
     const targetInput = document.querySelector("#targetInput");
@@ -885,6 +947,18 @@
     const folderPickerInput = document.querySelector("#folderPickerInput");
     const archivePickerInput = document.querySelector("#archivePickerInput");
     const saveButton = document.querySelector("#saveButton");
+    const saveLocationPrompt = document.querySelector("#saveLocationPrompt");
+    const selectSaveLocation = document.querySelector("#selectSaveLocation");
+    const closeSaveLocationPrompt = document.querySelector("#closeSaveLocationPrompt");
+    const cancelSaveLocation = document.querySelector("#cancelSaveLocation");
+    const targetProgress = document.querySelector("#targetProgress");
+    const targetProgressTitle = document.querySelector("#targetProgressTitle");
+    const targetProgressDescription = document.querySelector("#targetProgressDescription");
+    const targetProgressState = document.querySelector("#targetProgressState");
+    const targetProgressDetail = document.querySelector("#targetProgressDetail");
+    const targetProgressBar = document.querySelector("#targetProgressBar");
+    const targetProgressActions = document.querySelector("#targetProgressActions");
+    const confirmTargetProgress = document.querySelector("#confirmTargetProgress");
     const savePath = document.querySelector("#savePath");
     const progressTarget = document.querySelector("#progressTarget");
     const progressMode = document.querySelector("#progressMode");
@@ -956,6 +1030,22 @@
       openTargetPicker();
     }
 
+    function showTargetProgress({ title, description, state, detail, percent, completed = false }) {
+      targetProgressTitle.textContent = title;
+      targetProgressDescription.textContent = description;
+      targetProgressState.textContent = state;
+      targetProgressDetail.textContent = detail;
+      targetProgressBar.style.width = `${Math.max(0, Math.min(100, percent))}%`;
+      targetProgressActions.hidden = !completed;
+      targetProgress.hidden = false;
+    }
+
+    function completeTargetProgress({ title, description, state, detail, startScan = false }) {
+      showTargetProgress({ title, description, state, detail, percent: 100, completed: true });
+      confirmTargetProgress.textContent = startScan ? "확인하고 점검 시작" : "확인";
+      confirmTargetProgress.dataset.startScan = startScan ? "true" : "false";
+    }
+
     async function openTargetPicker() {
       if (activeTarget === "url") {
         targetInput.focus();
@@ -966,6 +1056,13 @@
       targetSelectionInFlight = true;
       scanButton.disabled = true;
       scanButton.textContent = "선택 창 여는 중";
+      showTargetProgress({
+        title: "검사 대상을 선택해 주세요.",
+        description: "Windows 탐색기에서 선택한 파일은 이 PC에서만 준비합니다.",
+        state: "선택 창 여는 중",
+        detail: activeTarget === "folder" ? "프로젝트 폴더를 선택해 주세요." : "검사할 ZIP 파일을 선택해 주세요.",
+        percent: 15
+      });
       targetHelp.textContent = activeTarget === "folder"
         ? "Windows 탐색기에서 검사할 프로젝트 폴더를 선택하세요."
         : "Windows 탐색기에서 검사할 ZIP 파일을 선택하세요.";
@@ -980,11 +1077,24 @@
         scanButton.disabled = false;
         scanButton.textContent = targetText[activeTarget].button;
         targetHelp.textContent = "선택이 취소되었습니다. 다시 선택하세요.";
+        completeTargetProgress({
+          title: "검사 대상 선택",
+          description: "선택이 취소되었습니다.",
+          state: "다시 선택 필요",
+          detail: "폴더 또는 ZIP 파일을 다시 선택해 주세요."
+        });
         return;
       }
       try {
         const selectedFiles = Array.from(files).filter((file) => !file.webkitRelativePath.split("/").some((part) => part === "node_modules" || part === ".git"));
         if (!selectedFiles.length) throw new Error("검사할 소스 파일이 없습니다.");
+        showTargetProgress({
+          title: "검사 대상을 준비하고 있습니다.",
+          description: "선택한 파일을 읽어 로컬 점검을 준비합니다.",
+          state: "파일 읽는 중",
+          detail: `${selectedFiles.length}개 파일을 확인하고 있습니다.`,
+          percent: 55
+        });
         const form = new FormData();
         form.append("kind", kind);
         form.append("manifest", JSON.stringify(selectedFiles.map((file) => file.webkitRelativePath || file.name)));
@@ -999,14 +1109,22 @@
         scanButton.textContent = kind === "folder" ? "폴더 다시 선택" : "ZIP 다시 선택";
         selectedReady = true;
         targetHelp.textContent = `${selection.file_count}개 파일을 이 PC에서 점검합니다.`;
-        if (pendingMode) {
-          const mode = pendingMode;
-          pendingMode = null;
-          await runScan(mode);
-        }
+        completeTargetProgress({
+          title: "검사 대상 준비 완료",
+          description: "선택한 소스를 점검할 준비가 되었습니다.",
+          state: `${selection.file_count}개 파일 준비 완료`,
+          detail: `${selection.label} · 이 PC에서 점검합니다.`,
+          startScan: Boolean(pendingMode)
+        });
       } catch (error) {
         selectedReady = false;
         targetHelp.textContent = `${String(error.message || error)} 다시 선택하세요.`;
+        completeTargetProgress({
+          title: "검사 대상 준비 실패",
+          description: "선택한 파일을 준비하지 못했습니다.",
+          state: "다시 선택 필요",
+          detail: "폴더 또는 ZIP 파일을 다시 선택해 주세요."
+        });
       } finally {
         targetSelectionInFlight = false;
         scanButton.disabled = false;
@@ -1192,8 +1310,7 @@
 
     async function runScan(mode) {
       if (!selectedSaveDir) {
-        pendingMode = mode;
-        await chooseSaveLocation();
+        requestSaveLocation(mode);
         return;
       }
       if (!selectedReady) {
@@ -1233,12 +1350,29 @@
       scanButton.disabled = false;
       scanButton.textContent = targetText[activeTarget].button;
       targetHelp.textContent = "선택이 취소되었습니다. 다시 선택하세요.";
+      completeTargetProgress({
+        title: "검사 대상 선택",
+        description: "선택이 취소되었습니다.",
+        state: "다시 선택 필요",
+        detail: "폴더 또는 ZIP 파일을 다시 선택해 주세요."
+      });
     }
 
     folderPickerInput.addEventListener("change", () => uploadBrowserTarget(folderPickerInput.files, "folder"));
     archivePickerInput.addEventListener("change", () => uploadBrowserTarget(archivePickerInput.files, "archive"));
     folderPickerInput.addEventListener("cancel", resetTargetPickerAfterCancel);
     archivePickerInput.addEventListener("cancel", resetTargetPickerAfterCancel);
+
+    confirmTargetProgress.addEventListener("click", async () => {
+      const shouldStartScan = confirmTargetProgress.dataset.startScan === "true";
+      targetProgress.hidden = true;
+      confirmTargetProgress.dataset.startScan = "false";
+      if (shouldStartScan && pendingMode) {
+        const mode = pendingMode;
+        pendingMode = null;
+        await runScan(mode);
+      }
+    });
 
     targetInput.addEventListener("input", () => {
       if (activeTarget !== "url") return;
@@ -1270,9 +1404,10 @@
       saveLocationSelectionInFlight = true;
       saveButton.disabled = true;
       saveButton.textContent = "선택 창 여는 중";
-      savePath.textContent = "Windows 탐색기에서 결과를 저장할 폴더를 선택하세요.";
+      savePath.textContent = "점검결과를 저장할 위치를 선택해 주세요.";
       try {
         if (!window.showDirectoryPicker) throw new Error("이 기능은 Chrome 또는 Edge에서 사용할 수 있습니다.");
+        // Browser security policy does not allow a web page to customize the native picker title.
         selectedSaveDirectoryHandle = await window.showDirectoryPicker({ mode: "readwrite" });
         selectedSaveDir = selectedSaveDirectoryHandle.name;
         savePath.textContent = `${selectedSaveDir} 폴더에 결과물을 저장합니다.`;
@@ -1295,7 +1430,23 @@
       }
     }
 
-    saveButton.addEventListener("click", chooseSaveLocation);
+    function requestSaveLocation(mode = null) {
+      if (mode) pendingMode = mode;
+      saveLocationPrompt.hidden = false;
+    }
+
+    function closeSavePrompt() {
+      saveLocationPrompt.hidden = true;
+      pendingMode = null;
+    }
+
+    saveButton.addEventListener("click", () => requestSaveLocation());
+    selectSaveLocation.addEventListener("click", async () => {
+      saveLocationPrompt.hidden = true;
+      await chooseSaveLocation();
+    });
+    closeSaveLocationPrompt.addEventListener("click", closeSavePrompt);
+    cancelSaveLocation.addEventListener("click", closeSavePrompt);
 
     document.querySelector(".modal-close").addEventListener("click", () => {
       scanProgress.hidden = true;
@@ -1305,6 +1456,8 @@
     window.addEventListener("keydown", (event) => {
       if (event.key === "Escape") {
         scanProgress.hidden = true;
+        saveLocationPrompt.hidden = true;
+        targetProgress.hidden = true;
       }
     });
   </script>

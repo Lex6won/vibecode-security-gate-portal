@@ -447,6 +447,44 @@ async function localStatus() {
   };
 }
 
+function simpleVersionResult(component, local, remote) {
+  if (!local?.installed) {
+    return { component, status: "not_installed", message: "설치되어 있지 않습니다.", github_checked: false };
+  }
+  if (remote?.status === "current") {
+    return { component, status: "current", message: "최신 버전입니다.", github_checked: true };
+  }
+  if (remote?.status === "update_available") {
+    return { component, status: "update_available", message: "업데이트가 필요합니다.", github_checked: true };
+  }
+  return { component, status: "check_unavailable", message: "GitHub에서 최신 버전을 확인할 수 없습니다. 잠시 후 다시 확인하세요.", github_checked: false };
+}
+
+async function simpleVersionStatus(target) {
+  if (target === "harness") {
+    const local = await gitSummary(HARNESS_SOURCE_DIR);
+    const remote = await remoteMainSummary(HARNESS_SOURCE_DIR, local);
+    return simpleVersionResult("하네스", local, remote);
+  }
+
+  if (target === "checker") {
+    const pipShow = await runCommand("pip.exe", ["show", "vibecode-checker"], { timeout_ms: 10000 });
+    const editableMatch = pipShow.stdout.match(/^Editable project location:\s*(.+)$/mi);
+    const editablePath = editableMatch?.[1]?.trim() || "";
+    if (!editablePath) {
+      const version = await runCommand("gvskb", ["version"], { timeout_ms: 10000 });
+      return version.ok
+        ? { component: "체커", status: "check_unavailable", message: "설치 방식 때문에 GitHub 기준 최신 여부를 확인할 수 없습니다.", github_checked: false }
+        : { component: "체커", status: "not_installed", message: "설치되어 있지 않습니다.", github_checked: false };
+    }
+    const local = await gitSummary(editablePath);
+    const remote = await remoteMainSummary(editablePath, local);
+    return simpleVersionResult("체커", local, remote);
+  }
+
+  return { component: "", status: "invalid_target", message: "확인할 대상을 찾을 수 없습니다.", github_checked: false };
+}
+
 async function updatePreview() {
   const status = await localStatus();
   const harness = status.source_harness || {};
@@ -1008,6 +1046,16 @@ async function handleApi(request, response, pathname) {
 
   if (request.method === "GET" && pathname === "/api/local/status") {
     json(response, 200, await localStatus());
+    return;
+  }
+
+  if (request.method === "GET" && pathname === "/api/local/version-status") {
+    const target = new URL(request.url || "/", "http://localhost").searchParams.get("target");
+    if (target !== "harness" && target !== "checker") {
+      json(response, 400, { error: "invalid_version_target" });
+      return;
+    }
+    json(response, 200, await simpleVersionStatus(target));
     return;
   }
 
