@@ -80,7 +80,8 @@ function serveStatic(request, response, pathname) {
   response.writeHead(200, {
     "Content-Type": type,
     "X-Content-Type-Options": "nosniff",
-    "Referrer-Policy": "same-origin"
+    "Referrer-Policy": "same-origin",
+    "Cache-Control": "no-store"
   });
   createReadStream(target).pipe(response);
 }
@@ -160,7 +161,7 @@ async function pickLocalPath(kind) {
 
   const isFolder = kind === "folder" || kind === "save_dir";
   const script = isFolder
-    ? "Add-Type -AssemblyName System.Windows.Forms; $dialog = New-Object System.Windows.Forms.FolderBrowserDialog; $dialog.Description = 'Select a local folder'; if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { [Console]::Out.Write($dialog.SelectedPath) }"
+    ? "Add-Type -AssemblyName System.Windows.Forms; $owner = New-Object System.Windows.Forms.Form; $owner.TopMost = $true; $owner.ShowInTaskbar = $false; $owner.Opacity = 0; $owner.Show(); $dialog = New-Object System.Windows.Forms.FolderBrowserDialog; $dialog.Description = 'Select a local folder'; $dialog.ShowNewFolderButton = $true; if ($dialog.ShowDialog($owner) -eq [System.Windows.Forms.DialogResult]::OK) { [Console]::Out.Write($dialog.SelectedPath) }; $owner.Close(); $owner.Dispose()"
     : "Add-Type -AssemblyName System.Windows.Forms; $dialog = New-Object System.Windows.Forms.OpenFileDialog; $dialog.Filter = 'ZIP archive (*.zip)|*.zip'; $dialog.Multiselect = $false; if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { [Console]::Out.Write($dialog.FileName) }";
   const picked = await runCommand(POWERSHELL, ["-NoProfile", "-STA", "-Command", script], { timeout_ms: 300000 });
   const selectedPath = picked.stdout.trim();
@@ -463,7 +464,9 @@ async function saveReportsToDirectory(job, reports) {
     throw new Error("The selected report directory is unavailable.");
   }
   const saved = [];
-  for (const report of reports) {
+  const total = reports.length;
+  updateJob(job, { save_progress: { completed: 0, total } });
+  for (const [index, report] of reports.entries()) {
     const source = resolve(report.path);
     const target = resolve(join(destination, report.file_name));
     const destinationRelative = relative(destination, target);
@@ -472,6 +475,7 @@ async function saveReportsToDirectory(job, reports) {
     }
     await copyFile(source, target);
     saved.push({ file_name: report.file_name, saved_to: target });
+    updateJob(job, { save_progress: { completed: index + 1, total } });
   }
   return saved;
 }
@@ -511,6 +515,12 @@ function progressForJob(job) {
       // Long scans advance smoothly but never imply completion before the report is built.
       const percent = Math.min(84, Math.round(28 + 56 * (1 - Math.exp(-elapsed / 240))));
       return { percent, message: `${base.message} (${formatElapsed(elapsed)} 경과)`, elapsed_seconds: elapsed };
+    }
+    if (active.name === "save_reports") {
+      const completed = Number(job.save_progress?.completed || 0);
+      const total = Number(job.save_progress?.total || 0);
+      const percent = total ? Math.min(99, 96 + Math.floor((completed / total) * 3)) : 96;
+      return { percent, message: `결과물 ${completed}/${total}개를 선택한 위치에 저장하고 있습니다.`, elapsed_seconds: elapsed };
     }
     return { ...base, elapsed_seconds: elapsed };
   }
@@ -787,7 +797,7 @@ async function runScanJob(job) {
       { name: "prepare_target", status: "completed" },
       { name: "code_scan", status: scan.ok || parsed ? "completed" : "failed" },
       { name: "render_report", status: finalReportItems.length > 0 ? "completed" : "pending" },
-      ...(job.save_dir ? [{ name: "save_reports", status: saveError ? "failed" : "completed" }] : [])
+      ...(job.save_dir ? [{ name: "save_reports", status: saveError ? "failed" : "completed" }] : [{ name: "save_reports", status: "skipped" }])
     ],
     reports: finalReportItems,
     saved_reports: savedReports,
@@ -838,6 +848,7 @@ function publicJob(job) {
     steps: job.steps || [],
     reports: (job.reports || []).map(({ file_name, url }) => ({ file_name, url })),
     saved_reports: (job.saved_reports || []).map(({ file_name }) => ({ file_name })),
+    saved_location_label: job.saved_reports?.length ? basename(job.save_dir) || job.save_dir : null,
     report_save_error: job.report_save_error || null,
     created_at: job.created_at,
     updated_at: job.updated_at || null,

@@ -348,6 +348,10 @@
       animation: none;
     }
 
+    .modal-card .step[data-state="skipped"] {
+      opacity: .58;
+    }
+
     .progress-summary[data-state="completed"] .progress-spinner {
       border-color: var(--green);
       background: var(--green);
@@ -415,6 +419,25 @@
       font-size: 18px;
       font-weight: 900;
       cursor: pointer;
+    }
+
+    .save-location-prompt .modal-card {
+      width: min(460px, 100%);
+    }
+
+    .save-location-prompt p {
+      margin: 10px 0 0;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.55;
+      font-weight: 800;
+    }
+
+    .prompt-actions {
+      margin-top: 22px;
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
     }
 
     .scan-grid {
@@ -844,7 +867,7 @@
       <div class="modal-head">
         <div>
           <h2>검사를 진행하고 있습니다.</h2>
-          <p>현재 단계와 다음 작업만 표시합니다. 상세 로그는 필요할 때만 확인합니다.</p>
+          <p>표준점검은 전체 파일을 확인합니다. 시간이 오래 걸릴 수 있습니다.</p>
         </div>
         <button class="modal-close" type="button" aria-label="진행상황 닫기">×</button>
       </div>
@@ -866,11 +889,29 @@
     </div>
   </section>
 
+  <section class="modal save-location-prompt" id="saveLocationPrompt" aria-label="결과 저장 위치 선택" aria-live="polite" hidden>
+    <div class="modal-card">
+      <div class="modal-head">
+        <div>
+          <h2>결과 저장 위치를 선택하세요.</h2>
+          <p id="saveLocationMessage">점검 결과를 PC에 저장할 폴더를 먼저 선택합니다.</p>
+        </div>
+      </div>
+      <div class="prompt-actions">
+        <button class="pill" id="closeSaveLocationPrompt" type="button">닫기</button>
+        <button class="save-button" id="selectSaveLocation" type="button">저장 위치 선택</button>
+      </div>
+    </div>
+  </section>
+
   <script>
     const targetHelp = document.querySelector("#targetHelp");
     const targetInput = document.querySelector("#targetInput");
     const scanButton = document.querySelector("#scanButton");
     const scanProgress = document.querySelector("#scanProgress");
+    const saveLocationPrompt = document.querySelector("#saveLocationPrompt");
+    const saveLocationMessage = document.querySelector("#saveLocationMessage");
+    const selectSaveLocation = document.querySelector("#selectSaveLocation");
     const saveButton = document.querySelector("#saveButton");
     const savePath = document.querySelector("#savePath");
     const progressTarget = document.querySelector("#progressTarget");
@@ -889,6 +930,7 @@
     const resultHtml = document.querySelector("#resultHtml");
     const resultJson = document.querySelector("#resultJson");
     const resultZip = document.querySelector("#resultZip");
+    let saveLocationSelectionInFlight = false;
     const resultNote = document.querySelector("#resultNote");
     let activeTarget = "folder";
     let selectedReady = false;
@@ -1060,6 +1102,12 @@
       resultJson.textContent = hasJson ? "생성됨" : "생성됨";
       resultZip.textContent = job.mode === "submission" ? hasZip ? "생성됨" : "생성 안 됨" : "제출 점검 시 생성";
       renderReportLinks(job);
+      const saveStep = (job.steps || []).find((step) => step.name === "save_reports");
+      if (job.saved_reports?.length) {
+        savePath.textContent = `${job.saved_location_label || "선택한 위치"}에 결과물 ${job.saved_reports.length}개를 저장했습니다.`;
+      } else if (saveStep?.status === "skipped") {
+        progressSaveDetail.textContent = "저장 위치를 선택하지 않아 PC 저장은 건너뛰었습니다.";
+      }
     }
 
     async function pollResult(scanId) {
@@ -1122,6 +1170,12 @@
     }
 
     async function runScan(mode) {
+      if (!selectedSaveDir) {
+        pendingMode = mode;
+        saveLocationMessage.textContent = "점검을 시작하려면 결과 저장 위치를 먼저 선택해야 합니다.";
+        saveLocationPrompt.hidden = false;
+        return;
+      }
       if (!selectedReady) {
         pendingMode = mode;
         openTargetPicker();
@@ -1178,7 +1232,21 @@
       openTargetPicker();
     });
 
-    saveButton.addEventListener("click", async () => {
+    function openSaveLocationPrompt() {
+      if (saveLocationSelectionInFlight) return;
+      saveLocationMessage.textContent = selectedSaveDir
+        ? "다른 저장 위치를 선택할 수 있습니다."
+        : "점검 결과를 PC에 저장할 폴더를 선택하세요.";
+      saveLocationPrompt.hidden = false;
+    }
+
+    async function chooseSaveLocation(fromRequiredPrompt = false) {
+      if (saveLocationSelectionInFlight) return;
+      saveLocationSelectionInFlight = true;
+      selectSaveLocation.disabled = true;
+      selectSaveLocation.textContent = "선택 창 여는 중";
+      saveLocationMessage.textContent = "Windows 폴더 선택 창에서 저장할 위치를 선택하고 확인하세요.";
+      savePath.textContent = "Windows 폴더 선택 창에서 저장할 위치를 선택하세요.";
       try {
         const response = await fetch("/api/local/pick-target", {
           method: "POST",
@@ -1190,14 +1258,35 @@
         selectedSaveDir = selection.path;
         savePath.textContent = `${selection.label} 폴더에 결과물을 저장합니다.`;
         progressSaveDetail.textContent = `${selection.label} 폴더에 결과물을 저장합니다.`;
+        if (fromRequiredPrompt) saveLocationPrompt.hidden = true;
+        if (pendingMode) {
+          const queuedMode = pendingMode;
+          pendingMode = null;
+          runScan(queuedMode);
+        }
       } catch (error) {
-        savePath.textContent = String(error.message || error);
+        const message = String(error.message || error);
+        saveLocationMessage.textContent = `${message} 다시 시도하세요.`;
+        savePath.textContent = "저장 위치를 선택하지 못했습니다.";
+      } finally {
+        saveLocationSelectionInFlight = false;
+        selectSaveLocation.disabled = false;
+        selectSaveLocation.textContent = "저장 위치 선택";
       }
+    }
+
+    saveButton.addEventListener("click", () => chooseSaveLocation(false));
+    selectSaveLocation.addEventListener("click", () => chooseSaveLocation(true));
+
+    document.querySelector("#closeSaveLocationPrompt").addEventListener("click", () => {
+      saveLocationPrompt.hidden = true;
+      pendingMode = null;
     });
 
     document.querySelector(".modal-close").addEventListener("click", () => {
       scanProgress.hidden = true;
     });
+
 
     window.addEventListener("keydown", (event) => {
       if (event.key === "Escape") {

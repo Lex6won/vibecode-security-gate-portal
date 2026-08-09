@@ -16,6 +16,7 @@ outbox/
 *.sqlite
 uploads/
 tmp/
+.tmp/
 
 # Secrets
 .env

@@ -49,7 +49,14 @@ The progress layer is visible only while an update or scan is running.
 - Animate the progress bar and visibly highlight the active stage.
 - Distinguish completed, failed, and cancelled states.
 - Track GitHub clone, ZIP extraction, code/dependency scan, report rendering, and selected-folder save as separate states.
+- During selected-folder save, show the copied-report count. When it completes, show the selected folder label without exposing its full path through the result API.
+- Require a selected save folder before a scan starts. The direct `Select save location` action must open the native folder chooser in one step.
+- When no save folder was selected, mark the PC-save step as skipped rather than pending.
 - If network or installation fails, show the reason and next action instead of appearing to stop.
+
+## Platform boundary
+
+The current local portal is supported and verified on Windows. Its folder/ZIP picker and ZIP extraction use Windows PowerShell and Windows Forms, and the harness validation command is PowerShell-based. macOS is not an end-to-end supported target yet because native selection, ZIP handling, checker discovery, and harness validation have not been validated there. Do not present macOS support as complete until those flows are implemented and tested on macOS.
 
 ## Implementation status record (2026-08-09)
 
@@ -57,12 +64,12 @@ The progress layer is visible only while an update or scan is running.
 |---|---|---|---|
 | Local portal binding | Implemented | Server listens only on `127.0.0.1`. | Keep. |
 | GitHub shallow-clone scan | Implemented | Clone goes to `tmp/scan-targets`, then `gvskb` runs. | Clean temporary clone and add finer progress. |
-| Folder scan | Incomplete | Browser selection is deliberately blocked before local engine execution. | Add local native picker or desktop bridge. |
-| ZIP scan | Incomplete | Archive API exits as incomplete. | Add ZIP extraction and local scan. |
-| Selected-folder report save | Incomplete | UI displays a chosen folder but does not copy engine artifacts. | Add local picker and report copy. |
-| Harness latest comparison | Partial | Local commit/status exists; official main comparison is missing. | Add remote main comparison. |
-| Checker latest comparison | Partial | Version and doctor exist; approved release comparison is missing. | Add release-channel comparison. |
-| User-approved update | Incomplete | Preview exists, apply returns 501. | Add backup, apply, and revalidation. |
+| Folder scan | Implemented on Windows | Native folder chooser supplies the local path; scenario tests pass it to the checker. | Add macOS-native selection and validation. |
+| ZIP scan | Implemented on Windows | Native ZIP chooser, isolated PowerShell extraction, local scan, and temporary-target cleanup are implemented. | Add archive size and extraction-bomb limits before broad release. |
+| Selected-folder report save | Implemented on Windows | The native folder chooser is opened directly; generated HTML, JSON, and ZIP files are copied there and only the folder label is returned. | Add a user-visible collision policy. |
+| Harness latest comparison | Implemented | Local commit, dirty state, branch, and `origin/main` are compared. | Prefer signed release metadata when the harness publishes it. |
+| Checker latest comparison | Partial | Installed version, `gvskb doctor`, and editable checkout `origin/main` are compared when available. | Define a signed package/release-channel manifest for non-editable installs. |
+| User-approved update | Partial | Preview requires approval; dirty or non-`main` worktrees are blocked, then eligible Git worktrees use fast-forward pull and rerun validation. | Back up changed tool configuration and add a target-specific installer before enabling automatic configuration changes. |
 | Percent progress | Implemented with stage-weighted estimate | `/api/scan/{id}/progress` returns job state, percent, active steps, elapsed code-scan time, and a message; the layer shows a full-width animated overall bar. | Add checker-emitted file/phase progress events for exact throughput-based progress. |
 | Central metadata storage | Design only | No Supabase transport is implemented. | Keep external transmission disabled until opt-in Edge Function exists. |
 

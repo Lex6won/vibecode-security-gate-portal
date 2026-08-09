@@ -136,6 +136,7 @@ async function scenarioLocalFolderAndZip(fixture) {
   const localFolder = await startScan("quick", "folder", folderPick.path, savedFolder);
   assert.equal(localFolder.status, "completed");
   assert.ok(localFolder.saved_reports.length >= 2, "local folder scan must copy reports to selected PC folder");
+  assert.equal(localFolder.saved_location_label, "saved-reports", "result must expose only the selected folder label");
   assert.equal("target_ref" in localFolder, false, "local path must not be exposed by the result API");
 
   const archive = await startScan("quick", "archive", archivePick.path, savedFolder);
