@@ -156,6 +156,86 @@ function escapePowerShellLiteral(value) {
   return String(value).replaceAll("'", "''");
 }
 
+function modernFolderPickerScript(title) {
+  const safeTitle = escapePowerShellLiteral(title);
+  return `$ErrorActionPreference = 'Stop'
+$source = @'
+using System;
+using System.Runtime.InteropServices;
+
+public static class PortalFolderPicker {
+  [Flags]
+  private enum FileDialogOptions : uint {
+    PickFolders = 0x00000020,
+    ForceFileSystem = 0x00000040,
+    PathMustExist = 0x00000800,
+    DontAddToRecent = 0x02000000
+  }
+
+  private enum SigDn : uint { FileSystemPath = 0x80058000 }
+
+  [ComImport, Guid("D57C7288-D4AD-4768-BE02-9D969532D960"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+  private interface IShellItem {
+    [PreserveSig] int BindToHandler(IntPtr pbc, ref Guid bhid, ref Guid riid, out IntPtr ppv);
+    [PreserveSig] int GetParent(out IShellItem ppsi);
+    [PreserveSig] int GetDisplayName(SigDn sigdnName, out IntPtr ppszName);
+    [PreserveSig] int GetAttributes(uint sfgaoMask, out uint psfgaoAttribs);
+    [PreserveSig] int Compare(IShellItem psi, uint hint, out int piOrder);
+  }
+
+  [ComImport, Guid("42F85136-DB7E-439C-85F1-E4075D135FC8"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+  private interface IFileDialog {
+    [PreserveSig] int Show(IntPtr parent);
+    [PreserveSig] int SetFileTypes(uint count, IntPtr filters);
+    [PreserveSig] int SetFileTypeIndex(uint index);
+    [PreserveSig] int GetFileTypeIndex(out uint index);
+    [PreserveSig] int Advise(IntPtr events, out uint cookie);
+    [PreserveSig] int Unadvise(uint cookie);
+    [PreserveSig] int SetOptions(FileDialogOptions options);
+    [PreserveSig] int GetOptions(out FileDialogOptions options);
+    [PreserveSig] int SetDefaultFolder(IShellItem item);
+    [PreserveSig] int SetFolder(IShellItem item);
+    [PreserveSig] int GetFolder(out IShellItem item);
+    [PreserveSig] int GetCurrentSelection(out IShellItem item);
+    [PreserveSig] int SetFileName([MarshalAs(UnmanagedType.LPWStr)] string name);
+    [PreserveSig] int GetFileName(out IntPtr name);
+    [PreserveSig] int SetTitle([MarshalAs(UnmanagedType.LPWStr)] string title);
+    [PreserveSig] int SetOkButtonLabel([MarshalAs(UnmanagedType.LPWStr)] string text);
+    [PreserveSig] int SetFileNameLabel([MarshalAs(UnmanagedType.LPWStr)] string label);
+    [PreserveSig] int GetResult(out IShellItem item);
+    [PreserveSig] int AddPlace(IShellItem item, int placement);
+    [PreserveSig] int SetDefaultExtension([MarshalAs(UnmanagedType.LPWStr)] string extension);
+    [PreserveSig] int Close(int hr);
+    [PreserveSig] int SetClientGuid(ref Guid guid);
+    [PreserveSig] int ClearClientData();
+    [PreserveSig] int SetFilter(IntPtr filter);
+  }
+
+  [ComImport, Guid("DC1C5A9C-E88A-4DDE-A5A1-60F82A20AEF7")]
+  private class FileOpenDialog { }
+
+  public static string Pick(string title) {
+    IFileDialog dialog = (IFileDialog)new FileOpenDialog();
+    FileDialogOptions options;
+    if (dialog.GetOptions(out options) != 0) return null;
+    if (dialog.SetOptions(options | FileDialogOptions.PickFolders | FileDialogOptions.ForceFileSystem | FileDialogOptions.PathMustExist | FileDialogOptions.DontAddToRecent) != 0) return null;
+    dialog.SetTitle(title);
+    dialog.SetOkButtonLabel("선택");
+    if (dialog.Show(IntPtr.Zero) != 0) return null;
+    IShellItem item;
+    if (dialog.GetResult(out item) != 0 || item == null) return null;
+    IntPtr path;
+    if (item.GetDisplayName(SigDn.FileSystemPath, out path) != 0 || path == IntPtr.Zero) return null;
+    try { return Marshal.PtrToStringUni(path); }
+    finally { Marshal.FreeCoTaskMem(path); }
+  }
+}
+'@
+Add-Type -TypeDefinition $source
+$picked = [PortalFolderPicker]::Pick('${safeTitle}')
+if ($null -ne $picked) { [Console]::Out.Write($picked) }`;
+}
+
 async function pickLocalPath(kind) {
   const testPath = kind === "archive"
     ? process.env.PORTAL_TEST_ARCHIVE_PATH
@@ -165,12 +245,9 @@ async function pickLocalPath(kind) {
   const isFolder = kind === "folder" || kind === "save_dir";
   const folderTitle = kind === "save_dir" ? "결과 저장 폴더 선택" : "검사할 프로젝트 폴더 선택";
   const script = isFolder
-    ? `$ErrorActionPreference = 'Stop'; $shell = New-Object -ComObject Shell.Application; $folder = $shell.BrowseForFolder(0, '${folderTitle}', 0x51, 0); if ($null -ne $folder) { [Console]::Out.Write($folder.Self.Path) }`
+    ? modernFolderPickerScript(folderTitle)
     : "Add-Type -AssemblyName System.Windows.Forms; $dialog = New-Object System.Windows.Forms.OpenFileDialog; $dialog.Title = '검사할 ZIP 파일 선택'; $dialog.Filter = 'ZIP archive (*.zip)|*.zip'; $dialog.Multiselect = $false; if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { [Console]::Out.Write($dialog.FileName) }; $dialog.Dispose()";
-  const picked = await runCommand(POWERSHELL, ["-NoProfile", "-STA", "-Command", script], {
-    timeout_ms: 300000,
-    windowsHide: false
-  });
+  const picked = await runCommand(POWERSHELL, ["-NoProfile", "-STA", "-Command", script], { timeout_ms: 300000 });
   const selectedPath = picked.stdout.trim();
   if (!selectedPath) {
     throw new Error(picked.stderr.trim() || "선택이 취소되었습니다.");

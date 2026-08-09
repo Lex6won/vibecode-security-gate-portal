@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "start": "node src/server.js",
-    "check": "node --check src/server.js && node --check scripts/portal-harness-gate.mjs && node --check scripts/portal-button-contract-test.mjs",
+    "check": "node --check src/server.js && node --check scripts/portal-harness-gate.mjs && node --check scripts/portal-button-contract-test.mjs && node scripts/portal-folder-picker-test.mjs",
     "harness:gate": "node scripts/portal-harness-gate.mjs .",
     "security:scan": "gvskb scan src --profile dev-quick --format json --output reports/dev-quick-src --max-files 200 --fail-on block",
     "button:test": "node scripts/portal-button-contract-test.mjs",
