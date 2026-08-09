@@ -2,6 +2,8 @@
 
 ## 설계 기준
 
+로컬 실행, 원본·보고서 저장 경계, 익명 메타데이터 전송, 세 가지 필수 기능의 완료 기준은 [16_local_execution_architecture.md](./16_local_execution_architecture.md)를 기준으로 한다. 원본 소스와 보고서는 중앙 서버에 기본 저장하지 않는다.
+
 1차 제품은 웹 UI 기반 로컬 웹앱이다. 화면은 브라우저에서 열리지만, 실제 검사와 PC 상태 확인은 사용자 PC의 로컬 백엔드가 수행한다.
 
 Supabase는 2차 중앙 포털 연계 대상으로 둔다. 처음부터 DB 모델과 API 응답은 Supabase PostgreSQL로 옮기기 쉬운 구조로 설계한다.

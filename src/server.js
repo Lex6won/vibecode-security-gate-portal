@@ -1,8 +1,8 @@
 import { createServer } from "node:http";
 import { spawn } from "node:child_process";
 import { createReadStream, existsSync, mkdirSync, statSync } from "node:fs";
-import { rm, readdir, readFile, writeFile } from "node:fs/promises";
-import { extname, join, normalize, resolve } from "node:path";
+import { copyFile, rm, readdir, readFile, writeFile } from "node:fs/promises";
+import { basename, extname, isAbsolute, join, normalize, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 
@@ -13,6 +13,7 @@ const REPORT_DIR = join(ROOT, "reports");
 const TMP_DIR = join(ROOT, "tmp", "scan-targets");
 const HARNESS_SOURCE_DIR = resolve(ROOT, "..", "vibe_harness_codex");
 const PORT = Number(process.env.PORT || 8787);
+const POWERSHELL = join(process.env.SystemRoot || "C:\\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
 
 const jobs = new Map();
 
@@ -119,6 +120,19 @@ function runCommand(command, args, options = {}) {
 
     let stdout = "";
     let stderr = "";
+    let settled = false;
+    const finish = (result) => {
+      if (settled) return;
+      settled = true;
+      if (timeoutId) clearTimeout(timeoutId);
+      resolveCommand(result);
+    };
+    const timeoutId = options.timeout_ms
+      ? setTimeout(() => {
+        child.kill();
+        finish({ ok: false, code: -1, stdout, stderr: `${stderr}\ncommand timed out` });
+      }, options.timeout_ms)
+      : null;
     child.stdout.on("data", (chunk) => {
       stdout += chunk.toString("utf8");
     });
@@ -126,12 +140,56 @@ function runCommand(command, args, options = {}) {
       stderr += chunk.toString("utf8");
     });
     child.on("error", (error) => {
-      resolveCommand({ ok: false, code: -1, stdout, stderr: String(error.message || error) });
+      finish({ ok: false, code: -1, stdout, stderr: String(error.message || error) });
     });
     child.on("close", (code) => {
-      resolveCommand({ ok: code === 0, code, stdout, stderr });
+      finish({ ok: code === 0, code, stdout, stderr });
     });
   });
+}
+
+function escapePowerShellLiteral(value) {
+  return String(value).replaceAll("'", "''");
+}
+
+async function pickLocalPath(kind) {
+  const testPath = kind === "archive"
+    ? process.env.PORTAL_TEST_ARCHIVE_PATH
+    : process.env.PORTAL_TEST_PICK_PATH;
+  if (testPath) return resolve(testPath);
+
+  const isFolder = kind === "folder" || kind === "save_dir";
+  const script = isFolder
+    ? "Add-Type -AssemblyName System.Windows.Forms; $dialog = New-Object System.Windows.Forms.FolderBrowserDialog; $dialog.Description = 'Select a local folder'; if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { [Console]::Out.Write($dialog.SelectedPath) }"
+    : "Add-Type -AssemblyName System.Windows.Forms; $dialog = New-Object System.Windows.Forms.OpenFileDialog; $dialog.Filter = 'ZIP archive (*.zip)|*.zip'; $dialog.Multiselect = $false; if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { [Console]::Out.Write($dialog.FileName) }";
+  const picked = await runCommand(POWERSHELL, ["-NoProfile", "-STA", "-Command", script], { timeout_ms: 300000 });
+  const selectedPath = picked.stdout.trim();
+  if (!selectedPath) {
+    throw new Error(picked.stderr.trim() || "선택이 취소되었습니다.");
+  }
+  if (!existsSync(selectedPath)) {
+    throw new Error("선택한 경로를 확인할 수 없습니다.");
+  }
+  if (isFolder && !statSync(selectedPath).isDirectory()) {
+    throw new Error("폴더를 선택해야 합니다.");
+  }
+  if (!isFolder && (extname(selectedPath).toLowerCase() !== ".zip" || !statSync(selectedPath).isFile())) {
+    throw new Error("ZIP 압축파일만 선택할 수 있습니다.");
+  }
+  return resolve(selectedPath);
+}
+
+async function extractZip(archivePath, destination) {
+  const archive = escapePowerShellLiteral(archivePath);
+  const output = escapePowerShellLiteral(destination);
+  const extracted = await runCommand(
+    POWERSHELL,
+    ["-NoProfile", "-Command", `Expand-Archive -LiteralPath '${archive}' -DestinationPath '${output}' -Force`],
+    { timeout_ms: 300000 }
+  );
+  if (!extracted.ok) {
+    throw new Error(`ZIP 압축을 풀지 못했습니다. ${extracted.stderr || extracted.stdout}`.trim());
+  }
 }
 
 async function readJson(request) {
@@ -165,22 +223,46 @@ async function gitSummary(repoPath) {
   };
 }
 
+async function remoteMainSummary(repoPath, local = null) {
+  if (!existsSync(repoPath)) return { available: false, status: "missing" };
+  const remote = await runCommand("git", ["-C", repoPath, "ls-remote", "origin", "refs/heads/main"], { timeout_ms: 20000 });
+  const remoteCommit = remote.stdout.trim().split(/\s+/)[0] || "";
+  if (!remote.ok || !remoteCommit) {
+    return { available: false, status: "unreachable", error: remote.stderr.trim() || remote.stdout.trim() };
+  }
+  const localCommit = local?.commit || "";
+  return {
+    available: true,
+    status: localCommit && remoteCommit.startsWith(localCommit) ? "current" : "update_available",
+    local_commit: localCommit || null,
+    remote_commit: remoteCommit.slice(0, 7)
+  };
+}
+
 async function checkerSummary() {
-  const [version, doctor] = await Promise.all([
+  const [version, doctor, pipShow] = await Promise.all([
     runCommand("gvskb", ["version"]),
-    runCommand("gvskb", ["doctor"])
+    runCommand("gvskb", ["doctor"]),
+    runCommand("pip.exe", ["show", "vibecode-checker"])
   ]);
 
   const doctorText = `${doctor.stdout}\n${doctor.stderr}`;
   const hasError = /ERROR\s+[1-9]/.test(doctorText);
   const hasWarn = /WARN\s+[1-9]/.test(doctorText) || doctor.code !== 0;
 
+  const editableMatch = pipShow.stdout.match(/^Editable project location:\s*(.+)$/mi);
+  const editablePath = editableMatch?.[1]?.trim() || "";
+  const source = editablePath ? await gitSummary(editablePath) : { installed: false, status: "package_only" };
+  const remote = editablePath ? await remoteMainSummary(editablePath, source) : { available: false, status: "package_only" };
+
   return {
     installed: version.ok,
     version: version.stdout.trim(),
     doctor_status: hasError ? "error" : hasWarn ? "warn" : "ok",
     doctor_exit_code: doctor.code,
-    doctor_summary: doctorText.split(/\r?\n/).filter(Boolean).slice(-8)
+    doctor_summary: doctorText.split(/\r?\n/).filter(Boolean).slice(-8),
+    source,
+    remote
   };
 }
 
@@ -242,39 +324,61 @@ async function localStatus() {
     executionGateSummary()
   ]);
 
+  const harnessRemote = await remoteMainSummary(HARNESS_SOURCE_DIR, sourceHarness);
   return {
     checked_at: new Date().toISOString(),
     project_harness: projectHarness,
-    source_harness: sourceHarness,
+    source_harness: { ...sourceHarness, remote: harnessRemote },
     checker,
     mcp,
     execution_gate: executionGate,
     network: {
       mode: "online",
-      github: "checked_by_update_preview",
+      github: harnessRemote.available || checker.remote?.available ? "reachable" : "unavailable",
       osv: checker.doctor_status === "error" ? "unknown" : "reachable_or_cached"
     }
   };
 }
 
-function updatePreview() {
+async function updatePreview() {
+  const status = await localStatus();
+  const harness = status.source_harness || {};
+  const checker = status.checker || {};
+  const blockedTargets = [];
+  const blockedReasons = {};
+  if (harness.dirty || (harness.branch && harness.branch !== "main")) {
+    blockedTargets.push("harness");
+    blockedReasons.harness = harness.dirty ? "dirty_worktree" : "non_main_branch";
+  }
+  if (checker.source?.dirty || (checker.source?.branch && checker.source.branch !== "main")) {
+    blockedTargets.push("checker");
+    blockedReasons.checker = checker.source?.dirty ? "dirty_worktree" : "non_main_branch";
+  }
   return {
-    status: "preview_only",
+    status: blockedTargets.length ? "blocked_dirty_worktree" : "preview_ready",
     applies_without_approval: false,
     flow: ["상태 확인", "변경 내용 보기", "사용자 승인", "업데이트 적용", "재검증"],
+    blocked_targets: blockedTargets,
+    blocked_reasons: blockedReasons,
     items: [
       {
         target: "harness",
-        current_source: HARNESS_SOURCE_DIR,
+        current_version: harness.commit || "미설치",
+        available_version: harness.remote?.remote_commit || "확인 불가",
+        status: harness.remote?.status || harness.status || "확인 불가",
+        dirty: Boolean(harness.dirty),
         channel: "stable",
         source: "official_release_or_approved_commit",
         validation: "gg-validate.ps1 required"
       },
       {
         target: "checker",
-        current_command: "gvskb",
+        current_version: checker.version || "미설치",
+        available_version: checker.remote?.remote_commit || "확인 불가",
+        status: checker.remote?.status || (checker.installed ? "package_only" : "missing"),
+        dirty: Boolean(checker.source?.dirty),
         channel: "stable",
-        source: "validated_package_and_ruleset_manifest",
+        source: "official_editable_checkout_or_validated_package",
         validation: "gvskb doctor required"
       },
       {
@@ -286,26 +390,111 @@ function updatePreview() {
   };
 }
 
-function createJob(mode, targetType, targetRef) {
+async function applyUpdates() {
+  const preview = await updatePreview();
+  if (preview.blocked_targets.length) {
+    return { status: "blocked", reason: "update_not_eligible", blocked_targets: preview.blocked_targets, blocked_reasons: preview.blocked_reasons };
+  }
+
+  const results = [];
+  for (const item of preview.items.filter((candidate) => candidate.target === "harness" || candidate.target === "checker")) {
+    const repoPath = item.target === "harness" ? HARNESS_SOURCE_DIR : (await checkerSummary()).source?.path;
+    if (!repoPath || !existsSync(repoPath)) {
+      results.push({ target: item.target, status: "manual_update_required", reason: "editable_git_checkout_missing" });
+      continue;
+    }
+    const pulled = await runCommand("git", ["-C", repoPath, "pull", "--ff-only", "origin", "main"], { timeout_ms: 120000 });
+    results.push({ target: item.target, status: pulled.ok ? "updated_or_current" : "failed", detail: (pulled.stderr || pulled.stdout).trim().slice(-500) });
+  }
+
+  const harnessValidation = await runCommand(
+    POWERSHELL,
+    ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", join(HARNESS_SOURCE_DIR, "shared", "scripts", "gg-validate.ps1")],
+    { cwd: HARNESS_SOURCE_DIR, timeout_ms: 120000 }
+  );
+  const checkerValidation = await runCommand("gvskb", ["doctor"], { timeout_ms: 120000 });
+  const hasFailure = results.some((result) => result.status === "failed") || !harnessValidation.ok || !checkerValidation.ok;
+  return {
+    status: hasFailure ? "needs_review" : "applied",
+    results,
+    post_checks: {
+      harness_validate: harnessValidation.ok ? "ok" : "failed",
+      checker_doctor: checkerValidation.ok ? "ok" : "failed"
+    }
+  };
+}
+
+function createJob(mode, targetType, targetRef, saveDir = "") {
   const id = randomUUID();
   const job = {
     id,
     mode,
     target_type: targetType,
     target_ref: targetRef,
+    save_dir: saveDir,
     status: "queued",
     decision: "incomplete",
     steps: [],
     reports: [],
-    created_at: new Date().toISOString()
+    created_at: new Date().toISOString(),
+    temporary_paths: []
   };
   jobs.set(id, job);
   return job;
 }
 
+async function cleanupJobTargets(job) {
+  const cleanupFailures = [];
+  await Promise.all((job.temporary_paths || []).map(async (target) => {
+    try {
+      await rm(target, { recursive: true, force: true });
+    } catch (error) {
+      cleanupFailures.push(`${basename(target)}: ${String(error.message || error)}`);
+    }
+  }));
+  job.temporary_paths = [];
+  if (cleanupFailures.length) job.cleanup_warning = cleanupFailures.join(" | ");
+}
+
+async function saveReportsToDirectory(job, reports) {
+  if (!job.save_dir) return [];
+  const destination = resolve(job.save_dir);
+  if (!existsSync(destination) || !statSync(destination).isDirectory()) {
+    throw new Error("The selected report directory is unavailable.");
+  }
+  const saved = [];
+  for (const report of reports) {
+    const source = resolve(report.path);
+    const target = resolve(join(destination, report.file_name));
+    const destinationRelative = relative(destination, target);
+    if (destinationRelative.startsWith("..") || isAbsolute(destinationRelative)) {
+      throw new Error("The report destination is invalid.");
+    }
+    await copyFile(source, target);
+    saved.push({ file_name: report.file_name, saved_to: target });
+  }
+  return saved;
+}
+
 function updateJob(job, patch) {
   Object.assign(job, patch);
   job.updated_at = new Date().toISOString();
+}
+
+const scanStepProgress = {
+  prepare_target: { percent: 16, message: "검사 대상을 준비하고 있습니다." },
+  code_scan: { percent: 62, message: "체커가 코드와 의존성을 점검하고 있습니다." },
+  render_report: { percent: 86, message: "검사 보고서를 만들고 있습니다." },
+  save_reports: { percent: 96, message: "선택한 PC 폴더에 결과를 저장하고 있습니다." }
+};
+
+function progressForJob(job) {
+  if (job.status === "completed") return { percent: 100, message: "검사가 완료되었습니다." };
+  const active = [...(job.steps || [])].reverse().find((step) => step.status === "running");
+  if (active) return scanStepProgress[active.name] || { percent: 8, message: "검사를 준비하고 있습니다." };
+  const failed = [...(job.steps || [])].reverse().find((step) => step.status === "failed");
+  if (failed) return { ...(scanStepProgress[failed.name] || { percent: 0 }), message: job.error || "검사 중 문제가 발생했습니다." };
+  return { percent: 0, message: "검사를 기다리고 있습니다." };
 }
 
 function crc32(buffer) {
@@ -405,6 +594,23 @@ async function prepareScanTarget(job) {
     return targetPath;
   }
 
+  if (job.target_type === "archive") {
+    const archivePath = resolve(String(job.target_ref || ""));
+    if (!existsSync(archivePath) || !statSync(archivePath).isFile()) {
+      throw new Error("The selected archive is unavailable.");
+    }
+    if (extname(archivePath).toLowerCase() !== ".zip") {
+      throw new Error("Only ZIP archives are supported.");
+    }
+    mkdirSync(TMP_DIR, { recursive: true });
+    const extractedDir = join(TMP_DIR, `${job.id}-archive`);
+    await rm(extractedDir, { recursive: true, force: true });
+    mkdirSync(extractedDir, { recursive: true });
+    job.temporary_paths.push(extractedDir);
+    await extractZip(archivePath, extractedDir);
+    return extractedDir;
+  }
+
   if (job.target_type === "github_url") {
     const targetUrl = String(job.target_ref || "").trim();
     if (!isAllowedGithubUrl(targetUrl)) {
@@ -417,6 +623,7 @@ async function prepareScanTarget(job) {
     if (!clone.ok) {
       throw new Error(`GitHub 저장소를 가져오지 못했습니다: ${clone.stderr || clone.stdout}`);
     }
+    job.temporary_paths.push(cloneDir);
     return cloneDir;
   }
 
@@ -439,6 +646,7 @@ async function runScanJob(job) {
       error: String(error.message || error),
       steps: [{ name: "prepare_target", status: "failed" }]
     });
+    await cleanupJobTargets(job);
     return;
   }
 
@@ -506,7 +714,7 @@ async function runScanJob(job) {
         scan_id: job.id,
         created_at: new Date().toISOString(),
         target_type: job.target_type,
-        target_ref: job.target_ref,
+        target_label: job.target_type === "github_url" ? "GitHub repository" : job.target_type === "archive" ? "Local ZIP archive" : "Local folder",
         decision,
         summary: {
           scanned_file_count: scannedFileCount,
@@ -532,15 +740,36 @@ async function runScanJob(job) {
     }
   }
 
+  if (job.save_dir) {
+    updateJob(job, {
+      steps: [
+        { name: "prepare_target", status: "completed" },
+        { name: "code_scan", status: scan.ok || parsed ? "completed" : "failed" },
+        { name: "render_report", status: finalReportItems.length > 0 ? "completed" : "pending" },
+        { name: "save_reports", status: "running" }
+      ]
+    });
+  }
+  let savedReports = [];
+  let saveError = null;
+  try {
+    savedReports = await saveReportsToDirectory(job, finalReportItems);
+  } catch (error) {
+    saveError = String(error.message || error);
+  }
+
   updateJob(job, {
     status: scan.ok || parsed ? "completed" : "failed",
     decision,
     steps: [
       { name: "prepare_target", status: "completed" },
       { name: "code_scan", status: scan.ok || parsed ? "completed" : "failed" },
-      { name: "render_report", status: finalReportItems.length > 0 ? "completed" : "pending" }
+      { name: "render_report", status: finalReportItems.length > 0 ? "completed" : "pending" },
+      ...(job.save_dir ? [{ name: "save_reports", status: saveError ? "failed" : "completed" }] : [])
     ],
     reports: finalReportItems,
+    saved_reports: savedReports,
+    report_save_error: saveError,
     checker_exit_code: scan.code,
     checker_stdout_tail: scan.stdout.split(/\r?\n/).filter(Boolean).slice(-12),
     checker_stderr_tail: scan.stderr.split(/\r?\n/).filter(Boolean).slice(-12),
@@ -550,6 +779,7 @@ async function runScanJob(job) {
       dependency_finding_count: dependencyFindingCount
     }
   });
+  await cleanupJobTargets(job);
 }
 
 function adminSummary() {
@@ -570,15 +800,23 @@ function adminSummary() {
 }
 
 function publicJob(job) {
+  const targetLabel = job.target_type === "github_url"
+    ? "GitHub repository"
+    : job.target_type === "archive"
+      ? "Local ZIP archive"
+      : "Local folder";
   return {
     id: job.id,
     mode: job.mode,
     target_type: job.target_type,
-    target_ref: job.target_ref,
+    target_label: targetLabel,
     status: job.status,
     decision: job.decision,
     summary: job.summary || null,
-    reports: job.reports || [],
+    steps: job.steps || [],
+    reports: (job.reports || []).map(({ file_name, url }) => ({ file_name, url })),
+    saved_reports: (job.saved_reports || []).map(({ file_name }) => ({ file_name })),
+    report_save_error: job.report_save_error || null,
     created_at: job.created_at,
     updated_at: job.updated_at || null,
     error: job.error || null
@@ -589,23 +827,17 @@ async function startScan(request, response) {
   const body = await readJson(request);
   const mode = ["quick", "standard", "submission"].includes(body.scan_mode) ? body.scan_mode : "standard";
   const targetType = ["folder", "archive", "github_url"].includes(body.target_type) ? body.target_type : "folder";
-  const job = createJob(mode, targetType, body.target_ref);
+  const saveDir = body.save_dir ? resolve(String(body.save_dir)) : "";
+  const job = createJob(mode, targetType, body.target_ref, saveDir);
 
-  if (targetType === "archive") {
+  runScanJob(job).catch(async (error) => {
     updateJob(job, {
       status: "failed",
-      decision: "incomplete",
-      error: "압축파일 해제 검사는 다음 구현 단계에서 연결합니다. 현재는 로컬 폴더 검사를 먼저 지원합니다."
+      decision: "blocked",
+      error: String(error.message || error)
     });
-  } else {
-    runScanJob(job).catch((error) => {
-      updateJob(job, {
-        status: "failed",
-        decision: "blocked",
-        error: String(error.message || error)
-      });
-    });
-  }
+    await cleanupJobTargets(job);
+  });
 
   json(response, 202, {
     scan_id: job.id,
@@ -627,7 +859,7 @@ async function handleApi(request, response, pathname) {
   }
 
   if (request.method === "POST" && pathname === "/api/local/update/preview") {
-    json(response, 200, updatePreview());
+    json(response, 200, await updatePreview());
     return;
   }
 
@@ -637,7 +869,27 @@ async function handleApi(request, response, pathname) {
       json(response, 409, { status: "blocked", reason: "approval_required" });
       return;
     }
-    json(response, 501, { status: "not_implemented", reason: "업데이트 적용은 승인 레이어와 재검증 구현 후 연결합니다." });
+    json(response, 200, await applyUpdates());
+    return;
+  }
+
+  if (request.method === "POST" && pathname === "/api/local/pick-target") {
+    const body = await readJson(request);
+    const kind = ["folder", "archive", "save_dir"].includes(body.kind) ? body.kind : "";
+    if (!kind) {
+      json(response, 400, { error: "invalid_picker_kind" });
+      return;
+    }
+    try {
+      const selectedPath = await pickLocalPath(kind);
+      json(response, 200, {
+        status: "selected",
+        path: selectedPath,
+        label: kind === "archive" ? basename(selectedPath) : basename(selectedPath) || selectedPath
+      });
+    } catch (error) {
+      json(response, 409, { status: "cancelled", error: String(error.message || error) });
+    }
     return;
   }
 
@@ -678,7 +930,13 @@ async function handleApi(request, response, pathname) {
   if (request.method === "GET" && progressMatch) {
     const job = jobs.get(progressMatch[1]);
     if (!job) return notFound(response);
-    json(response, 200, { scan_id: job.id, status: job.status, steps: job.steps, error: job.error || null });
+    json(response, 200, {
+      scan_id: job.id,
+      status: job.status,
+      steps: job.steps,
+      ...progressForJob(job),
+      error: job.error || null
+    });
     return;
   }
 
@@ -686,7 +944,7 @@ async function handleApi(request, response, pathname) {
   if (request.method === "GET" && resultMatch) {
     const job = jobs.get(resultMatch[1]);
     if (!job) return notFound(response);
-    json(response, 200, job);
+    json(response, 200, publicJob(job));
     return;
   }
 

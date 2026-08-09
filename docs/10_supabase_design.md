@@ -2,6 +2,8 @@
 
 ## 결론
 
+중앙 DB에는 원본 소스, 원본 압축파일, GitHub 토큰, 로컬 전체 경로, 보고서 본문을 저장하지 않는다. 로컬 실행 및 옵트인 메타 전송의 확정 기준은 [16_local_execution_architecture.md](./16_local_execution_architecture.md)를 따른다.
+
 Supabase는 2차 중앙 포털의 메타데이터 저장소로 사용한다. 1차 로컬 웹앱은 SQLite 또는 로컬 파일 DB로 동작하고, 나중에 같은 테이블 구조를 Supabase PostgreSQL로 옮긴다.
 
 Supabase에는 원본 소스코드, 압축파일 원본, GitHub 토큰, 로컬 전체 경로, 담당자명, 부서명을 저장하지 않는다.

@@ -280,6 +280,84 @@
 
     .modal-card .steps {
       margin-top: 18px;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+
+    .progress-summary {
+      margin-top: 18px;
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      gap: 10px;
+      align-items: center;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 900;
+    }
+
+    .progress-spinner {
+      width: 18px;
+      height: 18px;
+      border: 3px solid var(--soft);
+      border-top-color: var(--harbor);
+      border-radius: 999px;
+      animation: scan-spin .8s linear infinite;
+    }
+
+    .progress-track {
+      height: 10px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: var(--soft);
+    }
+
+    .progress-track span {
+      display: block;
+      width: 0;
+      height: 100%;
+      border-radius: inherit;
+      background: linear-gradient(90deg, var(--harbor), var(--ice), var(--herb));
+      background-size: 180% 100%;
+      transition: width .45s ease;
+      animation: progress-shimmer 1.2s linear infinite;
+    }
+
+    .progress-summary[data-state="completed"] .progress-spinner,
+    .progress-summary[data-state="failed"] .progress-spinner {
+      animation: none;
+    }
+
+    .progress-summary[data-state="completed"] .progress-spinner {
+      border-color: var(--green);
+      background: var(--green);
+    }
+
+    .progress-summary[data-state="failed"] .progress-spinner {
+      border-color: var(--warn);
+      background: var(--warn);
+    }
+
+    .modal-card .step[data-state="running"] {
+      outline: 2px solid var(--harbor);
+      background: #fbfdff;
+      box-shadow: 0 10px 24px rgba(55,112,191,.16);
+    }
+
+    .modal-card .step[data-state="completed"] b {
+      background: var(--green);
+      color: #ffffff;
+    }
+
+    .modal-card .step[data-state="failed"] {
+      outline: 2px solid var(--warn);
+      background: #fffaf0;
+    }
+
+    @keyframes scan-spin {
+      to { transform: rotate(360deg); }
+    }
+
+    @keyframes progress-shimmer {
+      to { background-position: -180% 0; }
     }
 
     .modal-head {
@@ -694,7 +772,7 @@
       <section class="scan-grid">
         <div class="panel">
           <h2>검사 대상</h2>
-          <p>검사할 소스를 선택하세요.</p>
+          <p>검사할 소스를 선택하세요. 원본 소스는 이 PC에서만 처리합니다.</p>
           <div class="source-tabs" role="tablist" aria-label="검사 대상 유형">
             <button class="tab active" type="button" data-target="folder">폴더 선택</button>
             <button class="tab" type="button" data-target="zip">압축파일 선택</button>
@@ -705,8 +783,6 @@
             <input id="targetInput" aria-label="검사 대상 경로 또는 URL" value="선택된 폴더 없음" placeholder="https://github.com/organization/project" readonly>
             <button class="scan-button" id="scanButton" type="button">폴더 선택</button>
           </div>
-          <input id="folderPicker" type="file" webkitdirectory directory multiple hidden>
-          <input id="zipPicker" type="file" accept=".zip,.7z,.tar,.gz" hidden>
 
           <div class="mode-grid" aria-label="검사 방식">
             <button class="mode" type="button" data-mode="quick" data-mode-title="빠른 점검"><strong>빠른 점검</strong><span>위험 신호만 빠르게 확인합니다.</span><em>누르면 바로 시작</em></button>
@@ -720,7 +796,6 @@
             <strong>결과 저장 위치</strong>
             <span id="savePath">저장 위치를 선택하면 HTML, JSON, ZIP 결과물을<br>해당 위치에 저장합니다.</span>
             <button class="save-button" id="saveButton" type="button">저장 위치 선택</button>
-            <input id="savePicker" type="file" webkitdirectory directory multiple hidden>
           </div>
           <h2>점검 후 확인</h2>
           <ul class="result-list">
@@ -751,10 +826,17 @@
         </div>
         <button class="modal-close" type="button" aria-label="진행상황 닫기">×</button>
       </div>
+      <div class="progress-summary" id="progressSummary" data-state="running">
+        <i class="progress-spinner" aria-hidden="true"></i>
+        <span id="progressMessage">검사 대상을 준비하고 있습니다.</span>
+        <strong id="progressPercent">0%</strong>
+        <div class="progress-track" aria-hidden="true"><span id="progressBar"></span></div>
+      </div>
       <div class="steps" aria-label="검사 진행 단계">
-        <div class="step active"><b>1</b><div><strong>대상 확인</strong><span id="progressTarget">소스 위치와 접근 가능 여부 확인 중</span></div></div>
-        <div class="step"><b>2</b><div><strong id="progressMode">검사 실행</strong><span>코드, 의존성, 룰셋 점검 대기</span></div></div>
-        <div class="step"><b>3</b><div><strong>결과 생성</strong><span>보고서 다운로드와 제출 준비 대기</span></div></div>
+        <div class="step active" data-progress-step="prepare_target" data-state="running"><b>1</b><div><strong>대상 준비</strong><span id="progressTarget">로컬 폴더, ZIP 또는 GitHub 소스를 확인합니다.</span></div></div>
+        <div class="step" data-progress-step="code_scan" data-state="pending"><b>2</b><div><strong id="progressMode">체커 점검</strong><span id="progressScanDetail">코드, 의존성, 룰셋을 점검합니다.</span></div></div>
+        <div class="step" data-progress-step="render_report" data-state="pending"><b>3</b><div><strong>보고서 생성</strong><span>HTML과 JSON 증거 보고서를 만듭니다.</span></div></div>
+        <div class="step" data-progress-step="save_reports" data-state="pending"><b>4</b><div><strong>PC 저장</strong><span id="progressSaveDetail">선택한 위치에 결과물을 저장합니다.</span></div></div>
       </div>
     </div>
   </section>
@@ -764,13 +846,16 @@
     const targetInput = document.querySelector("#targetInput");
     const scanButton = document.querySelector("#scanButton");
     const scanProgress = document.querySelector("#scanProgress");
-    const folderPicker = document.querySelector("#folderPicker");
-    const zipPicker = document.querySelector("#zipPicker");
     const saveButton = document.querySelector("#saveButton");
     const savePath = document.querySelector("#savePath");
-    const savePicker = document.querySelector("#savePicker");
     const progressTarget = document.querySelector("#progressTarget");
     const progressMode = document.querySelector("#progressMode");
+    const progressSummary = document.querySelector("#progressSummary");
+    const progressMessage = document.querySelector("#progressMessage");
+    const progressPercent = document.querySelector("#progressPercent");
+    const progressBar = document.querySelector("#progressBar");
+    const progressSaveDetail = document.querySelector("#progressSaveDetail");
+    const progressSteps = Array.from(document.querySelectorAll("[data-progress-step]"));
     const modeButtons = Array.from(document.querySelectorAll(".mode"));
     const resultDecision = document.querySelector("#resultDecision");
     const resultFindings = document.querySelector("#resultFindings");
@@ -783,6 +868,8 @@
     let activeTarget = "folder";
     let selectedReady = false;
     let pendingMode = null;
+    let selectedTargetRef = "";
+    let selectedSaveDir = "";
     const targetText = {
       folder: {
         help: "클릭하면 Windows 탐색기에서 검사할 프로젝트 폴더를 선택합니다.",
@@ -811,6 +898,7 @@
       const next = targetText[target];
       activeTarget = target;
       selectedReady = false;
+      selectedTargetRef = "";
       document.querySelectorAll("[data-target]").forEach((item) => {
         item.classList.toggle("active", item.dataset.target === target);
       });
@@ -824,24 +912,57 @@
       openTargetPicker();
     }
 
-    function openTargetPicker() {
-      if (activeTarget === "folder") {
-        folderPicker.click();
+    async function openTargetPicker() {
+      if (activeTarget === "url") {
+        targetInput.focus();
         return;
       }
 
-      if (activeTarget === "zip") {
-        zipPicker.click();
-        return;
+      try {
+        const kind = activeTarget === "folder" ? "folder" : "archive";
+        const response = await fetch("/api/local/pick-target", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ kind })
+        });
+        const selection = await response.json();
+        if (!response.ok) throw new Error(selection.error || "선택을 완료하지 못했습니다.");
+        selectedTargetRef = selection.path;
+        targetInput.value = selection.label;
+        scanButton.textContent = activeTarget === "folder" ? "폴더 다시 선택" : "ZIP 다시 선택";
+        selectedReady = true;
+        if (pendingMode) {
+          const mode = pendingMode;
+          pendingMode = null;
+          runScan(mode);
+        }
+      } catch (error) {
+        selectedReady = false;
+        targetHelp.textContent = String(error.message || error);
       }
-
-      targetInput.focus();
     }
 
     function getTargetLabel() {
       if (activeTarget === "folder") return "선택한 폴더";
       if (activeTarget === "zip") return "선택한 압축파일";
       return "GitHub 저장소";
+    }
+
+    function renderProgress(progress = {}) {
+      const percent = Math.max(0, Math.min(100, Number(progress.percent || 0)));
+      const state = progress.status === "failed" ? "failed" : progress.status === "completed" ? "completed" : "running";
+      progressSummary.dataset.state = state;
+      progressPercent.textContent = `${percent}%`;
+      progressBar.style.width = `${percent}%`;
+      progressMessage.textContent = progress.message || "검사를 준비하고 있습니다.";
+
+      const statusByStep = new Map((progress.steps || []).map((step) => [step.name, step.status]));
+      progressSteps.forEach((step) => {
+        const stepName = step.dataset.progressStep;
+        const stepStatus = statusByStep.get(stepName) || "pending";
+        step.dataset.state = stepStatus;
+        step.classList.toggle("active", stepStatus === "running");
+      });
     }
 
     function activateMode(mode) {
@@ -861,6 +982,7 @@
     }
 
     function setResultBlocked(message) {
+      renderProgress({ status: "failed", message });
       resultDecision.textContent = "진행 불가";
       resultFindings.textContent = "-";
       resultReview.textContent = "-";
@@ -902,6 +1024,7 @@
       const reportNames = (job.reports || []).map((item) => item.file_name);
       const hasJson = reportNames.some((name) => name.endsWith(".json") || !name.includes("."));
       const hasHtml = reportNames.some((name) => name.endsWith(".html"));
+      const hasZip = reportNames.some((name) => name.endsWith("-submission.zip"));
       const decision = job.status === "failed" ? "점검 실패" : findingCount > 0 ? "검토 필요" : "제출 가능";
 
       resultDecision.textContent = decision;
@@ -910,19 +1033,21 @@
       resultDeps.textContent = `${dependencyCount}건`;
       resultHtml.textContent = hasHtml ? "생성됨" : "생성 대기";
       resultJson.textContent = hasJson ? "생성됨" : "생성됨";
-      resultZip.textContent = job.mode === "submission" ? "추가 구현 필요" : "제출 점검 시 생성";
+      resultZip.textContent = job.mode === "submission" ? hasZip ? "생성됨" : "생성 안 됨" : "제출 점검 시 생성";
       renderReportLinks(job);
     }
 
     async function pollResult(scanId) {
       for (let count = 0; count < 90; count += 1) {
         const progress = await fetch(`/api/scan/${scanId}/progress`, { cache: "no-store" }).then((response) => response.json());
+        renderProgress(progress);
         if (progress.error) {
           setResultBlocked(progress.error);
           return;
         }
         if (progress.status === "completed" || progress.status === "failed") {
           const job = await fetch(`/api/scan/${scanId}/result`, { cache: "no-store" }).then((response) => response.json());
+          renderProgress({ ...progress, status: job.status, steps: job.steps });
           setResultDone(job);
           return;
         }
@@ -934,14 +1059,15 @@
     async function startApiScan(mode) {
       const scanMode = mode.dataset.mode;
       const targetType = activeTarget === "url" ? "github_url" : activeTarget === "zip" ? "archive" : "folder";
-      const targetRef = activeTarget === "url" ? targetInput.value.trim() : targetInput.value.trim();
+      const targetRef = activeTarget === "url" ? targetInput.value.trim() : selectedTargetRef;
       const response = await fetch("/api/scan/start", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           scan_mode: scanMode,
           target_type: targetType,
-          target_ref: targetRef
+          target_ref: targetRef,
+          save_dir: selectedSaveDir
         })
       });
       const started = await response.json();
@@ -961,13 +1087,14 @@
       activateMode(mode);
       progressTarget.textContent = `${getTargetLabel()} 접근 가능 여부 확인 중`;
       progressMode.textContent = `${mode.dataset.modeTitle} 실행`;
+      renderProgress({
+        status: "running",
+        percent: 4,
+        message: `${getTargetLabel()}을 준비하고 있습니다.`,
+        steps: [{ name: "prepare_target", status: "running" }]
+      });
       scanProgress.hidden = false;
       setResultPending(`${mode.dataset.modeTitle}을 시작했습니다.`);
-
-      if (activeTarget !== "url") {
-        setResultBlocked("브라우저 파일 선택은 보안상 실제 로컬 경로를 서버에 전달하지 않습니다. 폴더와 압축파일 검사는 데스크톱 앱 또는 로컬 브리지에서 연결합니다. 현재 화면에서는 GitHub URL 점검을 먼저 사용할 수 있습니다.");
-        return;
-      }
 
       try {
         await startApiScan(mode);
@@ -982,33 +1109,10 @@
       });
     });
 
-    folderPicker.addEventListener("change", () => {
-      if (!folderPicker.files.length) return;
-      targetInput.value = `${folderPicker.files.length}개 파일이 선택되었습니다.`;
-      scanButton.textContent = "폴더 다시 선택";
-      selectedReady = true;
-      if (pendingMode) {
-        const mode = pendingMode;
-        pendingMode = null;
-        runScan(mode);
-      }
-    });
-
-    zipPicker.addEventListener("change", () => {
-      if (!zipPicker.files.length) return;
-      targetInput.value = zipPicker.files[0].name;
-      scanButton.textContent = "압축파일 다시 선택";
-      selectedReady = true;
-      if (pendingMode) {
-        const mode = pendingMode;
-        pendingMode = null;
-        runScan(mode);
-      }
-    });
-
     targetInput.addEventListener("input", () => {
       if (activeTarget !== "url") return;
       selectedReady = targetInput.value.trim().length > 0;
+      selectedTargetRef = targetInput.value.trim();
     });
 
     modeButtons.forEach((mode) => {
@@ -1031,21 +1135,20 @@
     });
 
     saveButton.addEventListener("click", async () => {
-      if ("showDirectoryPicker" in window) {
-        try {
-          const directory = await window.showDirectoryPicker();
-          savePath.textContent = `${directory.name} 폴더에 결과물을 저장합니다.`;
-        } catch (error) {
-          savePath.textContent = "저장 위치 선택이 취소되었습니다.";
-        }
-        return;
+      try {
+        const response = await fetch("/api/local/pick-target", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ kind: "save_dir" })
+        });
+        const selection = await response.json();
+        if (!response.ok) throw new Error(selection.error || "저장 위치 선택을 완료하지 못했습니다.");
+        selectedSaveDir = selection.path;
+        savePath.textContent = `${selection.label} 폴더에 결과물을 저장합니다.`;
+        progressSaveDetail.textContent = `${selection.label} 폴더에 결과물을 저장합니다.`;
+      } catch (error) {
+        savePath.textContent = String(error.message || error);
       }
-
-      savePicker.click();
-    });
-
-    savePicker.addEventListener("change", () => {
-      savePath.textContent = "선택한 폴더에 결과물을 저장합니다.";
     });
 
     document.querySelector(".modal-close").addEventListener("click", () => {

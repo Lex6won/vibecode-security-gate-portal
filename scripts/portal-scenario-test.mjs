@@ -2,9 +2,13 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 const port = Number(process.env.PORTAL_TEST_PORT || 8791);
 const baseUrl = `http://127.0.0.1:${port}`;
+const powershell = join(process.env.SystemRoot || "C:\\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
 
 function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -43,11 +47,11 @@ async function waitForServer(child) {
   throw new Error("test server did not become ready");
 }
 
-async function startScan(scanMode, targetType, targetRef) {
+async function startScan(scanMode, targetType, targetRef, saveDir = "") {
   const started = await fetchJson("/api/scan/start", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ scan_mode: scanMode, target_type: targetType, target_ref: targetRef })
+    body: JSON.stringify({ scan_mode: scanMode, target_type: targetType, target_ref: targetRef, save_dir: saveDir })
   });
   assert.ok(started.scan_id, "scan_id must be returned");
   for (let attempt = 0; attempt < 90; attempt += 1) {
@@ -58,6 +62,22 @@ async function startScan(scanMode, targetType, targetRef) {
     await wait(500);
   }
   throw new Error(`scan did not finish: ${started.scan_id}`);
+}
+
+function escapePowerShellLiteral(value) {
+  return String(value).replaceAll("'", "''");
+}
+
+async function createZipFixture() {
+  const fixtureDir = await mkdtemp(join(tmpdir(), "portal-local-scan-"));
+  const sourceFile = join(fixtureDir, "safe-source.js");
+  const archivePath = join(fixtureDir, "safe-source.zip");
+  await writeFile(sourceFile, "export const projectName = 'local-scan-fixture';\n", "utf8");
+  const script = `Compress-Archive -LiteralPath '${escapePowerShellLiteral(sourceFile)}' -DestinationPath '${escapePowerShellLiteral(archivePath)}' -Force`;
+  const child = spawn(powershell, ["-NoProfile", "-Command", script], { windowsHide: true });
+  const [code] = await once(child, "close");
+  assert.equal(code, 0, "test ZIP fixture must be created");
+  return { fixtureDir, archivePath };
 }
 
 async function assertPagesLoad() {
@@ -94,6 +114,36 @@ async function scenarioStandardSubmission() {
   return result;
 }
 
+async function scenarioLocalFolderAndZip(fixture) {
+  const folderPick = await fetchJson("/api/local/pick-target", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ kind: "folder" })
+  });
+  assert.equal(folderPick.status, "selected");
+  assert.ok(folderPick.path.endsWith("src"), "folder picker must return the local source folder in test mode");
+
+  const archivePick = await fetchJson("/api/local/pick-target", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ kind: "archive" })
+  });
+  assert.equal(archivePick.status, "selected");
+  assert.equal(archivePick.path, fixture.archivePath);
+
+  const savedFolder = join(fixture.fixtureDir, "saved-reports");
+  await mkdir(savedFolder);
+  const localFolder = await startScan("quick", "folder", folderPick.path, savedFolder);
+  assert.equal(localFolder.status, "completed");
+  assert.ok(localFolder.saved_reports.length >= 2, "local folder scan must copy reports to selected PC folder");
+  assert.equal("target_ref" in localFolder, false, "local path must not be exposed by the result API");
+
+  const archive = await startScan("quick", "archive", archivePick.path, savedFolder);
+  assert.equal(archive.status, "completed");
+  assert.equal(archive.summary.scanned_file_count, 1, "ZIP scan must reach the local checker");
+  return { localFolder, archive };
+}
+
 async function scenarioHarnessAndMcp() {
   const status = await fetchJson("/api/local/status");
   assert.equal(status.project_harness.status, "applied");
@@ -102,11 +152,21 @@ async function scenarioHarnessAndMcp() {
 
   const preview = await fetchJson("/api/local/update/preview", { method: "POST" });
   assert.equal(preview.applies_without_approval, false);
+  assert.ok(preview.items.some((item) => item.target === "harness" && item.current_version), "harness update preview must include the local version");
+  assert.ok(preview.items.some((item) => item.target === "checker" && item.current_version), "checker update preview must include the local version");
+
+  const apply = await fetchJson("/api/local/update/apply", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ approval_token: "user-confirmed" })
+  });
+  assert.equal(apply.status, "blocked", "dirty or non-main checker worktree must block automatic update");
+  assert.ok(apply.blocked_targets.includes("checker"), "checker worktree eligibility must be checked before update");
 
   const mcp = await fetchJson("/api/local/mcp/register", { method: "POST" });
   assert.ok(["already_registered", "needs_user_approval"].includes(mcp.status));
   assert.equal(mcp.applies_without_approval, false);
-  return { status, preview, mcp };
+  return { status, preview, apply, mcp };
 }
 
 async function scenarioAdmin() {
@@ -121,9 +181,17 @@ async function scenarioAdmin() {
   return { summary, list };
 }
 
+const fixture = await createZipFixture();
 const child = spawn(process.execPath, ["src/server.js"], {
   cwd: process.cwd(),
-  env: { ...process.env, PORT: String(port), PYTHONUTF8: "1", PYTHONIOENCODING: "utf-8" },
+  env: {
+    ...process.env,
+    PORT: String(port),
+    PORTAL_TEST_PICK_PATH: join(process.cwd(), "src"),
+    PORTAL_TEST_ARCHIVE_PATH: fixture.archivePath,
+    PYTHONUTF8: "1",
+    PYTHONIOENCODING: "utf-8"
+  },
   stdio: ["ignore", "pipe", "pipe"],
   windowsHide: true
 });
@@ -142,6 +210,7 @@ try {
   await assertPagesLoad();
   const quick = await scenarioQuickScan();
   const submission = await scenarioStandardSubmission();
+  const localTargets = await scenarioLocalFolderAndZip(fixture);
   await scenarioHarnessAndMcp();
   await scenarioAdmin();
   console.log(JSON.stringify({
@@ -151,6 +220,8 @@ try {
       pages_loaded: true,
       quick_scan: quick.id,
       submission_scan: submission.id,
+      local_folder_scan: localTargets.localFolder.id,
+      zip_scan: localTargets.archive.id,
       harness_mcp: true,
       admin: true
     }
@@ -163,4 +234,5 @@ try {
 } finally {
   child.kill();
   await Promise.race([once(child, "exit"), wait(2000)]);
+  await rm(fixture.fixtureDir, { recursive: true, force: true });
 }

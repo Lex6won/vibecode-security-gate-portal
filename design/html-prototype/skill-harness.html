@@ -951,14 +951,14 @@
             <strong>체커 업데이트 권장</strong>
             <p>최신 룰셋과 의존성 취약점 정보를 반영할 수 있습니다.</p>
           </div>
-          <div class="update-version"><span>현재 0.3.0</span><span>안정 0.3.2</span></div>
+          <div class="update-version"><span id="checkerCurrentVersion">현재 확인 중</span><span id="checkerAvailableVersion">최신 확인 중</span></div>
         </article>
         <article class="update-item">
           <div>
             <strong>하네스 업데이트 가능</strong>
             <p>표준 개발 흐름과 검증 스크립트 기준을 최신 상태로 맞춥니다.</p>
           </div>
-          <div class="update-version"><span>현재 a58ae62</span><span>검증 완료 릴리스</span></div>
+          <div class="update-version"><span id="harnessCurrentVersion">현재 확인 중</span><span id="harnessAvailableVersion">최신 확인 중</span></div>
         </article>
         <article class="update-item">
           <div>
@@ -977,7 +977,7 @@
       </div>
       <div class="modal-actions">
         <button class="button secondary" type="button" data-close-modal>닫기</button>
-        <button class="button primary" type="button" data-run="최신 안정 버전 업데이트 승인" data-desc="사용자 승인 후 하네스와 체커를 검증된 안정 버전으로 업데이트하고, gg-validate와 체커 doctor를 다시 실행합니다.">업데이트 적용 준비</button>
+        <button class="button primary" id="applyUpdateButton" type="button" data-run="최신 안정 버전 업데이트 승인" data-desc="사용자 승인 후 하네스와 체커를 검증된 안정 버전으로 업데이트하고, gg-validate와 체커 doctor를 다시 실행합니다.">업데이트 적용 준비</button>
       </div>
     </div>
     </section>
@@ -990,6 +990,11 @@
     const toolKind = document.querySelector("#toolKind");
     const toolEntry = document.querySelector("#toolEntry");
     const installButton = document.querySelector("#installButton");
+    const applyUpdateButton = document.querySelector("#applyUpdateButton");
+    const checkerCurrentVersion = document.querySelector("#checkerCurrentVersion");
+    const checkerAvailableVersion = document.querySelector("#checkerAvailableVersion");
+    const harnessCurrentVersion = document.querySelector("#harnessCurrentVersion");
+    const harnessAvailableVersion = document.querySelector("#harnessAvailableVersion");
 
     document.querySelectorAll(".tool-option").forEach((button) => {
       button.addEventListener("click", () => {
@@ -1017,10 +1022,10 @@
       const gate = status.execution_gate || {};
       const checker = status.checker || {};
       return [
-        `하네스 파일: ${status.project_harness?.status || "확인 불가"}`,
+        `하네스: ${status.source_harness?.commit || "미설치"} · 공식 ${status.source_harness?.remote?.status || "확인 불가"}`,
         `실행 게이트: ${gate.guard_script || "확인 불가"} · pre-commit ${gate.pre_commit_hook || "확인 불가"}`,
-        `체커: ${checker.version || "미설치"} · doctor ${checker.doctor_status || "확인 불가"}`,
-        `MCP: Codex ${status.mcp?.codex_project || "확인 불가"} · 공통 ${status.mcp?.common_mcp || "확인 불가"}`
+        `체커: ${checker.version || "미설치"} · 공식 ${checker.remote?.status || "확인 불가"} · doctor ${checker.doctor_status || "확인 불가"}`,
+        `MCP: Codex ${status.mcp?.codex_project || "확인 불가"} · 공통 ${status.mcp?.common_mcp || "확인 불가"} · GitHub ${status.network?.github || "확인 불가"}`
       ].join(" / ");
     }
 
@@ -1032,10 +1037,33 @@
     async function runUpdatePreview() {
       const preview = await fetch("/api/local/update/preview", { method: "POST" }).then((response) => response.json());
       updatePreview.hidden = false;
-      const first = preview.items?.[0];
-      if (first) {
+      const harness = preview.items?.find((item) => item.target === "harness");
+      const checker = preview.items?.find((item) => item.target === "checker");
+      if (harness || checker) {
         document.querySelector("#update-preview-title").textContent = `${preview.flow?.join(" → ") || "업데이트 확인"}`;
+        checkerCurrentVersion.textContent = `현재 ${checker?.current_version || "확인 불가"}`;
+        checkerAvailableVersion.textContent = `공식 ${checker?.available_version || "확인 불가"}`;
+        harnessCurrentVersion.textContent = `현재 ${harness?.current_version || "확인 불가"}`;
+        harnessAvailableVersion.textContent = `공식 ${harness?.available_version || "확인 불가"}`;
+        applyUpdateButton.disabled = Boolean(preview.blocked_targets?.length);
+        applyUpdateButton.textContent = preview.blocked_targets?.length ? "수정 중인 작업 폴더 확인 필요" : "업데이트 적용 준비";
       }
+    }
+
+    async function applyApprovedUpdate() {
+      if (!window.confirm("하네스와 체커를 공식 main 기준으로 업데이트하고 재검증할까요? 수정 중인 작업 폴더는 자동으로 변경하지 않습니다.")) return;
+      const response = await fetch("/api/local/update/apply", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ approval_token: "user-confirmed" })
+      });
+      const result = await response.json();
+      updatePreview.hidden = true;
+      runTitle.textContent = "업데이트 및 재검증 결과";
+      runDesc.textContent = result.status === "blocked"
+        ? "수정 중이거나 main이 아닌 하네스 또는 체커 작업 폴더가 있어 업데이트하지 않았습니다. 변경을 커밋·보관하고 main 기준 설치본에서 다시 시도하세요."
+        : `업데이트 상태: ${result.status}. 하네스 검증 ${result.post_checks?.harness_validate || "확인 불가"}, 체커 doctor ${result.post_checks?.checker_doctor || "확인 불가"}`;
+      runStatus.hidden = false;
     }
 
     document.querySelectorAll("[data-run]").forEach((button) => {
@@ -1043,6 +1071,10 @@
         const name = button.dataset.run;
         if (name.includes("업데이트 확인")) {
           await runUpdatePreview();
+          return;
+        }
+        if (button.id === "applyUpdateButton") {
+          await applyApprovedUpdate();
           return;
         }
         if (button.closest("#updatePreview")) {

@@ -58,6 +58,7 @@ vibecode-security-gate-portal/
 | `docs/11_single_view_modal_design.md` | 스크롤 없는 단일 화면과 레이어 팝업 UX 기준 |
 | `docs/12_harness_checker_implementation_log.md` | 하네스·체커 적용 기록과 개발 비용 기록 |
 | `docs/14_service_implementation_status.md` | 서비스 구현 상태, 미구현 범위, 하네스·체커 영향 |
+| `docs/16_local_execution_architecture.md` | 로컬 실행 경계, PC 저장, 업데이트·검사 진행률의 확정 설계와 구현 기록 |
 | `supabase/schema.sql` | Supabase PostgreSQL 스키마 초안 |
 
 ## 하네스 적용 기준
