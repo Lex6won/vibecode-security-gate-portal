@@ -132,12 +132,14 @@
       display: inline-flex;
       align-items: center;
       border-radius: 999px;
+      border: 0;
       background: var(--soft);
       color: #244d85;
       font-size: 14px;
       font-weight: 900;
       text-decoration: none;
       white-space: nowrap;
+      cursor: pointer;
       transition: transform .14s ease, box-shadow .14s ease, background-color .14s ease;
     }
 
@@ -179,9 +181,9 @@
       width: 100%;
       height: 100%;
       display: block;
-      object-fit: cover;
+      object-fit: contain;
       object-position: center;
-      transform: scale(1.3);
+      transform: none;
     }
 
     .top-title strong {
@@ -543,6 +545,72 @@
       font-weight: 900;
     }
 
+    .password-modal[hidden] { display: none; }
+
+    .password-modal {
+      position: fixed;
+      inset: 0;
+      z-index: 10;
+      padding: 20px;
+      display: grid;
+      place-items: center;
+      background: rgba(16,32,51,.38);
+    }
+
+    .password-card {
+      width: min(480px, 100%);
+      padding: 24px;
+      display: grid;
+      gap: 14px;
+      border-radius: 22px;
+      background: var(--panel);
+      box-shadow: 0 24px 60px rgba(16,32,51,.22);
+    }
+
+    .password-card h2,
+    .password-card p { margin: 0; }
+
+    .password-card h2 { font-size: 23px; line-height: 1.3; }
+
+    .password-card p {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.55;
+      font-weight: 750;
+    }
+
+    .password-fields { display: grid; gap: 10px; }
+
+    .password-fields label {
+      display: grid;
+      gap: 5px;
+      color: #244d85;
+      font-size: 12px;
+      font-weight: 900;
+    }
+
+    .password-fields input {
+      min-height: 42px;
+      padding: 0 12px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      color: var(--ink);
+      background: var(--moon);
+    }
+
+    .password-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+
+    .password-message {
+      min-height: 20px;
+      color: var(--warn);
+      font-size: 12px;
+      font-weight: 900;
+    }
+
     @media (max-width: 960px) {
       main {
         width: calc(100% - 28px);
@@ -584,14 +652,15 @@
   <main>
     <header class="topbar">
       <a class="top-title" href="/" aria-label="홈으로 이동">
-        <span class="gg-mark" aria-hidden="true"><img src="./assets/images/gyeonggi-signature-ko.jpg" alt=""></span>
+        <span class="gg-mark" aria-hidden="true"><img src="/assets/images/gyeonggi-signature-ko.jpg" alt="경기도 로고"></span>
         <div>
           <strong>관리자 점검 현황</strong>
           <span>AI로 만든 개발 소스의 보안 위험을 빠르게 확인합니다.</span>
         </div>
       </a>
       <div class="top-actions">
-        <a class="top-link primary" href="/admin/login">총괄 관리자 로그인</a>
+        <button class="top-link" id="passwordChangeButton" type="button">비밀번호 변경</button>
+        <button class="top-link primary" id="adminLogoutButton" type="button">로그아웃</button>
       </div>
     </header>
 
@@ -687,6 +756,22 @@
       </aside>
     </section>
   </main>
+  <section class="password-modal" id="passwordModal" hidden aria-labelledby="passwordTitle">
+    <form class="password-card" id="passwordForm">
+      <h2 id="passwordTitle">관리자 비밀번호 변경</h2>
+      <p>변경 후에는 새 비밀번호로 다시 사용할 수 있습니다. 12자 이상으로 설정하세요.</p>
+      <div class="password-fields">
+        <label for="currentPassword">현재 비밀번호<input id="currentPassword" type="password" autocomplete="current-password" required></label>
+        <label for="newPassword">새 비밀번호<input id="newPassword" type="password" autocomplete="new-password" minlength="12" required></label>
+        <label for="confirmPassword">새 비밀번호 확인<input id="confirmPassword" type="password" autocomplete="new-password" minlength="12" required></label>
+      </div>
+      <p class="password-message" id="passwordMessage" role="alert" aria-live="polite"></p>
+      <div class="password-actions">
+        <button class="top-link" id="passwordCloseButton" type="button">취소</button>
+        <button class="top-link primary" id="passwordSaveButton" type="submit">변경 저장</button>
+      </div>
+    </form>
+  </section>
   <script>
     const adminExportButton = document.querySelector("#adminExportButton");
     const adminSavePicker = document.querySelector("#adminSavePicker");
@@ -696,6 +781,51 @@
     const detailList = document.querySelector(".detail-list");
     const sectionCount = document.querySelector(".section-head span");
     const metricValues = Array.from(document.querySelectorAll(".metric strong"));
+    const passwordModal = document.querySelector("#passwordModal");
+    const passwordForm = document.querySelector("#passwordForm");
+    const passwordMessage = document.querySelector("#passwordMessage");
+    const passwordSaveButton = document.querySelector("#passwordSaveButton");
+
+    document.querySelector("#passwordChangeButton").addEventListener("click", () => {
+      passwordMessage.textContent = "";
+      passwordForm.reset();
+      passwordModal.hidden = false;
+      document.querySelector("#currentPassword").focus();
+    });
+
+    document.querySelector("#passwordCloseButton").addEventListener("click", () => {
+      passwordModal.hidden = true;
+    });
+
+    document.querySelector("#adminLogoutButton").addEventListener("click", async () => {
+      await fetch("/api/admin/logout", { method: "POST" });
+      window.location.assign("/admin/login");
+    });
+
+    passwordForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      passwordSaveButton.disabled = true;
+      passwordMessage.textContent = "변경 중입니다.";
+      try {
+        const response = await fetch("/api/admin/password", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            current_password: document.querySelector("#currentPassword").value,
+            new_password: document.querySelector("#newPassword").value,
+            confirm_password: document.querySelector("#confirmPassword").value
+          })
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.message || "비밀번호를 변경하지 못했습니다.");
+        passwordMessage.textContent = "비밀번호가 변경되었습니다.";
+        passwordForm.reset();
+      } catch (error) {
+        passwordMessage.textContent = error.message || "비밀번호를 변경하지 못했습니다.";
+      } finally {
+        passwordSaveButton.disabled = false;
+      }
+    });
 
     function selectOptionByText(select, text) {
       Array.from(select.options).forEach((option) => {

@@ -159,9 +159,9 @@
       width: 100%;
       height: 100%;
       display: block;
-      object-fit: cover;
+      object-fit: contain;
       object-position: center;
-      transform: scale(1.3);
+      transform: none;
     }
 
     .top-title strong {
@@ -267,6 +267,15 @@
       align-items: center;
     }
 
+    .login-error {
+      min-height: 22px;
+      margin: 0;
+      color: var(--warn);
+      font-size: 13px;
+      line-height: 1.45;
+      font-weight: 900;
+    }
+
     @media (max-width: 960px) {
       main {
         width: calc(100% - 28px);
@@ -311,7 +320,7 @@
   <main>
     <header class="topbar">
       <a class="top-title" href="/" aria-label="홈으로 이동">
-        <span class="gg-mark" aria-hidden="true"><img src="./assets/images/gyeonggi-signature-ko.jpg" alt=""></span>
+        <span class="gg-mark" aria-hidden="true"><img src="/assets/images/gyeonggi-signature-ko.jpg" alt="경기도 로고"></span>
         <div>
           <strong>관리자 로그인</strong>
           <span>AI로 만든 개발 소스의 보안 위험을 빠르게 확인합니다.</span>
@@ -324,22 +333,54 @@
         <span class="eyebrow">총괄 관리자</span>
         <h1>관리자 계정으로 로그인합니다.</h1>
         <p>전체 기관의 점검 이력, 제출 상태, 보고서 다운로드 이력을 확인합니다.</p>
-        <div class="form-grid">
-          <div class="field">
-            <label for="adminId">아이디</label>
-            <input id="adminId" autocomplete="username" placeholder="관리자 아이디">
+        <form id="adminLoginForm">
+          <div class="form-grid">
+            <div class="field">
+              <label for="adminId">아이디</label>
+              <input id="adminId" name="id" autocomplete="username" placeholder="관리자 아이디" required>
+            </div>
+            <div class="field">
+              <label for="adminPassword">비밀번호</label>
+              <input id="adminPassword" name="password" type="password" autocomplete="current-password" placeholder="비밀번호" required>
+            </div>
           </div>
-          <div class="field">
-            <label for="adminPassword">비밀번호</label>
-            <input id="adminPassword" type="password" autocomplete="current-password" placeholder="비밀번호">
+          <p class="login-error" id="loginError" role="alert" aria-live="polite"></p>
+          <div class="actions">
+            <button class="button" id="adminLoginButton" type="submit">로그인</button>
+            <a class="top-link" href="/help">도움말</a>
           </div>
-        </div>
-        <div class="actions">
-          <a class="button" href="/admin">로그인</a>
-          <a class="top-link" href="/help">도움말</a>
-        </div>
+        </form>
       </div>
     </section>
   </main>
+  <script>
+    const adminLoginForm = document.querySelector("#adminLoginForm");
+    const adminLoginButton = document.querySelector("#adminLoginButton");
+    const loginError = document.querySelector("#loginError");
+
+    adminLoginForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      adminLoginButton.disabled = true;
+      adminLoginButton.textContent = "확인 중";
+      loginError.textContent = "";
+      try {
+        const response = await fetch("/api/admin/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            id: document.querySelector("#adminId").value.trim(),
+            password: document.querySelector("#adminPassword").value
+          })
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.message || "로그인할 수 없습니다.");
+        window.location.assign(result.next || "/admin");
+      } catch (error) {
+        loginError.textContent = error.message || "로그인할 수 없습니다.";
+        adminLoginButton.disabled = false;
+        adminLoginButton.textContent = "로그인";
+      }
+    });
+  </script>
 </body>
 </html>

@@ -9,13 +9,18 @@ import { join } from "node:path";
 const port = Number(process.env.PORTAL_TEST_PORT || 8791);
 const baseUrl = `http://127.0.0.1:${port}`;
 const powershell = join(process.env.SystemRoot || "C:\\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
+const adminId = "gg0018@gg.go.kr";
+const adminPassword = "ScenarioAdmin!2026";
+let adminCookie = "";
 
 function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 async function fetchJson(path, options) {
-  const response = await fetch(`${baseUrl}${path}`, options);
+  const headers = new Headers(options?.headers || {});
+  if (adminCookie) headers.set("cookie", adminCookie);
+  const response = await fetch(`${baseUrl}${path}`, { ...options, headers });
   const text = await response.text();
   let body = null;
   try {
@@ -28,7 +33,9 @@ async function fetchJson(path, options) {
 }
 
 async function fetchText(path) {
-  const response = await fetch(`${baseUrl}${path}`);
+  const headers = new Headers();
+  if (adminCookie) headers.set("cookie", adminCookie);
+  const response = await fetch(`${baseUrl}${path}`, { headers });
   const text = await response.text();
   assert.ok(response.ok, `${path} expected ok, got ${response.status}`);
   return text;
@@ -86,7 +93,6 @@ async function assertPagesLoad() {
     ["/scan", "대상을 선택하고 점검하세요"],
     ["/harness", "하네스 설치"],
     ["/admin/login", "관리자 로그인"],
-    ["/admin", "사용 현황과 점검 결과"],
     ["/help", "도움말"]
   ];
   for (const [path, marker] of pages) {
@@ -233,6 +239,18 @@ async function scenarioHarnessAndMcp() {
 }
 
 async function scenarioAdmin() {
+  const unauthorized = await fetch(`${baseUrl}/api/admin/summary`);
+  assert.equal(unauthorized.status, 401, "admin summary must reject unauthenticated requests");
+
+  const loginResponse = await fetch(`${baseUrl}/api/admin/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ id: adminId, password: adminPassword })
+  });
+  assert.equal(loginResponse.status, 200, "admin login must accept the configured test account");
+  adminCookie = String(loginResponse.headers.get("set-cookie") || "").split(";")[0];
+  assert.ok(adminCookie.startsWith("admin_session="), "admin login must issue an HttpOnly session cookie");
+
   const summary = await fetchJson("/api/admin/summary");
   assert.ok(summary.total >= 2, "admin total should include scenario scans");
   assert.ok(summary.allow >= 1, "admin allow count should include successful standard scans");
@@ -251,6 +269,9 @@ const child = spawn(process.execPath, ["src/server.js"], {
   env: {
     ...process.env,
     PORT: String(port),
+    ADMIN_ID: adminId,
+    ADMIN_INITIAL_PASSWORD: adminPassword,
+    ADMIN_AUTH_FILE: join(process.env.TEMP || process.env.TMP || ".", "vibecode-portal-scenario-admin-auth.json"),
     PORTAL_TEST_PICK_PATH: join(process.cwd(), "src"),
     PORTAL_TEST_ARCHIVE_PATH: fixture.archivePath,
     PYTHONUTF8: "1",

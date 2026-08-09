@@ -21,6 +21,7 @@ tmp/
 # Secrets
 .env
 *.local
+.local/
 
 # OS/editor
 .DS_Store

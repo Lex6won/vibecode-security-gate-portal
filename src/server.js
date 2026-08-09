@@ -1,11 +1,11 @@
 import { createServer } from "node:http";
 import { spawn } from "node:child_process";
-import { createReadStream, createWriteStream, existsSync, mkdirSync, statSync } from "node:fs";
+import { createReadStream, createWriteStream, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { copyFile, rm, readdir, readFile } from "node:fs/promises";
 import { pipeline } from "node:stream/promises";
 import { basename, dirname, extname, isAbsolute, join, normalize, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID, scryptSync, timingSafeEqual } from "node:crypto";
 import Busboy from "busboy";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
@@ -18,6 +18,55 @@ const PORT = Number(process.env.PORT || 8787);
 const POWERSHELL = join(process.env.SystemRoot || "C:\\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
 const MAX_BROWSER_UPLOAD_BYTES = 500 * 1024 * 1024;
 const MAX_BROWSER_UPLOAD_FILES = 10000;
+
+function loadDotEnv(filePath) {
+  if (!existsSync(filePath)) return {};
+  return Object.fromEntries(readFileSync(filePath, "utf8").split(/\r?\n/).flatMap((line) => {
+    const match = line.match(/^\s*([A-Z_][A-Z0-9_]*)\s*=\s*(.*)\s*$/);
+    if (!match) return [];
+    return [[match[1], match[2].replace(/^['"]|['"]$/g, "")]];
+  }));
+}
+
+const runtimeEnv = { ...loadDotEnv(join(ROOT, ".env")), ...process.env };
+const ADMIN_ID = runtimeEnv.ADMIN_ID || "gg0018@gg.go.kr";
+const ADMIN_AUTH_FILE = isAbsolute(runtimeEnv.ADMIN_AUTH_FILE || "")
+  ? runtimeEnv.ADMIN_AUTH_FILE
+  : join(ROOT, runtimeEnv.ADMIN_AUTH_FILE || ".local/admin-auth.json");
+const ADMIN_SESSION_TTL_MS = 8 * 60 * 60 * 1000;
+const adminSessions = new Map();
+
+function passwordRecord(password) {
+  const salt = randomBytes(16).toString("hex");
+  const hash = scryptSync(password, salt, 64).toString("hex");
+  return { salt, hash };
+}
+
+function saveAdminCredentials(record) {
+  mkdirSync(dirname(ADMIN_AUTH_FILE), { recursive: true });
+  writeFileSync(ADMIN_AUTH_FILE, `${JSON.stringify(record, null, 2)}\n`, { encoding: "utf8" });
+}
+
+function loadAdminCredentials() {
+  if (existsSync(ADMIN_AUTH_FILE)) {
+    const stored = JSON.parse(readFileSync(ADMIN_AUTH_FILE, "utf8"));
+    if (stored.id !== ADMIN_ID || !stored.salt || !stored.hash) {
+      throw new Error("관리자 인증 설정이 올바르지 않습니다.");
+    }
+    return stored;
+  }
+
+  const initialPassword = runtimeEnv.ADMIN_INITIAL_PASSWORD;
+  if (!initialPassword || initialPassword.length < 12) {
+    throw new Error("첫 실행에는 ADMIN_INITIAL_PASSWORD 환경변수가 필요합니다. 12자 이상으로 설정하세요.");
+  }
+  const { salt, hash } = passwordRecord(initialPassword);
+  const stored = { id: ADMIN_ID, salt, hash, created_at: new Date().toISOString(), password_changed_at: null };
+  saveAdminCredentials(stored);
+  return stored;
+}
+
+let adminCredentials = loadAdminCredentials();
 
 const jobs = new Map();
 
@@ -44,14 +93,56 @@ const contentTypes = {
   ".zip": "application/zip"
 };
 
-function json(response, status, body) {
+function json(response, status, body, extraHeaders = {}) {
   const payload = JSON.stringify(body, null, 2);
   response.writeHead(status, {
     "Content-Type": "application/json; charset=utf-8",
     "X-Content-Type-Options": "nosniff",
-    "Cache-Control": "no-store"
+    "Cache-Control": "no-store",
+    ...extraHeaders
   });
   response.end(payload);
+}
+
+function redirect(response, location) {
+  response.writeHead(302, { Location: location, "Cache-Control": "no-store" });
+  response.end();
+}
+
+function cookieValue(request, name) {
+  const cookies = String(request.headers.cookie || "").split(";");
+  const item = cookies.find((cookie) => cookie.trim().startsWith(`${name}=`));
+  return item ? decodeURIComponent(item.trim().slice(name.length + 1)) : "";
+}
+
+function isAdminAuthenticated(request) {
+  const token = cookieValue(request, "admin_session");
+  const session = adminSessions.get(token);
+  if (!session) return false;
+  if (session.expires_at <= Date.now()) {
+    adminSessions.delete(token);
+    return false;
+  }
+  return true;
+}
+
+function requireAdmin(request, response) {
+  if (isAdminAuthenticated(request)) return true;
+  json(response, 401, { error: "admin_auth_required", message: "총괄 관리자 로그인이 필요합니다." });
+  return false;
+}
+
+function verifyPassword(password, record = adminCredentials) {
+  if (typeof password !== "string" || !record?.salt || !record?.hash) return false;
+  const actual = scryptSync(password, record.salt, 64);
+  const expected = Buffer.from(record.hash, "hex");
+  return actual.length === expected.length && timingSafeEqual(actual, expected);
+}
+
+function createAdminSession() {
+  const token = randomBytes(32).toString("hex");
+  adminSessions.set(token, { expires_at: Date.now() + ADMIN_SESSION_TTL_MS });
+  return [`admin_session=${encodeURIComponent(token)}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${ADMIN_SESSION_TTL_MS / 1000}`, token];
 }
 
 function text(response, status, body) {
@@ -999,6 +1090,49 @@ async function handleApi(request, response, pathname) {
     return;
   }
 
+  if (request.method === "POST" && pathname === "/api/admin/login") {
+    const body = await readJson(request);
+    if (body.id !== ADMIN_ID || !verifyPassword(body.password)) {
+      json(response, 401, { error: "invalid_admin_credentials", message: "아이디 또는 비밀번호를 확인하세요." });
+      return;
+    }
+    const [cookie] = createAdminSession();
+    json(response, 200, { status: "authenticated", next: "/admin" }, { "Set-Cookie": cookie });
+    return;
+  }
+
+  if (request.method === "POST" && pathname === "/api/admin/logout") {
+    const token = cookieValue(request, "admin_session");
+    if (token) adminSessions.delete(token);
+    json(response, 200, { status: "signed_out" }, { "Set-Cookie": "admin_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0" });
+    return;
+  }
+
+  if (request.method === "POST" && pathname === "/api/admin/password") {
+    if (!requireAdmin(request, response)) return;
+    const body = await readJson(request);
+    const newPassword = String(body.new_password || "");
+    if (!verifyPassword(body.current_password)) {
+      json(response, 400, { error: "invalid_current_password", message: "현재 비밀번호가 올바르지 않습니다." });
+      return;
+    }
+    if (newPassword.length < 12) {
+      json(response, 400, { error: "password_too_short", message: "새 비밀번호는 12자 이상이어야 합니다." });
+      return;
+    }
+    if (newPassword !== String(body.confirm_password || "")) {
+      json(response, 400, { error: "password_mismatch", message: "새 비밀번호가 일치하지 않습니다." });
+      return;
+    }
+    const { salt, hash } = passwordRecord(newPassword);
+    adminCredentials = { ...adminCredentials, salt, hash, password_changed_at: new Date().toISOString() };
+    saveAdminCredentials(adminCredentials);
+    adminSessions.clear();
+    const [cookie] = createAdminSession();
+    json(response, 200, { status: "password_changed" }, { "Set-Cookie": cookie });
+    return;
+  }
+
   if (request.method === "GET" && pathname === "/api/local/status") {
     json(response, 200, await localStatus());
     return;
@@ -1081,11 +1215,13 @@ async function handleApi(request, response, pathname) {
   }
 
   if (request.method === "GET" && pathname === "/api/admin/summary") {
+    if (!requireAdmin(request, response)) return;
     json(response, 200, adminSummary());
     return;
   }
 
   if (request.method === "GET" && pathname === "/api/admin/scans") {
+    if (!requireAdmin(request, response)) return;
     json(response, 200, {
       scans: Array.from(jobs.values()).sort((a, b) => String(b.created_at).localeCompare(String(a.created_at))).map(publicJob)
     });
@@ -1128,6 +1264,11 @@ createServer(async (request, response) => {
     const reportMatch = url.pathname.match(/^\/reports\/(.+)$/);
     if (reportMatch) {
       serveReport(response, reportMatch[1]);
+      return;
+    }
+
+    if (url.pathname === "/admin" && !isAdminAuthenticated(request)) {
+      redirect(response, "/admin/login");
       return;
     }
 
