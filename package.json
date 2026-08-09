@@ -13,5 +13,7 @@
     "scenario:test": "node scripts/portal-scenario-test.mjs",
     "guard": "npm run check && npm run harness:gate && npm run button:test && npm run scenario:test && npm run security:scan"
   },
-  "dependencies": {}
+  "dependencies": {
+    "busboy": "^1.6.0"
+  }
 }

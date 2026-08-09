@@ -809,6 +809,8 @@
             <button class="tab" type="button" data-target="zip">압축파일 선택</button>
             <button class="tab" type="button" data-target="url">GitHub URL</button>
           </div>
+          <input id="folderPickerInput" type="file" webkitdirectory multiple hidden>
+          <input id="archivePickerInput" type="file" accept=".zip,application/zip" hidden>
           <div class="target-help" id="targetHelp">클릭하면 Windows 탐색기에서 검사할 프로젝트 폴더를 선택합니다.</div>
           <div class="input-row">
             <input id="targetInput" aria-label="검사 대상 경로 또는 URL" value="선택된 폴더 없음" placeholder="https://github.com/organization/project" readonly>
@@ -880,6 +882,8 @@
     const targetInput = document.querySelector("#targetInput");
     const scanButton = document.querySelector("#scanButton");
     const scanProgress = document.querySelector("#scanProgress");
+    const folderPickerInput = document.querySelector("#folderPickerInput");
+    const archivePickerInput = document.querySelector("#archivePickerInput");
     const saveButton = document.querySelector("#saveButton");
     const savePath = document.querySelector("#savePath");
     const progressTarget = document.querySelector("#progressTarget");
@@ -906,6 +910,9 @@
     let pendingMode = null;
     let selectedTargetRef = "";
     let selectedSaveDir = "";
+    let selectedTargetType = "";
+    let selectedSaveDirectoryHandle = null;
+    let browserSavedReports = [];
     const targetText = {
       folder: {
         help: "클릭하면 Windows 탐색기에서 검사할 프로젝트 폴더를 선택합니다.",
@@ -935,6 +942,7 @@
       activeTarget = target;
       selectedReady = false;
       selectedTargetRef = "";
+      selectedTargetType = "";
       document.querySelectorAll("[data-target]").forEach((item) => {
         item.classList.toggle("active", item.dataset.target === target);
       });
@@ -959,21 +967,38 @@
       scanButton.disabled = true;
       scanButton.textContent = "선택 창 여는 중";
       targetHelp.textContent = activeTarget === "folder"
-        ? "Windows 폴더 선택 창에서 검사할 프로젝트 폴더를 선택하세요."
-        : "Windows 파일 선택 창에서 검사할 ZIP 파일을 선택하세요.";
+        ? "Windows 탐색기에서 검사할 프로젝트 폴더를 선택하세요."
+        : "Windows 탐색기에서 검사할 ZIP 파일을 선택하세요.";
+      const picker = activeTarget === "folder" ? folderPickerInput : archivePickerInput;
+      picker.value = "";
+      picker.click();
+    }
+
+    async function uploadBrowserTarget(files, kind) {
+      if (!files.length) {
+        targetSelectionInFlight = false;
+        scanButton.disabled = false;
+        scanButton.textContent = targetText[activeTarget].button;
+        targetHelp.textContent = "선택이 취소되었습니다. 다시 선택하세요.";
+        return;
+      }
       try {
-        const kind = activeTarget === "folder" ? "folder" : "archive";
-        const response = await fetch("/api/local/pick-target", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ kind })
-        });
+        const selectedFiles = Array.from(files).filter((file) => !file.webkitRelativePath.split("/").some((part) => part === "node_modules" || part === ".git"));
+        if (!selectedFiles.length) throw new Error("검사할 소스 파일이 없습니다.");
+        const form = new FormData();
+        form.append("kind", kind);
+        form.append("manifest", JSON.stringify(selectedFiles.map((file) => file.webkitRelativePath || file.name)));
+        selectedFiles.forEach((file, index) => form.append(`file_${index}`, file, file.name));
+        scanButton.textContent = "파일 준비 중";
+        const response = await fetch("/api/local/upload-target", { method: "POST", body: form });
         const selection = await response.json();
-        if (!response.ok) throw new Error(selection.error || "선택을 완료하지 못했습니다.");
+        if (!response.ok) throw new Error(selection.error || "선택한 파일을 준비하지 못했습니다.");
         selectedTargetRef = selection.path;
+        selectedTargetType = selection.target_type;
         targetInput.value = selection.label;
-        scanButton.textContent = activeTarget === "folder" ? "폴더 다시 선택" : "ZIP 다시 선택";
+        scanButton.textContent = kind === "folder" ? "폴더 다시 선택" : "ZIP 다시 선택";
         selectedReady = true;
+        targetHelp.textContent = `${selection.file_count}개 파일을 이 PC에서 점검합니다.`;
         if (pendingMode) {
           const mode = pendingMode;
           pendingMode = null;
@@ -1083,11 +1108,26 @@
       resultZip.textContent = job.mode === "submission" ? hasZip ? "생성됨" : "생성 안 됨" : "제출 점검 시 생성";
       renderReportLinks(job);
       const saveStep = (job.steps || []).find((step) => step.name === "save_reports");
-      if (job.saved_reports?.length) {
-        savePath.textContent = `${job.saved_location_label || "선택한 위치"}에 결과물 ${job.saved_reports.length}개를 저장했습니다.`;
+      if (browserSavedReports.length) {
+        savePath.textContent = `${selectedSaveDir} 폴더에 결과물 ${browserSavedReports.length}개를 저장했습니다.`;
       } else if (saveStep?.status === "skipped") {
-        progressSaveDetail.textContent = "저장 위치를 선택하지 않아 PC 저장은 건너뛰었습니다.";
+        progressSaveDetail.textContent = "결과 저장을 완료하지 못했습니다.";
       }
+    }
+
+    async function saveReportsToSelectedDirectory(job) {
+      if (!selectedSaveDirectoryHandle) throw new Error("결과 저장 위치를 먼저 선택하세요.");
+      browserSavedReports = [];
+      for (const report of job.reports || []) {
+        const response = await fetch(report.url, { cache: "no-store" });
+        if (!response.ok) throw new Error(`${report.file_name}을 저장하지 못했습니다.`);
+        const destination = await selectedSaveDirectoryHandle.getFileHandle(report.file_name, { create: true });
+        const writable = await destination.createWritable();
+        await writable.write(await response.blob());
+        await writable.close();
+        browserSavedReports.push(report.file_name);
+      }
+      progressSaveDetail.textContent = `${selectedSaveDir} 폴더에 결과물을 저장했습니다.`;
     }
 
     async function pollResult(scanId) {
@@ -1108,6 +1148,7 @@
             const resultResponse = await fetch(`/api/scan/${scanId}/result`, { cache: "no-store" });
             const job = await resultResponse.json();
             if (!resultResponse.ok) throw new Error(job.error || "점검 결과를 불러오지 못했습니다.");
+            await saveReportsToSelectedDirectory(job);
             renderProgress({ ...progress, status: job.status, steps: job.steps });
             setResultDone(job);
             return;
@@ -1130,7 +1171,7 @@
 
     async function startApiScan(mode) {
       const scanMode = mode.dataset.mode;
-      const targetType = activeTarget === "url" ? "github_url" : activeTarget === "zip" ? "archive" : "folder";
+      const targetType = activeTarget === "url" ? "github_url" : selectedTargetType;
       const targetRef = activeTarget === "url" ? targetInput.value.trim() : selectedTargetRef;
       const response = await fetch("/api/scan/start", {
         method: "POST",
@@ -1139,7 +1180,7 @@
           scan_mode: scanMode,
           target_type: targetType,
           target_ref: targetRef,
-          save_dir: selectedSaveDir
+          save_dir: ""
         })
       });
       const started = await response.json();
@@ -1186,6 +1227,19 @@
       });
     });
 
+    function resetTargetPickerAfterCancel() {
+      if (!targetSelectionInFlight) return;
+      targetSelectionInFlight = false;
+      scanButton.disabled = false;
+      scanButton.textContent = targetText[activeTarget].button;
+      targetHelp.textContent = "선택이 취소되었습니다. 다시 선택하세요.";
+    }
+
+    folderPickerInput.addEventListener("change", () => uploadBrowserTarget(folderPickerInput.files, "folder"));
+    archivePickerInput.addEventListener("change", () => uploadBrowserTarget(archivePickerInput.files, "archive"));
+    folderPickerInput.addEventListener("cancel", resetTargetPickerAfterCancel);
+    archivePickerInput.addEventListener("cancel", resetTargetPickerAfterCancel);
+
     targetInput.addEventListener("input", () => {
       if (activeTarget !== "url") return;
       selectedReady = targetInput.value.trim().length > 0;
@@ -1216,18 +1270,13 @@
       saveLocationSelectionInFlight = true;
       saveButton.disabled = true;
       saveButton.textContent = "선택 창 여는 중";
-      savePath.textContent = "Windows 폴더 선택 창에서 저장할 위치를 선택하세요.";
+      savePath.textContent = "Windows 탐색기에서 결과를 저장할 폴더를 선택하세요.";
       try {
-        const response = await fetch("/api/local/pick-target", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ kind: "save_dir" })
-        });
-        const selection = await response.json();
-        if (!response.ok) throw new Error(selection.error || "저장 위치 선택을 완료하지 못했습니다.");
-        selectedSaveDir = selection.path;
-        savePath.textContent = `${selection.label} 폴더에 결과물을 저장합니다.`;
-        progressSaveDetail.textContent = `${selection.label} 폴더에 결과물을 저장합니다.`;
+        if (!window.showDirectoryPicker) throw new Error("이 기능은 Chrome 또는 Edge에서 사용할 수 있습니다.");
+        selectedSaveDirectoryHandle = await window.showDirectoryPicker({ mode: "readwrite" });
+        selectedSaveDir = selectedSaveDirectoryHandle.name;
+        savePath.textContent = `${selectedSaveDir} 폴더에 결과물을 저장합니다.`;
+        progressSaveDetail.textContent = `${selectedSaveDir} 폴더에 결과물을 저장합니다.`;
         if (pendingMode) {
           const queuedMode = pendingMode;
           pendingMode = null;

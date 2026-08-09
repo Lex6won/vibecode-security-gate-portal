@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -77,7 +77,7 @@ async function createZipFixture() {
   const child = spawn(powershell, ["-NoProfile", "-Command", script], { windowsHide: true });
   const [code] = await once(child, "close");
   assert.equal(code, 0, "test ZIP fixture must be created");
-  return { fixtureDir, archivePath };
+  return { fixtureDir, sourceFile, archivePath };
 }
 
 async function assertPagesLoad() {
@@ -153,6 +153,41 @@ async function scenarioLocalFolderAndZip(fixture) {
   return { localFolder, archive };
 }
 
+async function uploadBrowserTarget(kind, files) {
+  const form = new FormData();
+  form.append("kind", kind);
+  form.append("manifest", JSON.stringify(files.map((file) => file.path)));
+  for (const [index, file] of files.entries()) {
+    form.append(`file_${index}`, new Blob([await readFile(file.source)]), file.name);
+  }
+  return fetchJson("/api/local/upload-target", { method: "POST", body: form });
+}
+
+async function scenarioBrowserSelectedTargets(fixture) {
+  const browserFolder = await uploadBrowserTarget("folder", [{
+    source: fixture.sourceFile,
+    path: "selected-source/safe-source.js",
+    name: "safe-source.js"
+  }]);
+  assert.equal(browserFolder.status, "selected");
+  assert.equal(browserFolder.target_type, "browser_folder");
+  const folderResult = await startScan("quick", browserFolder.target_type, browserFolder.path);
+  assert.equal(folderResult.status, "completed");
+  assert.equal(folderResult.summary.scanned_file_count, 1, "browser-selected folder must reach the local checker");
+
+  const browserArchive = await uploadBrowserTarget("archive", [{
+    source: fixture.archivePath,
+    path: "safe-source.zip",
+    name: "safe-source.zip"
+  }]);
+  assert.equal(browserArchive.status, "selected");
+  assert.equal(browserArchive.target_type, "browser_archive");
+  const archiveResult = await startScan("quick", browserArchive.target_type, browserArchive.path);
+  assert.equal(archiveResult.status, "completed");
+  assert.equal(archiveResult.summary.scanned_file_count, 1, "browser-selected ZIP must reach the local checker");
+  return { folderResult, archiveResult };
+}
+
 async function scenarioHarnessAndMcp() {
   const status = await fetchJson("/api/local/status");
   assert.equal(status.project_harness.status, "applied");
@@ -220,6 +255,7 @@ try {
   const quick = await scenarioQuickScan();
   const submission = await scenarioStandardSubmission();
   const localTargets = await scenarioLocalFolderAndZip(fixture);
+  const browserTargets = await scenarioBrowserSelectedTargets(fixture);
   await scenarioHarnessAndMcp();
   await scenarioAdmin();
   console.log(JSON.stringify({
@@ -229,8 +265,10 @@ try {
       pages_loaded: true,
       quick_scan: quick.id,
       submission_scan: submission.id,
-      local_folder_scan: localTargets.localFolder.id,
-      zip_scan: localTargets.archive.id,
+    local_folder_scan: localTargets.localFolder.id,
+    zip_scan: localTargets.archive.id,
+    browser_folder_scan: browserTargets.folderResult.id,
+    browser_zip_scan: browserTargets.archiveResult.id,
       harness_mcp: true,
       admin: true
     }

@@ -1,10 +1,12 @@
 import { createServer } from "node:http";
 import { spawn } from "node:child_process";
-import { createReadStream, existsSync, mkdirSync, statSync } from "node:fs";
+import { createReadStream, createWriteStream, existsSync, mkdirSync, statSync } from "node:fs";
 import { copyFile, rm, readdir, readFile, writeFile } from "node:fs/promises";
-import { basename, extname, isAbsolute, join, normalize, relative, resolve } from "node:path";
+import { pipeline } from "node:stream/promises";
+import { basename, dirname, extname, isAbsolute, join, normalize, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
+import Busboy from "busboy";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 const ROOT = resolve(__dirname, "..");
@@ -14,6 +16,8 @@ const TMP_DIR = join(ROOT, "tmp", "scan-targets");
 const HARNESS_SOURCE_DIR = resolve(ROOT, "..", "vibe_harness_codex");
 const PORT = Number(process.env.PORT || 8787);
 const POWERSHELL = join(process.env.SystemRoot || "C:\\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
+const MAX_BROWSER_UPLOAD_BYTES = 500 * 1024 * 1024;
+const MAX_BROWSER_UPLOAD_FILES = 10000;
 
 const jobs = new Map();
 
@@ -156,103 +160,9 @@ function escapePowerShellLiteral(value) {
   return String(value).replaceAll("'", "''");
 }
 
-function modernFolderPickerScript(title) {
+function folderPickerScript(title) {
   const safeTitle = escapePowerShellLiteral(title);
-  return `$ErrorActionPreference = 'Stop'
-$source = @'
-using System;
-using System.Runtime.InteropServices;
-
-public static class PortalFolderPicker {
-  [Flags]
-  private enum FileDialogOptions : uint {
-    PickFolders = 0x00000020,
-    ForceFileSystem = 0x00000040,
-    PathMustExist = 0x00000800,
-    DontAddToRecent = 0x02000000
-  }
-
-  private enum SigDn : uint { FileSystemPath = 0x80058000 }
-
-  [ComImport, Guid("43826D1E-E718-42EE-BC55-A1E261C37BFE"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-  private interface IShellItem {
-    [PreserveSig] int BindToHandler(IntPtr pbc, ref Guid bhid, ref Guid riid, out IntPtr ppv);
-    [PreserveSig] int GetParent(out IShellItem ppsi);
-    [PreserveSig] int GetDisplayName(SigDn sigdnName, out IntPtr ppszName);
-    [PreserveSig] int GetAttributes(uint sfgaoMask, out uint psfgaoAttribs);
-    [PreserveSig] int Compare(IShellItem psi, uint hint, out int piOrder);
-  }
-
-  [ComImport, Guid("42F85136-DB7E-439C-85F1-E4075D135FC8"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-  private interface IFileDialog {
-    [PreserveSig] int Show(IntPtr parent);
-    [PreserveSig] int SetFileTypes(uint count, IntPtr filters);
-    [PreserveSig] int SetFileTypeIndex(uint index);
-    [PreserveSig] int GetFileTypeIndex(out uint index);
-    [PreserveSig] int Advise(IntPtr events, out uint cookie);
-    [PreserveSig] int Unadvise(uint cookie);
-    [PreserveSig] int SetOptions(FileDialogOptions options);
-    [PreserveSig] int GetOptions(out FileDialogOptions options);
-    [PreserveSig] int SetDefaultFolder(IShellItem item);
-    [PreserveSig] int SetFolder(IShellItem item);
-    [PreserveSig] int GetFolder(out IShellItem item);
-    [PreserveSig] int GetCurrentSelection(out IShellItem item);
-    [PreserveSig] int SetFileName([MarshalAs(UnmanagedType.LPWStr)] string name);
-    [PreserveSig] int GetFileName(out IntPtr name);
-    [PreserveSig] int SetTitle([MarshalAs(UnmanagedType.LPWStr)] string title);
-    [PreserveSig] int SetOkButtonLabel([MarshalAs(UnmanagedType.LPWStr)] string text);
-    [PreserveSig] int SetFileNameLabel([MarshalAs(UnmanagedType.LPWStr)] string label);
-    [PreserveSig] int GetResult(out IShellItem item);
-    [PreserveSig] int AddPlace(IShellItem item, int placement);
-    [PreserveSig] int SetDefaultExtension([MarshalAs(UnmanagedType.LPWStr)] string extension);
-    [PreserveSig] int Close(int hr);
-    [PreserveSig] int SetClientGuid(ref Guid guid);
-    [PreserveSig] int ClearClientData();
-    [PreserveSig] int SetFilter(IntPtr filter);
-  }
-
-  [ComImport, Guid("DC1C5A9C-E88A-4DDE-A5A1-60F82A20AEF7")]
-  private class FileOpenDialog { }
-
-  [DllImport("shell32.dll", CharSet = CharSet.Unicode, PreserveSig = true)]
-  private static extern int SHCreateItemFromParsingName(
-    string path,
-    IntPtr bindContext,
-    ref Guid iid,
-    out IShellItem item
-  );
-
-  public static string Probe() {
-    string folder = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
-    Guid iid = new Guid("43826D1E-E718-42EE-BC55-A1E261C37BFE");
-    IShellItem item;
-    if (SHCreateItemFromParsingName(folder, IntPtr.Zero, ref iid, out item) != 0 || item == null) return null;
-    IntPtr path;
-    if (item.GetDisplayName(SigDn.FileSystemPath, out path) != 0 || path == IntPtr.Zero) return null;
-    try { return Marshal.PtrToStringUni(path); }
-    finally { Marshal.FreeCoTaskMem(path); }
-  }
-
-  public static string Pick(string title) {
-    IFileDialog dialog = (IFileDialog)new FileOpenDialog();
-    FileDialogOptions options;
-    if (dialog.GetOptions(out options) != 0) return null;
-    if (dialog.SetOptions(options | FileDialogOptions.PickFolders | FileDialogOptions.ForceFileSystem | FileDialogOptions.PathMustExist | FileDialogOptions.DontAddToRecent) != 0) return null;
-    dialog.SetTitle(title);
-    dialog.SetOkButtonLabel("선택");
-    if (dialog.Show(IntPtr.Zero) != 0) return null;
-    IShellItem item;
-    if (dialog.GetResult(out item) != 0 || item == null) return null;
-    IntPtr path;
-    if (item.GetDisplayName(SigDn.FileSystemPath, out path) != 0 || path == IntPtr.Zero) return null;
-    try { return Marshal.PtrToStringUni(path); }
-    finally { Marshal.FreeCoTaskMem(path); }
-  }
-}
-'@
-Add-Type -TypeDefinition $source
-$picked = [PortalFolderPicker]::Pick('${safeTitle}')
-if ($null -ne $picked) { [Console]::Out.Write($picked) }`;
+  return `Add-Type -AssemblyName System.Windows.Forms; $dialog = New-Object System.Windows.Forms.FolderBrowserDialog; $dialog.Description = '${safeTitle}'; $dialog.UseDescriptionForTitle = $true; $dialog.AutoUpgradeEnabled = $true; $dialog.ShowNewFolderButton = $true; if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { [Console]::Out.Write($dialog.SelectedPath) }; $dialog.Dispose()`;
 }
 
 async function pickLocalPath(kind) {
@@ -265,7 +175,7 @@ async function pickLocalPath(kind) {
   const folderTitle = kind === "save_dir" ? "결과 저장 폴더 선택" : "검사할 프로젝트 폴더 선택";
   const utf8Output = "$OutputEncoding = New-Object System.Text.UTF8Encoding($false); [Console]::OutputEncoding = $OutputEncoding\n";
   const script = isFolder
-    ? modernFolderPickerScript(folderTitle)
+    ? folderPickerScript(folderTitle)
     : "Add-Type -AssemblyName System.Windows.Forms; $dialog = New-Object System.Windows.Forms.OpenFileDialog; $dialog.Title = '검사할 ZIP 파일 선택'; $dialog.Filter = 'ZIP archive (*.zip)|*.zip'; $dialog.Multiselect = $false; if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { [Console]::Out.Write($dialog.FileName) }; $dialog.Dispose()";
   const picked = await runCommand(POWERSHELL, ["-NoProfile", "-STA", "-Command", `${utf8Output}${script}`], {
     timeout_ms: 300000,
@@ -306,6 +216,95 @@ async function readJson(request) {
   if (chunks.length === 0) return {};
   const raw = Buffer.concat(chunks).toString("utf8");
   return JSON.parse(raw);
+}
+
+function safeBrowserUploadPath(value) {
+  const raw = String(value || "").replaceAll("\\", "/").replace(/^\/+/, "");
+  const normalized = normalize(raw).replaceAll("\\", "/");
+  if (!raw || isAbsolute(raw) || normalized === ".." || normalized.startsWith("../") || normalized.includes("/../")) {
+    throw new Error("업로드 파일 경로가 올바르지 않습니다.");
+  }
+  return normalized;
+}
+
+async function receiveBrowserTarget(request) {
+  const contentType = String(request.headers["content-type"] || "");
+  if (!contentType.startsWith("multipart/form-data")) throw new Error("브라우저 파일 전송 형식이 올바르지 않습니다.");
+
+  const uploadId = randomUUID();
+  const uploadRoot = join(TMP_DIR, `browser-${uploadId}`);
+  mkdirSync(uploadRoot, { recursive: true });
+  let kind = "";
+  let manifest = [];
+  let totalBytes = 0;
+  let failure = null;
+  const writes = [];
+  const busboy = Busboy({ headers: request.headers, limits: { files: MAX_BROWSER_UPLOAD_FILES, fields: 3, fileSize: MAX_BROWSER_UPLOAD_BYTES } });
+
+  const fail = (message) => {
+    if (!failure) failure = new Error(message);
+  };
+
+  busboy.on("field", (name, value) => {
+    try {
+      if (name === "kind") kind = value;
+      if (name === "manifest") {
+        const parsed = JSON.parse(value);
+        if (!Array.isArray(parsed) || parsed.length === 0 || parsed.length > MAX_BROWSER_UPLOAD_FILES) throw new Error("업로드 파일 목록이 올바르지 않습니다.");
+        manifest = parsed.map((item) => safeBrowserUploadPath(item));
+      }
+    } catch (error) {
+      fail(String(error.message || error));
+    }
+  });
+
+  busboy.on("file", (fieldName, file) => {
+    const index = Number(fieldName.replace(/^file_/, ""));
+    if (!Number.isInteger(index) || !manifest[index]) {
+      fail("업로드 파일 목록과 파일 데이터가 일치하지 않습니다.");
+      file.resume();
+      return;
+    }
+    let target;
+    try {
+      target = resolve(uploadRoot, manifest[index]);
+      if (!target.startsWith(resolve(uploadRoot))) throw new Error("업로드 파일 경로가 허용 범위를 벗어났습니다.");
+      mkdirSync(dirname(target), { recursive: true });
+    } catch (error) {
+      fail(String(error.message || error));
+      file.resume();
+      return;
+    }
+    file.on("data", (chunk) => {
+      totalBytes += chunk.length;
+      if (totalBytes > MAX_BROWSER_UPLOAD_BYTES) fail("선택한 파일 용량이 500MB를 초과합니다.");
+    });
+    file.on("limit", () => fail("파일 하나의 용량이 500MB를 초과합니다."));
+    writes.push(pipeline(file, createWriteStream(target)));
+  });
+
+  await new Promise((resolvePromise, rejectPromise) => {
+    busboy.on("error", rejectPromise);
+    busboy.on("finish", resolvePromise);
+    request.pipe(busboy);
+  });
+  await Promise.all(writes);
+
+  if (failure || !["folder", "archive"].includes(kind) || manifest.length === 0 || writes.length !== manifest.length) {
+    await rm(uploadRoot, { recursive: true, force: true });
+    throw failure || new Error("선택한 파일을 모두 전송하지 못했습니다.");
+  }
+
+  if (kind === "archive") {
+    const archivePath = resolve(uploadRoot, manifest[0]);
+    if (manifest.length !== 1 || extname(archivePath).toLowerCase() !== ".zip") {
+      await rm(uploadRoot, { recursive: true, force: true });
+      throw new Error("ZIP 파일 하나만 선택할 수 있습니다.");
+    }
+    return { target_type: "browser_archive", path: archivePath, label: basename(archivePath), file_count: 1, cleanup_root: uploadRoot };
+  }
+
+  return { target_type: "browser_folder", path: uploadRoot, label: `${manifest.length}개 파일`, file_count: manifest.length, cleanup_root: uploadRoot };
 }
 
 async function gitSummary(repoPath) {
@@ -737,15 +736,16 @@ function isAllowedGithubUrl(value) {
 }
 
 async function prepareScanTarget(job) {
-  if (job.target_type === "folder") {
+  if (job.target_type === "folder" || job.target_type === "browser_folder") {
     const targetPath = resolve(String(job.target_ref || ""));
     if (!targetPath || !existsSync(targetPath)) {
       throw new Error("검사 대상을 찾지 못했습니다.");
     }
+    if (job.target_type === "browser_folder") job.temporary_paths.push(targetPath);
     return targetPath;
   }
 
-  if (job.target_type === "archive") {
+  if (job.target_type === "archive" || job.target_type === "browser_archive") {
     const archivePath = resolve(String(job.target_ref || ""));
     if (!existsSync(archivePath) || !statSync(archivePath).isFile()) {
       throw new Error("The selected archive is unavailable.");
@@ -758,6 +758,7 @@ async function prepareScanTarget(job) {
     await rm(extractedDir, { recursive: true, force: true });
     mkdirSync(extractedDir, { recursive: true });
     job.temporary_paths.push(extractedDir);
+    if (job.target_type === "browser_archive") job.temporary_paths.push(dirname(archivePath));
     await extractZip(archivePath, extractedDir);
     return extractedDir;
   }
@@ -953,7 +954,7 @@ function adminSummary() {
 function publicJob(job) {
   const targetLabel = job.target_type === "github_url"
     ? "GitHub repository"
-    : job.target_type === "archive"
+    : job.target_type === "archive" || job.target_type === "browser_archive"
       ? "Local ZIP archive"
       : "Local folder";
   return {
@@ -978,7 +979,7 @@ function publicJob(job) {
 async function startScan(request, response) {
   const body = await readJson(request);
   const mode = ["quick", "standard", "submission"].includes(body.scan_mode) ? body.scan_mode : "standard";
-  const targetType = ["folder", "archive", "github_url"].includes(body.target_type) ? body.target_type : "folder";
+  const targetType = ["folder", "archive", "github_url", "browser_folder", "browser_archive"].includes(body.target_type) ? body.target_type : "folder";
   const saveDir = body.save_dir ? resolve(String(body.save_dir)) : "";
   const job = createJob(mode, targetType, body.target_ref, saveDir);
 
@@ -1041,6 +1042,16 @@ async function handleApi(request, response, pathname) {
       });
     } catch (error) {
       json(response, 409, { status: "cancelled", error: String(error.message || error) });
+    }
+    return;
+  }
+
+  if (request.method === "POST" && pathname === "/api/local/upload-target") {
+    try {
+      const uploaded = await receiveBrowserTarget(request);
+      json(response, 201, { status: "selected", ...uploaded });
+    } catch (error) {
+      json(response, 400, { error: String(error.message || error) });
     }
     return;
   }

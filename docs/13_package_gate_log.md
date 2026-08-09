@@ -18,6 +18,7 @@
 | 날짜 | 생태계 | 패키지 | 버전 | 명령 | 결과 | 조치 |
 |---|---|---|---|---|---|---|
 | 2026-08-09 | npm | 없음 | - | - | 추가 패키지 없음 | 내장 모듈 유지 |
+| 2026-08-09 | npm | busboy | 1.6.0 | `gvskb_gate.js check/install`, `npm audit --omit=dev --audit-level=high` | PASS (MONITOR), audit 0 vulnerabilities | 브라우저가 선택한 폴더·ZIP 파일을 이 PC의 로컬 검사 작업공간으로 스트리밍 전송하기 위한 multipart 파서. 경로·파일 수·총 용량 제한을 서버에서 검증. |
 
 ## npm 패키지 확인
 

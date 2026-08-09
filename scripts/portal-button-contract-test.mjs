@@ -165,7 +165,11 @@ async function assertLocalPickerContract() {
   assert.ok(!html.includes('id="selectSaveLocation"'), "scan page must use the direct save-location button");
   assert.ok(html.includes('saveButton.addEventListener("click", chooseSaveLocation)'), "save-location button must open the picker directly");
   assert.ok(html.includes('await chooseSaveLocation();'), "scan start must request a save location directly when missing");
-  assert.ok(html.includes('fetch("/api/local/pick-target"'), "local source buttons must call the native picker API");
+  assert.ok(html.includes('id="folderPickerInput" type="file" webkitdirectory multiple'), "folder selection must use the browser Explorer picker");
+  assert.ok(html.includes('id="archivePickerInput" type="file" accept=".zip,application/zip"'), "ZIP selection must use the browser Explorer picker");
+  assert.ok(html.includes('const picker = activeTarget === "folder" ? folderPickerInput : archivePickerInput') && html.includes('picker.click()'), "folder selection button must open the browser file picker");
+  assert.ok(html.includes('fetch("/api/local/upload-target"'), "browser-selected source files must be sent to the local scanner");
+  assert.ok(html.includes('window.showDirectoryPicker'), "report save location must use the browser directory picker");
   assert.ok(html.includes('targetSelectionInFlight'), "native target picker must prevent duplicate picker windows");
 }
 
