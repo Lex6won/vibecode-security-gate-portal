@@ -578,7 +578,7 @@
 <body>
   <main>
     <header class="topbar">
-      <a class="top-title" href="./first-screen-gg-v2-1.html" aria-label="홈으로 이동">
+      <a class="top-title" href="/" aria-label="홈으로 이동">
         <i class="gg-mark" aria-hidden="true">경</i>
         <div>
           <strong>관리자 점검 현황</strong>
@@ -586,7 +586,7 @@
         </div>
       </a>
       <div class="top-actions">
-        <a class="top-link primary" href="./admin-login.html">총괄 관리자 로그인</a>
+        <a class="top-link primary" href="/admin/login">총괄 관리자 로그인</a>
       </div>
     </header>
 
@@ -630,7 +630,7 @@
               <span class="status fix">수정 필요</span>
               <span class="summary">높음 1 · 보통 2</span>
             </div>
-            <a class="report" href="#">열기</a>
+            <span class="report" aria-disabled="true">대기</span>
           </li>
 
           <li class="history-item">
@@ -644,7 +644,7 @@
               <span class="status review">사람 검토</span>
               <span class="summary">검토 1 · 오탐 후보 2</span>
             </div>
-            <a class="report" href="#">열기</a>
+            <span class="report" aria-disabled="true">대기</span>
           </li>
 
           <li class="history-item">
@@ -658,7 +658,7 @@
               <span class="status pass">제출 가능</span>
               <span class="summary">수정 0 · 검토 0</span>
             </div>
-            <a class="report" href="#">열기</a>
+            <span class="report" aria-disabled="true">대기</span>
           </li>
         </ul>
       </div>
@@ -687,6 +687,10 @@
     const adminSavePicker = document.querySelector("#adminSavePicker");
     const statusSelect = document.querySelector("#status");
     const periodSelect = document.querySelector("#period");
+    const historyList = document.querySelector(".history-list");
+    const detailList = document.querySelector(".detail-list");
+    const sectionCount = document.querySelector(".section-head span");
+    const metricValues = Array.from(document.querySelectorAll(".metric strong"));
 
     function selectOptionByText(select, text) {
       Array.from(select.options).forEach((option) => {
@@ -709,12 +713,101 @@
       });
     });
 
+    document.querySelector(".search")?.addEventListener("click", () => {
+      loadAdminData();
+    });
+
     document.querySelectorAll(".history-item").forEach((item) => {
       item.addEventListener("click", () => {
         document.querySelectorAll(".history-item").forEach((history) => history.classList.remove("active"));
         item.classList.add("active");
       });
     });
+
+    function statusLabel(decision) {
+      if (decision === "allow") return ["제출 가능", "pass"];
+      if (decision === "blocked") return ["차단", "fix"];
+      if (decision === "needs_review") return ["사람 검토", "review"];
+      return ["확인 필요", "review"];
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#39;");
+    }
+
+    function updateDetail(scan) {
+      const reports = scan.reports || [];
+      const html = reports.find((item) => item.file_name.endsWith(".html"));
+      const json = reports.find((item) => item.file_name.endsWith(".json") || !item.file_name.includes("."));
+      const zip = reports.find((item) => item.file_name.endsWith(".zip"));
+      detailList.innerHTML = `
+        <li><span>점검 대상</span><b>${escapeHtml(scan.target_type)}</b></li>
+        <li><span>점검 ID</span><b>${escapeHtml(scan.id.slice(0, 8))}</b></li>
+        <li><span>결과</span><b>${escapeHtml(statusLabel(scan.decision)[0])}</b></li>
+        <li><span>검사 파일</span><b>${scan.summary?.scanned_file_count ?? 0}건</b></li>
+        <li><span>발견 항목</span><b>${scan.summary?.finding_count ?? 0}건</b></li>
+        <li><span>HTML 보고서</span><b>${html ? "생성됨" : "대기"}</b></li>
+        <li><span>JSON 증거 보고서</span><b>${json ? "생성됨" : "대기"}</b></li>
+        <li><span>제출 ZIP</span><b>${zip ? "생성됨" : "제출 점검 시"}</b></li>
+      `;
+    }
+
+    function renderScans(scans) {
+      if (!scans.length) return;
+      historyList.replaceChildren();
+      scans.forEach((scan, index) => {
+        const [label, klass] = statusLabel(scan.decision);
+        const item = document.createElement("li");
+        item.className = `history-item${index === 0 ? " active" : ""}`;
+        item.tabIndex = 0;
+        const firstReport = (scan.reports || []).find((report) => report.url);
+        const safeUrl = firstReport?.url && firstReport.url.startsWith("/reports/") ? firstReport.url : "#";
+        item.innerHTML = `
+          <div class="when">${escapeHtml(new Date(scan.created_at).toLocaleString("ko-KR"))}<span class="who">익명 점검 #${escapeHtml(scan.id.slice(0, 8))}</span></div>
+          <div class="project">
+            <strong>${escapeHtml(scan.mode)} 점검</strong>
+            <span>${escapeHtml(scan.target_ref || scan.target_type)}</span>
+            <div class="meta-line"><span>${escapeHtml(scan.target_type)}</span><span>${escapeHtml(scan.status)}</span></div>
+          </div>
+          <div class="result-block">
+            <span class="status ${klass}">${escapeHtml(label)}</span>
+            <span class="summary">파일 ${scan.summary?.scanned_file_count ?? 0} · 발견 ${scan.summary?.finding_count ?? 0}</span>
+          </div>
+          <a class="report" href="${safeUrl}" target="_blank" rel="noreferrer">열기</a>
+        `;
+        item.addEventListener("click", () => {
+          document.querySelectorAll(".history-item").forEach((history) => history.classList.remove("active"));
+          item.classList.add("active");
+          updateDetail(scan);
+        });
+        historyList.append(item);
+      });
+      updateDetail(scans[0]);
+    }
+
+    async function loadAdminData() {
+      try {
+        const [summary, scansData] = await Promise.all([
+          fetch("/api/admin/summary", { cache: "no-store" }).then((response) => response.json()),
+          fetch("/api/admin/scans", { cache: "no-store" }).then((response) => response.json())
+        ]);
+        metricValues[0].textContent = `${summary.today}건`;
+        metricValues[1].textContent = `${summary.allow}건`;
+        metricValues[2].textContent = `${summary.blocked}건`;
+        metricValues[3].textContent = `${summary.needs_review}건`;
+        sectionCount.textContent = `현재 세션 ${summary.total}건`;
+        renderScans(scansData.scans || []);
+      } catch (error) {
+        sectionCount.textContent = "이력 API 연결 필요";
+      }
+    }
+
+    loadAdminData();
 
     adminExportButton.addEventListener("click", async () => {
       if ("showDirectoryPicker" in window) {

@@ -1,0 +1,35 @@
+source_priority:
+  - "../institution-profile.yaml tracks.enabled"
+  - "approved-tracks.yaml catalog"
+note: "기관별 활성 Track과 기본 Track은 shared/institution-profile.yaml에서 조정한다. 이 파일은 Track 카탈로그와 전환 기준이다."
+
+tracks:
+  fastapi-web:
+    platform_track: A
+    stack: Python 3.12 + FastAPI + Jinja2/HTMX
+    templates: [gg-webapp, gg-upload, gg-rag]
+    allowed: [internal, public-with-review]
+  streamlit-internal:
+    platform_track: S
+    stack: Python 3.12 + Streamlit
+    templates: [gg-dashboard]
+    allowed: [internal]
+    denied: [public]
+  react-fastapi:
+    platform_track: B
+    stack: React Vite JavaScript/TypeScript static + FastAPI
+    templates: [gg-spa]
+    allowed: [internal, public-with-review]
+  node-api:
+    platform_track: N
+    stack: React optional + Node 20.19+ Express API
+    templates: [gg-node-api]
+    allowed: [internal]
+    public: requires_committee_review
+denied:
+  nextjs_ssr: Convert to static export or Track B
+  spring_boot: Use FastAPI or separate formal IT project
+  django: Convert to FastAPI
+  flask: Convert to FastAPI
+  firebase: Replace with PostgreSQL and Keycloak
+  supabase_js: Replace direct client calls with server API

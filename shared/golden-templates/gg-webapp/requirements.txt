@@ -1,0 +1,10 @@
+# approved-packages.yaml (python core) 안에서만. 임의 추가 금지.
+fastapi==0.141.1
+uvicorn==0.52.1
+pydantic==2.13.4
+jinja2==3.1.6
+python-multipart==0.0.32
+sqlalchemy==2.0.51
+psycopg==3.3.4
+authlib==1.7.2
+PyJWT==2.13.0

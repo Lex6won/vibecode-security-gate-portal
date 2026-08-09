@@ -1,0 +1,84 @@
+source_priority:
+  - "../institution-profile.yaml libraries"
+  - "approved-packages.yaml catalog"
+note: "기관별 추가 허용/제한/차단 패키지는 shared/institution-profile.yaml에만 적는다. 이 파일은 공통 패키지 카탈로그다."
+
+policy: 넓은 승인, 강한 차단
+version: draft-0.1
+python:
+  core:
+    - fastapi
+    - uvicorn
+    - pydantic
+    - jinja2
+    - python-multipart
+    - sqlalchemy
+    - psycopg
+    - alembic
+    - authlib
+    - PyJWT
+    - argon2-cffi
+    - cryptography
+    - streamlit
+    - pandas
+    - openpyxl
+    - matplotlib
+    - plotly
+  restricted:
+    - requests
+    - httpx
+    - beautifulsoup4
+  restricted_conditions:
+    requests:
+      - "server-side only"
+      - "external endpoint must be approved by network profile"
+      - "timeouts required"
+      - "no personal/sensitive data to external API without approval"
+    httpx:
+      - "server-side only"
+      - "explicit timeout/client configuration required"
+      - "external endpoint must be approved by network profile"
+      - "no personal/sensitive data to external API without approval"
+    beautifulsoup4:
+      - "parsing approved internal/imported documents only"
+      - "no uncontrolled external web crawling from admin-network"
+npm_frontend:
+  core:
+    - react
+    - react-dom
+    - vite
+    - '@vitejs/plugin-react'
+    - react-router-dom
+    - lucide-react
+    - recharts
+    - zod
+    - '@tanstack/react-query'
+  restricted:
+    - axios
+  restricted_conditions:
+    axios:
+      - "prefer browser fetch wrapper first"
+      - "same-origin or approved internal API only"
+      - "no direct external SaaS/BaaS endpoint from browser"
+npm_backend:
+  core:
+    - express
+    - express-rate-limit
+    - helmet
+    - pg
+    - zod
+    - openid-client
+    - jose
+    - pino
+  restricted:
+    - node-fetch
+    - undici
+  restricted_conditions:
+    node-fetch:
+      - "server-side only"
+      - "approved endpoint and timeout required"
+      - "no personal/sensitive data to external API without approval"
+    undici:
+      - "server-side only"
+      - "approved endpoint and timeout required"
+      - "no personal/sensitive data to external API without approval"

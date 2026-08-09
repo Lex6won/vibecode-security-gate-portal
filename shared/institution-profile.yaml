@@ -1,0 +1,216 @@
+profile_version: 1
+
+institution:
+  name: "Sample Agency"
+  code: "sample-agency"
+  owner_team: "digital-service-team"
+  security_team: "information-security-team"
+  operations_team: "platform-operations-team"
+
+usage:
+  default_maturity_level: L1
+  default_service_exposure: internal-staff
+  default_network_profile: admin-network
+
+harness_enforcement:
+  default_mode: MONITOR
+  rollout_plan: "Recommended MONITOR for 2 weeks, then WARN after information-security-team confirmation."
+  mode_owner: "information-security-team"
+  verdict_source: "vibecode-checker/gvskb"
+  registry_access: "checker-mediated-only"
+  canonical_repositories:
+    harness: "https://github.com/Lex6won/vibe_harness_codex"
+    checker: "https://github.com/Lex6won/vibecode-checker"
+    update_rule: "Use git clone/pull from the canonical repositories; use this profile for agency-specific overrides."
+  package_ecosystems:
+    - pypi
+    - npm
+  implementation_language_policy:
+    allowed_function_implementation_languages:
+      - python
+      - javascript
+      - typescript
+    allowed_runtimes:
+      python: ["3.12"]
+      node: ["20.19+"]
+    typescript_policy: "allowed as implementation source for approved React/Vite and Node tracks; compile/check through the approved Node.js toolchain"
+    non_python_javascript_typescript_request: "needs-review-and-approved-track-rewrite"
+  env_grade_defaults:
+    personal_pc_harness: E1
+    internal_server_or_ci: E2
+    citizen_or_sensitive_operation: E3
+  env_grade_rules:
+    - "The harness determines env_grade from exposure, data, runtime, and deployment target."
+    - "E1 to E2 upgrade is allowed without approval."
+    - "E1 to E0 downgrade requires reason and approval record."
+    - "E2/E3 package auto-approval is not allowed; human/platform review is required."
+  package_decision_rules:
+    - "Local deny and checker verdict registry_rejected both block."
+    - "not_found blocks because hallucinated/slopsquatting-prone package names must not be installed."
+    - "unknown/error/cooldown/stale evidence is handled by enforcement mode."
+    - "Existing-package typosquat heuristics warn only in the harness; registry may hold auto-approval as UNDER_REVIEW."
+    - "Every block must include replacement, safe version, wait period, or review/exception path."
+  checker_bootstrap:
+    repository: "https://github.com/Lex6won/vibecode-checker"
+    install_requires_user_confirmation: true
+    offline_clone_allowed: false
+    default_local_path: "tools/vibecode-checker"
+    helper_script: "shared/scripts/checker-bootstrap.mjs"
+  checker_profile_policy:
+    default_source: "vibecode-checker built-in profiles"
+    quick_profile: "dev-quick"
+    custom_policies_dir: "absolute-path-only"
+    verify_applied_profile: true
+
+server_profiles:
+  small:
+    cpu: 1
+    memory_gb: 2
+    storage_gb: 20
+    recommended_for:
+      - internal_dashboard
+      - simple_crud
+      - local_automation
+  standard:
+    cpu: 2
+    memory_gb: 4
+    storage_gb: 50
+    recommended_for:
+      - internal_web
+      - file_upload
+      - api_service
+  large_or_special:
+    cpu: 4
+    memory_gb: 8
+    storage_gb: 100
+    requires_operations_review: true
+
+environment:
+  development:
+    server:
+      location: "approved-dev-pc-or-dev-network"
+      os: ["Windows 11", "Rocky Linux 9"]
+      container_runtime: ["none", "podman-rootless", "docker-desktop-dev-only"]
+      internet_access: "allowed-for-development-only"
+      package_install: "official-index-or-internal-mirror"
+    allowed_languages:
+      python: ["3.12"]
+      node: ["20.19+"]
+      typescript: ["5.x via approved Node.js toolchain"]
+    allowed_dbms:
+      sqlite:
+        versions: ["3"]
+        allowed_for: ["L0", "L1"]
+        note: "local prototype only; move to production DBMS for shared use"
+      postgresql:
+        versions: ["16"]
+        allowed_for: ["L1", "L2", "L3"]
+    denied_dbms:
+      - firebase
+      - supabase
+      - external-managed-db
+
+  production:
+    server:
+      location: "approved-production-network-or-dmz"
+      os: ["Rocky Linux 9"]
+      container_runtime: ["podman-rootless"]
+      internet_access: "denied-by-default"
+      package_install: "internal-mirror-or-preapproved-bundle-only"
+      install_base_path: "/apps/<project>/"
+      health_path: "/health"
+      logging: "stdout-or-journald"
+    allowed_languages:
+      python: ["3.12"]
+      node: ["20.19+"]
+      typescript: ["compiled artifacts only; runtime remains approved Node.js or static browser JavaScript"]
+    allowed_dbms:
+      postgresql:
+        versions: ["16"]
+        allowed_for: ["L2", "L3", "L4"]
+    denied_dbms:
+      - sqlite
+      - firebase
+      - supabase
+      - external-managed-db
+
+tracks:
+  enabled:
+    - fastapi-web
+    - streamlit-internal
+    - react-fastapi
+    - node-api
+    - local-automation
+  default_internal_web: fastapi-web
+  default_dashboard: streamlit-internal
+  default_public_candidate: react-fastapi
+  denied:
+    - nextjs-ssr
+    - firebase
+    - supabase-direct-client
+
+plugins:
+  ai_coding_tools:
+    codex:
+      status: allowed
+      use: "planning, implementation, artifact updates"
+    claude_code:
+      status: allowed
+      use: "harness execution, implementation, artifact updates"
+    lovable:
+      status: prototype-only
+      use: "screen prototype only; realign to approved track before operation"
+  mcp_servers:
+    vibecode-checker:
+      status: required
+      use: "security and dependency checks"
+    external_mcp:
+      status: denied-by-default
+      use: "requires agency approval or exception request"
+  browser_or_cloud_plugins:
+    github:
+      status: allowed-if-connected
+      use: "repository review, issues, pull requests"
+    google_drive:
+      status: restricted
+      use: "document access only; no personal or sensitive data export"
+    slack_teams_email:
+      status: restricted
+      use: "draft notifications only; no automatic sending without approval"
+
+libraries:
+  policy_files:
+    approved_packages: "shared/references/approved-packages.yaml"
+    denylist: "shared/references/package-denylist.yaml"
+    risk_policy: "shared/references/package-risk-policy.md"
+  additional_allowed:
+    python: []
+    npm_frontend: []
+    npm_backend: []
+  additional_restricted:
+    python: []
+    npm_frontend: []
+    npm_backend: []
+  additional_denied:
+    python: []
+    npm_frontend: []
+    npm_backend: []
+
+network:
+  enabled_profiles:
+    - admin-network
+    - dmz-public
+    - internet-prototype
+  admin_network_external_access: denied
+  dmz_public_requires:
+    - waf
+    - dast
+    - security_review
+    - operations_approval
+
+exceptions:
+  allowed: true
+  required_documents:
+    - "09_exception_request.md"
+    - "10_package_exception_request.md"
+  approval_owner: "agency-security-and-operations"

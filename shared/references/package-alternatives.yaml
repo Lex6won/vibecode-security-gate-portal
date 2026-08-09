@@ -1,0 +1,163 @@
+package_alternatives_version: 1
+
+purpose:
+  - "Ensure package blocking does not leave the coding task without a safe implementation path."
+  - "Prefer no-new-package and approved-package replacements before exception requests."
+
+selection_order:
+  - "standard_library_or_platform_builtin"
+  - "already_in_golden_template"
+  - "approved_core_package"
+  - "restricted_package_with_documented_condition"
+  - "smaller_feature_scope_without_new_package"
+  - "exception_request"
+
+mandatory_rule:
+  every_denied_or_unknown_package_must_have:
+    - "recommended_replacement"
+    - "safe_version_or_wait_days_when_available"
+    - "implementation_note"
+    - "feature_impact"
+    - "residual_risk"
+  if_no_replacement_exists: "create package review/exception artifact and stop before install"
+
+patterns:
+  external_baas:
+    blocked_examples:
+      - "supabase-js"
+      - "@supabase/supabase-js"
+      - "firebase"
+      - "firebase-admin"
+    preferred_replacement:
+      track: "fastapi-web or react-fastapi"
+      packages:
+        python:
+          - "sqlalchemy"
+          - "psycopg"
+          - "alembic"
+        npm_backend:
+          - "pg"
+      architecture: "PostgreSQL behind server-side API; never expose DB credentials to browser."
+      implementation_note: "Replace direct BaaS SDK calls with institution-approved backend endpoints."
+
+  frontend_http_client:
+    restricted_examples:
+      - "axios"
+    preferred_replacement:
+      packages: []
+      builtin: "browser fetch API"
+      implementation_note: "Use a small typed fetch wrapper with timeout, JSON parsing, and error handling."
+
+  backend_http_client_python:
+    restricted_examples:
+      - "requests"
+    conditionally_acceptable_examples:
+      - "httpx"
+    preferred_replacement:
+      packages:
+        python:
+          - "httpx"
+      condition: "server-side only; no personal data to external APIs without approved network profile."
+      implementation_note: "Prefer httpx for timeouts and explicit client configuration; record external endpoint."
+
+  browser_automation:
+    blocked_examples:
+      - "puppeteer"
+      - "playwright"
+    preferred_replacement:
+      packages: []
+      architecture: "Avoid runtime headless browsers in admin-network services."
+      implementation_note: "Use server-rendered HTML/PDF templates, CSV/XLSX export, or manual browser test outside production runtime."
+      exception_case: "Allowed only as separated test/dev tooling with explicit approval."
+
+  cdn_runtime_script:
+    blocked_examples:
+      - "cdn.jsdelivr.net"
+      - "unpkg.com"
+    preferred_replacement:
+      packages:
+        npm_frontend:
+          - "react"
+          - "recharts"
+          - "lucide-react"
+        python:
+          - "plotly"
+          - "matplotlib"
+      implementation_note: "Bundle approved packages locally through the selected golden template."
+
+  arbitrary_code_execution:
+    blocked_examples:
+      - "eval"
+      - "new Function"
+      - "pyexecjs"
+      - "execjs"
+    preferred_replacement:
+      packages: []
+      implementation_note: "Replace dynamic execution with explicit parser, whitelist mapping, or fixed workflow."
+
+  not_found_or_hallucinated_package:
+    blocked_examples:
+      - "official registry에서 찾을 수 없는 PyPI/npm 패키지명"
+    preferred_replacement:
+      packages: []
+      architecture: "Search existing approved/core packages first, then use standard library or a package review request."
+      implementation_note: "Do not install an absent package name. Confirm the intended known package name or rewrite the feature using approved dependencies."
+      review_case: "If the package is private/internal, require internal registry proof and reviewer confirmation."
+
+  cooldown_hold:
+    common_need: "New package/version is too recent for the applied env_grade cooldown."
+    preferred_replacement:
+      packages: []
+      implementation_note: "Use an older approved version if checker provides one, wait the required cooldown days, or implement without a new package."
+
+  vulnerable_package:
+    common_need: "Requested package/version has known vulnerability evidence."
+    preferred_replacement:
+      packages: []
+      implementation_note: "Use checker-suggested safe version when available. If no safe version exists, select an approved alternative or reduce feature scope."
+
+  excel_processing:
+    common_need: "Read/write spreadsheet files."
+    preferred_replacement:
+      packages:
+        python:
+          - "openpyxl"
+          - "pandas"
+      implementation_note: "Use openpyxl for structured xlsx manipulation; use pandas for tabular analysis."
+
+  validation:
+    common_need: "Validate user input and API payloads."
+    preferred_replacement:
+      packages:
+        python:
+          - "pydantic"
+        npm_frontend:
+          - "zod"
+        npm_backend:
+          - "zod"
+      implementation_note: "Keep validation close to API boundary and file upload boundary."
+
+  authentication:
+    common_need: "Login, token, and session integration."
+    preferred_replacement:
+      packages:
+        python:
+          - "authlib"
+          - "PyJWT"
+        npm_backend:
+          - "openid-client"
+          - "jose"
+      implementation_note: "Prefer institution SSO/OIDC; do not build custom password login unless approved."
+
+output_template:
+  fields:
+    - "blocked_or_requested_package"
+    - "reason"
+    - "replacement_package_or_builtin"
+    - "safe_version_or_wait_days"
+    - "checker_verdict"
+    - "applied_mode"
+    - "applied_env_grade"
+    - "code_change_summary"
+    - "feature_impact"
+    - "remaining_review_needed"

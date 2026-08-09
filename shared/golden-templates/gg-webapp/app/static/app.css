@@ -1,0 +1,9 @@
+/* self-host 정적자산(외부 CDN 금지 레일). */
+* { box-sizing: border-box; }
+body { font-family: system-ui, sans-serif; margin: 0; color: #1a1a1a; }
+header { padding: 12px 20px; border-bottom: 1px solid #e5e5e5; display: flex; gap: 8px; align-items: center; }
+main { max-width: 760px; margin: 0 auto; padding: 24px 20px; }
+.badge { font-size: 12px; background: #eef; color: #336; padding: 2px 8px; border-radius: 10px; }
+input, button { font-size: 15px; padding: 8px 10px; }
+form { display: flex; gap: 8px; margin: 16px 0; }
+ul { line-height: 1.9; }

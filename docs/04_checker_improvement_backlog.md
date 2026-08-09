@@ -99,6 +99,8 @@
 - 명령 실행 탐지는 `shell=True`, 외부 입력 연결, allowlist 기반 실행을 구분한다.
 - 빈 `catch` 또는 best-effort cleanup은 치명 취약점이 아니라 검토 또는 품질 경고로 분리한다.
 - JSON/YAML/AST 파서를 우선 사용하고 정규식 단독 차단을 줄인다.
+- LLM 보안 룰은 실행 코드와 정책·문서·fixture를 구분한다. 2026-08-09 하네스 `core-process-enforcement.yaml`의 완료 보고 안내 문구가 `GOV-LLM-OUTPUT-HANDLING-001` high/block으로 오탐된 사례가 있었다. 실제 sink, 렌더링, eval, shell, SQL 연결이 없는 YAML 정책 문서는 `false_positive_candidate` 또는 `allow`로 분리해야 한다.
+- 위 사례는 회귀 fixture로 남긴다. 입력 예시는 `completion_evidence_required`, `scenario_result`, `checker_gate_status` 같은 구조화 정책 필드이며, 기대 결과는 findings 0건 또는 문서 맥락 경고 이하이다.
 
 ### P0-6. 업데이트 안정 채널
 

@@ -1,0 +1,162 @@
+﻿{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "vibecode-manifest",
+  "type": "object",
+  "required": ["project_id", "service_exposure", "network_profile", "track", "artifacts", "gates"],
+  "properties": {
+    "project_id": {"type": "string"},
+    "service_name": {"type": "string"},
+    "work_mode": {"enum": ["new-build", "change", "security-check", "release", "prototype-conversion", "pilot-evaluation", "unknown"]},
+    "maturity_level": {"enum": ["L0", "L1", "L2", "L3", "L4", "unknown"]},
+    "maturity_reason": {"type": "string"},
+    "next_gate": {"type": "string"},
+    "service_exposure": {"enum": ["internal-staff", "public-citizen", "hybrid", "unknown"]},
+    "network_profile": {"enum": ["admin-network", "dmz-public", "internet-prototype", "unknown"]},
+    "institution_profile": {
+      "type": "object",
+      "properties": {
+        "path": {"type": "string"},
+        "institution_code": {"type": "string"},
+        "environment": {"enum": ["development", "production", "unknown"]}
+      }
+    },
+    "runtime_external_access": {"enum": ["none", "approved-proxy", "dmz-only", "pending-exception", "unknown"]},
+    "data_level": {"enum": ["green", "yellow", "red", "unknown"]},
+    "track": {"enum": ["fastapi-web", "streamlit-internal", "react-fastapi", "node-api", "local-automation", "unknown"]},
+    "runtime": {"type": "object"},
+    "enforcement": {
+      "type": "object",
+      "properties": {
+        "mode": {"enum": ["MONITOR", "WARN", "ENFORCE", "unknown"]},
+        "env_grade": {"enum": ["E0", "E1", "E2", "E3", "unknown"]},
+        "verdict_source": {"type": "string"},
+        "registry_access": {"enum": ["checker-mediated-only", "not-configured", "unknown"]},
+        "implementation_languages": {
+          "type": "array",
+          "items": {"enum": ["python", "javascript", "typescript"]}
+        },
+        "checker_verdict_summary": {"type": "object"},
+        "registry_status": {"type": "object"},
+        "unchecked_count": {"type": "integer", "minimum": 0},
+        "truncated_count": {"type": "integer", "minimum": 0},
+        "intel_cache_state": {"type": "string"},
+        "kev_checked": {"type": "boolean"},
+        "version_exact": {"type": "boolean"},
+        "source_scope_summary": {"type": "object"},
+        "registry_stale": {"type": "boolean"},
+        "pass_freshness_target": {"type": "string"},
+        "ordinary_user_message_policy": {"enum": ["silent-pass-one-line-block", "unknown"]}
+      }
+    },
+    "plugins": {"type": "object"},
+    "dependencies": {
+      "type": "object",
+      "properties": {
+        "requested": {"type": "array"},
+        "approved": {"type": "array"},
+        "restricted": {"type": "array"},
+        "replaced": {"type": "array"},
+        "needs_review": {"type": "array"},
+        "denied": {"type": "array"},
+        "checker_verdicts": {"type": "array"},
+        "replacements": {"type": "array"},
+        "mode_decisions": {"type": "array"},
+        "source_scope_counts": {"type": "object"},
+        "kev_checked_summary": {"type": "object"},
+        "version_exact_summary": {"type": "object"},
+        "registry_status": {"type": "object"},
+        "scan_evidence": {"type": "object"}
+      }
+    },
+    "feature_discovery": {"type": "object"},
+    "artifacts": {"type": "object"},
+    "security_check": {
+      "type": "object",
+      "properties": {
+        "profile": {"enum": ["quick", "standard", "full", "unknown"]},
+        "requested_checker_profile": {"type": "string"},
+        "applied_checker_profile": {"type": "string"},
+        "checker_profile_applied": {"type": "boolean"},
+        "checker_profile_source": {"enum": ["built-in", "absolute-custom-policy-dir", "unknown"]},
+        "checker_profile_mismatch_reason": {"type": "string"},
+        "profile_fallback": {
+          "anyOf": [
+            {"type": "null"},
+            {"type": "object"}
+          ]
+        },
+        "scanned_file_count": {"type": "integer", "minimum": 0},
+        "full_scan_required": {"type": "boolean"},
+        "full_scan_completed": {"type": "boolean"},
+        "tools_used": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "server_status",
+              "scan_path",
+              "scan_dependencies",
+              "scan_installed_packages",
+              "scan_vendor_bundles",
+              "render_report"
+            ]
+          }
+        },
+        "dependency_audit_merged": {"type": "boolean"},
+        "checker_saved_reports": {
+          "type": "object",
+          "properties": {
+            "markdown": {"type": "string"},
+            "html": {"type": "string"},
+            "json": {"type": "string"},
+            "directory": {"type": "string"}
+          }
+        },
+        "final_submission_reports": {
+          "type": "object",
+          "properties": {
+            "html_report": {"type": "string"},
+            "json_evidence": {"type": "string"},
+            "submission_required": {"type": "boolean"},
+            "submission_target": {"enum": ["security-team", "ax-team", "security-or-ax-team", "institution-defined", "unknown"]},
+            "notice_given": {"type": "boolean"},
+            "official_approval_claimed": {"type": "boolean"}
+          }
+        },
+        "conditional_documents": {"type": "array"},
+        "missing_evidence": {"type": "array"}
+      }
+    },
+    "checker_bootstrap": {
+      "type": "object",
+      "properties": {
+        "checker_status": {"enum": ["connected", "installed", "missing", "failed", "user-declined", "unknown"]},
+        "checker_source": {"enum": ["MCP", "CLI", "GitHub clone", "local path", "unknown"]},
+        "checker_repository": {"type": "string"},
+        "checker_path": {"type": "string"},
+        "checked_at": {"type": "string"},
+        "install_user_confirmed": {"type": "boolean"},
+        "install_result": {"type": "string"},
+        "server_status_result_id": {"type": "string"}
+      }
+    },
+    "pilot_metrics": {"type": "object"},
+    "exceptions": {"type": "array"},
+    "overrides": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "target": {"type": "string"},
+          "verdict": {"type": "string"},
+          "registry_status": {"type": "string"},
+          "reason_code": {"type": "string"},
+          "approval_ref": {"type": "string"},
+          "mode": {"enum": ["MONITOR", "WARN", "ENFORCE"]},
+          "expires_at": {"type": "string"},
+          "created_at": {"type": "string"}
+        }
+      }
+    },
+    "gates": {"type": "object"}
+  }
+}

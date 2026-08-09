@@ -1,0 +1,153 @@
+trusted_registry_integration_version: 2
+
+purpose:
+  - "Define how registry-backed package governance reaches the harness through vibecode-checker/gvskb."
+  - "Avoid making each AI coding harness know registry API details, credentials, or schemas."
+  - "Keep registry governance, checker evidence, and harness enforcement separate."
+
+integration_model:
+  registry_owner: "trusted package registry service"
+  checker_owner: "vibecode-checker/gvskb"
+  harness_owner: "user-side enforcement"
+  normal_path:
+    - "Harness asks vibecode-checker/gvskb to scan a package, manifest, lockfile, or source path."
+    - "vibecode-checker/gvskb queries the trusted registry when available."
+    - "vibecode-checker/gvskb combines registry decision, vulnerability intelligence, malicious-package signals, cooldown, and cache freshness."
+    - "Harness receives a single verdict and supporting fields."
+    - "Harness maps the verdict to log/warn/block/pass using shared/references/harness-enforcement-contract.yaml."
+  direct_registry_calls_by_harness: "not allowed for normal package decisions"
+
+current_mode:
+  registry_available: "through-checker-when-configured"
+  behavior:
+    - "Use local deny/allow catalogs as seed policy and immediate local guardrails."
+    - "Use vibecode-checker/gvskb verdicts as the package/security enforcement input."
+    - "Record package review evidence in workspace artifacts."
+    - "Do not send results to an external DB/API unless explicitly enabled by institution policy."
+
+future_mode:
+  source_of_truth: "registry service"
+  harness_dependency: "checker verdict contract, not registry API contract"
+  generated_snapshot: "generated/package-policy.snapshot.json"
+  platform_handoff: "Use package-governance.yaml future_platform_integration only after institution approval."
+  catalog_import_note: "Name-only harness approved/restricted package catalogs are scope hints, not registry APPROVED decisions. Registry APPROVED requires exact version and checker evidence. Denied package names may be imported as REJECTED."
+
+registry_status_mapping:
+  APPROVED:
+    harness_status: "approved"
+    expected_checker_verdict: "registry_approved"
+  CONDITIONAL:
+    harness_status: "restricted"
+    expected_checker_verdict: "registry_approved or checked_stale with conditions"
+  UNDER_REVIEW:
+    harness_status: "needs-review"
+    expected_checker_verdict: "unknown"
+  HOLD:
+    harness_status: "needs-review"
+    expected_checker_verdict: "cooldown_hold"
+  REJECTED:
+    harness_status: "denied"
+    expected_checker_verdict: "registry_rejected"
+  BLOCK:
+    harness_status: "denied"
+    expected_checker_verdict: "registry_rejected or malicious"
+  UNKNOWN:
+    harness_status: "needs-review"
+    expected_checker_verdict: "unknown"
+
+checker_verdicts:
+  malicious: "Known or strongly confirmed malicious package. Always block."
+  registry_rejected: "Institution registry rejected this package/version. Always block, including stale rejected cache."
+  not_found: "Package absent from official registry. Always block as hallucination/slopsquatting risk."
+  vulnerable: "Known CVE or vulnerability signal. Mode and severity determine warn/block unless in_kev=true."
+  cooldown_hold: "Too new to trust under env_grade cooldown. Hold or block depending on mode."
+  checked_stale: "Evidence exists but intelligence/cache is stale. Warn or enforce according to mode."
+  registry_approved: "Registry approved, subject to checked flag and conditions."
+  checked_clean: "Checker found no blocking evidence in current data."
+  unknown: "Checker cannot decide. Not proof of safety."
+  error: "Lookup/check failed. Not proof of safety."
+
+harness_rules:
+  - "Local denylist blocks before any allowlist interpretation."
+  - "Registry rejection returned through checker blocks even when local allowlist contains the package."
+  - "Local allowlist may support pass only when checker verdict is registry_approved or checked_clean, or when the active mode permits pass."
+  - "If checker returns not_found, block before install and suggest a known replacement or package-name correction."
+  - "If checker returns cooldown_hold, show remaining wait days when provided and suggest an older approved version or no-new-package path."
+  - "If checker returns conditions, allow only if the harness can enforce every condition such as lockfile, pinned version, internal mirror, --ignore-scripts, or dev-only use."
+  - "If checker returns typosquat heuristics for an existing package, warn in the harness; do not block solely on that heuristic. Registry may return UNDER_REVIEW by withholding automatic approval."
+  - "For L2/L3/L4 handoff, no dependency may remain unchecked without a recorded warning/block decision and reviewer path."
+  - "A block must include package, verdict, severity, mode, env_grade, safe replacement/version, and review or exception route."
+  - "Do not convert name-only approved package catalog entries into registry_approved. Treat them as allowed scope only."
+
+stale_and_outage_rules:
+  stale_rejected_cache: "Continue to block. Tell the user that registry rejection is stale or registry confirmation failed."
+  stale_approved_cache: "Apply checked_stale/checked=false mode rules and request rescan or review for L2+."
+  asymmetric_freshness: "Freshness is required before a stale result becomes less strict. If an old block cannot be refreshed, keep the block with stale notation."
+  registry_unreachable: "Do not invent registry policy. Enforce the checker result state and mark registry_status as unavailable."
+  registry_status_non_ok: "Only registry_status == ok means an institution registry decision is usable. Treat unreachable, rejected, item_failed, unauthorized, disabled, and future unknown values as no institution decision for allow purposes."
+  checker_unavailable: "Planning/design may continue, but install/use/release gates remain incomplete."
+
+required_checker_response_fields:
+  package_level:
+    - "verdict"
+    - "verdict_severity"
+    - "requires_review"
+    - "checked"
+    - "is_malicious_package"
+    - "in_kev"
+    - "kev_checked"
+    - "max_cve"
+    - "cooldown.ok"
+    - "version_exact"
+    - "source_scope"
+    - "registry_status"
+    - "registry_decision"
+    - "registry_stale"
+    - "heuristics.typosquat_warning"
+  manifest_level:
+    - "truncated_count"
+    - "unchecked_count"
+    - "intel_cache.state"
+    - "registry_status"
+    - "source_kind"
+
+audit_metadata:
+  include_when_calling_gvskb:
+    - "caller: harness:auto"
+    - "request_type: AUTO or MANUAL"
+    - "project_id"
+    - "maturity_level"
+    - "env_grade"
+    - "track"
+    - "requested_package"
+  exclude:
+    - "personal name"
+    - "personal email"
+    - "employee id"
+    - "resident registration number"
+    - "secrets"
+    - "private registry token"
+  include_when_recording_decision:
+    - "registry_decision_id when returned by checker"
+    - "checker_result_id"
+    - "checker_version"
+    - "policy_version"
+    - "timestamp"
+    - "applied_enforcement_mode"
+    - "applied_env_grade"
+
+source_scope_rules:
+  direct_dependency_scopes:
+    - single
+    - manifest
+  transitive_or_observed_scopes:
+    - lockfile
+    - installed
+  review_queue_rule: "single/manifest observations may enter reviewer queue; lockfile/installed observations are stored but not normally queued."
+  enforce_unknown_rule: "Unknown blocks in ENFORCE only for single/manifest. Unknown on lockfile/installed is recorded/reported but not blocked by unknown alone."
+
+user_experience_rules:
+  - "A pass should normally be silent."
+  - "A block should be one short action-oriented line for ordinary users."
+  - "System degradation such as registry outage, item_failed, intel cache missing, or kev_checked=false belongs in staff reports/logs, not ordinary user choice screens."
+  - "The only ordinary user choice point is structured override when institution policy enables it."

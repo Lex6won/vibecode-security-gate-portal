@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "vibecode harness declaration",
+  "type": "object",
+  "required": ["harness_version", "name", "profile", "adapters", "references", "permissions", "safe_outputs", "validation"],
+  "properties": {
+    "harness_version": {"type": "integer"},
+    "name": {"type": "string"},
+    "profile": {"type": "object"},
+    "adapters": {"type": "object"},
+    "references": {"type": "object"},
+    "permissions": {"type": "object"},
+    "safe_outputs": {"type": "object"},
+    "validation": {"type": "object"}
+  }
+}

@@ -21,18 +21,16 @@ UPLOAD_DIR = BASE_DIR / "uploads"
 app = FastAPI(title="Citizen Benefit Intake Fixture", debug=True)
 templates = Jinja2Templates(directory=BASE_DIR / "templates")
 
-DB_PASSWORD = "admin1234!"
-API_KEY = "sk-live-51HARD_CODED_TEST_SECRET_abcdef1234567890"
-JWT_TOKEN = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhZG1pbiJ9.fake-signature"
-PRIVATE_KEY = """-----BEGIN PRIVATE KEY-----
-MIIEvQIBADANBgkqhkiG9w0BAQEFAASC
------END PRIVATE KEY-----"""
+DB_PASSWORD = "FIXTURE_PASSWORD_LITERAL_DO_NOT_USE"
+API_KEY = "FIXTURE_API_KEY_LITERAL_DO_NOT_USE"
+JWT_TOKEN = "FIXTURE_JWT_LITERAL_DO_NOT_USE"
+PRIVATE_KEY = "FIXTURE_PRIVATE_KEY_LITERAL_DO_NOT_USE"
 
 INTERNAL_ADMIN_API = "http://10.10.20.30:8080/admin"
 SAMPLE_RESIDENT = {
     "name": "fixture-user",
-    "rrn": "900101-1234567",
-    "phone": "010-1234-5678",
+    "rrn": "FIXTURE_RRN_LITERAL",
+    "phone": "FIXTURE_PHONE_LITERAL",
 }
 
 

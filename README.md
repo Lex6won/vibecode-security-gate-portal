@@ -41,9 +41,87 @@ vibecode-security-gate-portal/
 ├── design/html-prototype/         # 정적 HTML 화면 시안
 ├── fixtures/checker-negative-fixture/
 │   └── ...                        # 체커 검증용 취약 샘플, 실제 서비스 소스 아님
+├── supabase/schema.sql            # 향후 Supabase 연계용 PostgreSQL/RLS 초안
 ├── tools/pc-status.ps1            # 로컬 PC 상태 점검 계약 스크립트
 └── src/                           # 향후 포털 구현 소스 위치
 ```
+
+## 핵심 설계 문서
+
+| 문서 | 내용 |
+|---|---|
+| `docs/01_PRD.md` | 제품 목적, 1차 범위, 제외 범위 |
+| `docs/02_screen_function_spec.md` | 화면 구성과 화면별 기능 |
+| `docs/03_database_design.md` | DB 모델과 화면-DB 매핑 |
+| `docs/09_functional_design.md` | 기능 흐름, API, 상태 모델 |
+| `docs/10_supabase_design.md` | Supabase 연계, RLS, Storage 정책 |
+| `docs/11_single_view_modal_design.md` | 스크롤 없는 단일 화면과 레이어 팝업 UX 기준 |
+| `docs/12_harness_checker_implementation_log.md` | 하네스·체커 적용 기록과 개발 비용 기록 |
+| `docs/14_service_implementation_status.md` | 서비스 구현 상태, 미구현 범위, 하네스·체커 영향 |
+| `supabase/schema.sql` | Supabase PostgreSQL 스키마 초안 |
+
+## 하네스 적용 기준
+
+이 포털은 공공 바이브코딩 `표준 운영 하네스` 기준으로 구현합니다.
+
+공식 배포 기준:
+
+- 하네스: `https://github.com/Lex6won/vibe_harness_codex`
+- 체커: `https://github.com/Lex6won/vibecode-checker`
+- 하네스 설치 예시: `git clone https://github.com/Lex6won/vibe_harness_codex.git`
+- 체커 설치 예시: `git clone https://github.com/Lex6won/vibecode-checker.git`
+
+사용자 경험 기준:
+
+- 초보 공무원이 `구상 → 표준 템플릿 구현 → 보안 점검 → 제출 준비` 흐름을 따라가도록 설계합니다.
+- 처음에는 아래 파일을 수정 대상으로 보지 않는 것이 좋습니다: `shared/`, `AGENTS.md`, `.mcp.json`, `.codex/config.toml`.
+- 일반 사용자 안내 문구는 `shared/assets/coaching-messages.md` 기준을 따릅니다.
+
+검증 기준:
+
+- 하네스 기본 검증: `.\shared\scripts\gg-validate.ps1 -Root . -Level L1`
+- 최종 하네스 스모크 테스트: `node .\shared\scripts\harness-final-smoke.mjs .`
+- 빠른 개발 중 체커 프로필: `dev-quick`
+- `GVSKB_POLICIES_DIR`를 사용할 때는 상대경로가 아니라 절대경로만 허용합니다.
+- `network_profile`은 배포·네트워크 분류이며 체커 프로필이 아닙니다.
+- 체커 결과에 `profile_fallback`이 있으면 검증 미완료로 기록합니다.
+- MCP 서버 명령은 `gvskb-server`를 사용합니다.
+
+개발 중 강제 게이트:
+
+README 문구만 맞추는 것은 하네스 적용으로 보지 않습니다.
+개발 중에는 아래 명령을 통과해야 합니다.
+
+```bash
+npm run guard
+```
+
+`guard`는 다음을 함께 확인합니다.
+
+- JavaScript 문법 확인
+- 하네스 필수 파일과 MCP 설정 확인
+- 패키지 게이트 기록 확인
+- 4개 사용자 시나리오 테스트
+- `gvskb doctor` 상태 확인
+- `src` 대상 `dev-quick` 보안 점검
+
+커밋 전에는 `.githooks/pre-commit`이 같은 명령을 실행합니다.
+새로 clone한 PC에서는 아래 설정을 1회 적용해야 합니다.
+
+```bash
+git config core.hooksPath .githooks
+```
+
+이 설정이 없으면 하네스 파일은 있어도 커밋 전 강제 검증이 실행되지 않습니다.
+
+패키지 사용 기준:
+
+- 패키지를 사용하지 않는 것이 원칙이 아니다.
+- 필요한 패키지는 사용할 수 있다.
+- 다만 Python, JavaScript, TypeScript 패키지를 새로 설치하거나 버전을 바꾸기 전에는 체커 게이트로 확인한다.
+- npm 패키지는 `node .\shared\enforcement\gvskb_gate.js check <package>`로 먼저 확인한다.
+- PyPI 패키지는 `python .\shared\enforcement\gvskb_gate.py check <package> --ecosystem pypi`로 먼저 확인한다.
+- 차단, 판정 불가, 쿨다운, 검토 필요가 나오면 대체 패키지나 무패키지 구현을 먼저 검토한다.
 
 ## 상태 점검 버튼의 실제 역할
 

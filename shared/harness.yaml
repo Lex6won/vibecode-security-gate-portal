@@ -1,0 +1,142 @@
+harness_version: 1
+name: "public-vibecode-harness"
+identity:
+  category: "public-sector vibe-coding standard operating harness"
+  user_facing_promise: "Beginner-friendly: idea, standard template implementation, proportional check, final report submission guidance."
+  operator_promise: "Governance-grade: institution profile, approved tracks, checker/registry verdict enforcement, evidence chain, and human approval boundary."
+  comparison_note: "Claude-style harnesses may optimize for fast local execution; Codex harness optimizes for multi-agent, multi-tool, multi-agency standardization."
+
+canonical_repositories:
+  rule: "Install and update the harness and checker from the official GitHub URLs. Treat local folders as working copies, not sources of truth."
+  harness:
+    name: "Lex6won/vibe_harness_codex"
+    url: "https://github.com/Lex6won/vibe_harness_codex"
+    install: "git clone https://github.com/Lex6won/vibe_harness_codex.git"
+    update: "git pull origin main"
+  checker:
+    name: "Lex6won/vibecode-checker"
+    url: "https://github.com/Lex6won/vibecode-checker"
+    install: "git clone https://github.com/Lex6won/vibecode-checker.git"
+    update: "git pull origin main"
+
+profile:
+  institution_profile: "shared/institution-profile.yaml"
+  maturity_model: "shared/references/service-maturity-model.md"
+  network_profile: "shared/references/network-profile.yaml"
+  permission_model: "shared/references/permission-model.yaml"
+
+adapters:
+  codex: "AGENTS.md"
+  codex_project_config: ".codex/config.toml"
+  common_mcp_config: ".mcp.json"
+  codex_adapter_note: "adapters/codex/AGENTS.md"
+  claude_code_compatibility: "adapters/claude-code/CLAUDE.md"
+  claude_code_generated_copy: ".claude/"
+  lovable: "adapters/lovable/lovable-knowledge.template.md"
+
+references:
+  agent_handoff_contract: "shared/references/agent-handoff-contract.md"
+  approved_tracks: "shared/references/approved-tracks.yaml"
+  lifecycle_quality_gates: "shared/references/lifecycle-quality-gates.yaml"
+  approved_packages: "shared/references/approved-packages.yaml"
+  package_denylist: "shared/references/package-denylist.yaml"
+  runtime_selection_policy: "shared/references/runtime-selection-policy.yaml"
+  package_governance: "shared/references/package-governance.yaml"
+  harness_enforcement_contract: "shared/references/harness-enforcement-contract.yaml"
+  core_process_enforcement: "shared/references/core-process-enforcement.yaml"
+  package_alternatives: "shared/references/package-alternatives.yaml"
+  trusted_registry_integration: "shared/references/trusted-registry-integration.yaml"
+  checker_integration: "shared/references/checker-integration.md"
+  checker_bootstrap_policy: "shared/references/checker-bootstrap-policy.md"
+  user_experience_policy: "shared/references/user-experience-policy.md"
+  coaching_messages: "shared/assets/coaching-messages.md"
+  package_gate_python: "shared/enforcement/gvskb_gate.py"
+  package_gate_npm: "shared/enforcement/gvskb_gate.js"
+
+agency_onboarding:
+  edit_first:
+    - "shared/institution-profile.yaml"
+    - "shared/references/approved-packages.yaml"
+    - "shared/references/package-denylist.yaml"
+  avoid_editing_first:
+    - "shared/references/lifecycle-quality-gates.yaml"
+    - "shared/references/checker-integration.md"
+    - "shared/references/harness-enforcement-contract.yaml"
+    - "shared/references/core-process-enforcement.yaml"
+    - "shared/references/runtime-selection-policy.yaml"
+    - "shared/references/trusted-registry-integration.yaml"
+  rule: "Agency-specific values go into institution/profile and package seed files before common decision logic is changed."
+
+enforcement:
+  default_mode: "MONITOR"
+  rollout_after: "security/operations confirmation; recommended MONITOR 2 weeks then WARN"
+  verdict_source: "vibecode-checker/gvskb"
+  registry_access: "checker-mediated-only"
+  package_gate:
+    purpose: "Lightweight development-time package install guardrail; not an additional final submission artifact."
+    pypi: "shared/enforcement/gvskb_gate.py"
+    npm: "shared/enforcement/gvskb_gate.js"
+    required_before:
+      - "new package install"
+      - "dependency version change"
+      - "requirements.txt/package.json/lockfile dependency change"
+    npm_default: "--ignore-scripts"
+    force_gate: true
+    bypass_rule: "Direct pip/npm/pnpm/yarn package installs are harness bypasses; reroute through the checker gate before install or version change."
+    final_submission_impact: "none; release submission remains checker HTML + JSON reports"
+  checker_profile_policy:
+    default_source: "vibecode-checker built-in profiles"
+    quick_profile: "dev-quick"
+    custom_policies_dir: "absolute-path-only"
+    network_profile_is_not_checker_profile: true
+    verify_applied_profile: true
+  implementation_languages:
+    - "python"
+    - "javascript"
+    - "typescript"
+  absolute_block_verdicts:
+    - "malicious"
+    - "registry_rejected"
+    - "not_found"
+  absolute_block_flags:
+    - "in_kev"
+  default_env_grade:
+    personal_pc_harness: "E1"
+    internal_server_or_ci: "E2"
+    citizen_or_sensitive_operation: "E3"
+
+permissions:
+  default_mode: "read-first"
+  model: "shared/references/permission-model.yaml"
+  requires_user_approval:
+    - "external_network"
+    - "production_deploy"
+    - "repository_push"
+    - "send_message_to_external_user"
+    - "delete_or_overwrite_outside_workspace"
+
+safe_outputs:
+  workspace: "_workspace/"
+  source: "_workspace/source/"
+  package: "dist/"
+  release_default_submission:
+    - "vibecode-checker_saved_html_report"
+    - "vibecode-checker_saved_json_evidence"
+  release_submission_notice: "Submit the final two checker reports to the security team or AX team; they are review evidence, not official approval."
+  report_artifact_ids:
+    - "security_report"
+    - "mcp_result_report"
+  conditional_artifact_ids:
+    - "deployment_guide"
+    - "deployment_application"
+    - "exception_request"
+    - "package_review_request"
+
+validation:
+  local: "shared/scripts/gg-validate.ps1"
+  eval: "shared/scripts/gg-eval.ps1"
+  final_smoke: "shared/scripts/harness-final-smoke.mjs"
+  checker_bootstrap: "shared/scripts/checker-bootstrap.mjs"
+  package_catalog_export: "shared/scripts/package-catalog-export.mjs"
+  manifest_schema: "shared/templates/vibecode-manifest.schema.json"
+  institution_profile_schema: "shared/templates/institution-profile.schema.json"

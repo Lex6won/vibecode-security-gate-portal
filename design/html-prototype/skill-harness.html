@@ -34,11 +34,13 @@
 
     main {
       width: min(1180px, calc(100% - 32px));
-      min-height: calc(100vh - 16px);
+      height: 100vh;
       margin: 0 auto;
       padding: 8px 0 16px;
       display: grid;
+      grid-template-rows: auto auto auto minmax(0, 1fr);
       gap: 12px;
+      overflow: hidden;
     }
 
     .topbar,
@@ -179,8 +181,8 @@
     }
 
     .intro-panel {
-      min-height: 132px;
-      padding: 24px;
+      min-height: 118px;
+      padding: 20px 24px;
       display: grid;
       grid-template-columns: minmax(0, 1fr) auto;
       align-items: center;
@@ -221,10 +223,11 @@
     }
 
     .install-panel {
-      padding: 22px;
+      min-height: 0;
+      padding: 18px;
       display: grid;
       grid-template-columns: minmax(260px, .7fr) minmax(0, 1fr);
-      gap: 18px;
+      gap: 14px;
       border: 3px solid rgba(31,107,95,.35);
     }
 
@@ -318,8 +321,8 @@
     }
 
     .tool-detail {
-      min-height: 246px;
-      padding: 22px;
+      min-height: 0;
+      padding: 18px;
       display: grid;
       align-content: start;
       gap: 14px;
@@ -505,9 +508,11 @@
     }
 
     .status-check {
-      padding: 22px;
+      padding: 18px;
       display: grid;
-      gap: 16px;
+      grid-template-columns: minmax(280px, .72fr) minmax(0, 1fr);
+      gap: 14px;
+      align-items: center;
       border: 3px solid rgba(55,112,191,.28);
     }
 
@@ -522,8 +527,8 @@
     }
 
     .status-card {
-      min-height: 128px;
-      padding: 14px;
+      min-height: 104px;
+      padding: 12px;
       display: grid;
       align-content: space-between;
       gap: 10px;
@@ -541,7 +546,7 @@
 
     .status-card span {
       color: var(--muted);
-      font-size: 13px;
+      font-size: 12px;
       line-height: 1.5;
       font-weight: 800;
     }
@@ -565,6 +570,138 @@
       align-items: center;
       flex-wrap: wrap;
       gap: 10px;
+    }
+
+    .modal {
+      position: fixed;
+      inset: 0;
+      z-index: 20;
+      padding: 24px;
+      display: grid;
+      place-items: center;
+      background: rgba(16,32,51,.34);
+      backdrop-filter: blur(6px);
+    }
+
+    .modal[hidden] {
+      display: none;
+    }
+
+    .modal-card {
+      width: min(860px, 100%);
+      max-height: min(660px, calc(100vh - 48px));
+      overflow: auto;
+      border-radius: 28px;
+      background: var(--panel);
+      box-shadow: 0 28px 80px rgba(16,32,51,.28);
+    }
+
+    .modal-card .panel,
+    .modal-card.update-preview,
+    .modal-card.run-status {
+      box-shadow: none;
+    }
+
+    .modal-close {
+      width: 40px;
+      height: 40px;
+      flex: 0 0 auto;
+      border: 0;
+      border-radius: 999px;
+      background: var(--soft);
+      color: #244d85;
+      font-size: 18px;
+      font-weight: 900;
+      cursor: pointer;
+    }
+
+    .modal-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .update-preview {
+      padding: 22px;
+      display: grid;
+      gap: 16px;
+      border: 3px solid rgba(206,242,109,.8);
+      background: linear-gradient(180deg, #ffffff 0%, #fbfff1 100%);
+    }
+
+    .update-preview .status-head {
+      align-items: center;
+    }
+
+    .update-list {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .update-item {
+      min-height: 136px;
+      padding: 14px;
+      display: grid;
+      align-content: space-between;
+      gap: 12px;
+      border-radius: 18px;
+      background: #ffffff;
+      border: 1px solid rgba(55,112,191,.18);
+    }
+
+    .update-item strong {
+      display: block;
+      color: var(--ink);
+      font-size: 16px;
+      line-height: 1.35;
+      font-weight: 900;
+    }
+
+    .update-item p {
+      margin: 5px 0 0;
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .update-version {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 6px;
+      color: #244d85;
+      font-size: 12px;
+      font-weight: 900;
+    }
+
+    .update-version span {
+      min-height: 28px;
+      padding: 0 9px;
+      display: inline-flex;
+      align-items: center;
+      border-radius: 999px;
+      background: var(--soft);
+    }
+
+    .update-flow {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .update-flow span {
+      min-height: 42px;
+      padding: 8px 10px;
+      display: grid;
+      place-items: center;
+      text-align: center;
+      border-radius: 14px;
+      background: var(--soft);
+      color: #244d85;
+      font-size: 12px;
+      line-height: 1.3;
+      font-weight: 900;
     }
 
     .panel {
@@ -628,12 +765,21 @@
       .install-panel,
       .wide-grid,
       .status-grid,
+      .status-check,
+      .update-list,
+      .update-flow,
       .run-steps {
         grid-template-columns: 1fr;
       }
 
       .intro-panel {
         grid-template-columns: 1fr;
+      }
+
+      main {
+        height: auto;
+        min-height: 100vh;
+        overflow: visible;
       }
 
       h1 {
@@ -654,7 +800,7 @@
 <body>
   <main>
     <header class="topbar">
-      <a class="top-title" href="./first-screen-gg-v2-1.html" aria-label="홈으로 이동">
+      <a class="top-title" href="/" aria-label="홈으로 이동">
         <i class="gg-mark" aria-hidden="true">경</i>
         <div>
           <strong>하네스 설치 및 MCP 등록</strong>
@@ -670,7 +816,7 @@
     <section class="intro-panel" aria-labelledby="install-title">
       <div>
         <h1 id="install-title">설치할 하네스를 선택하세요.</h1>
-        <p>하네스는 AI 개발 도구에 설계, 구현, 테스트, 검증 흐름을 연결하고 체커 MCP를 함께 쓰도록 돕는 실행 환경입니다. ChatGPT 데스크톱의 Codex는 Codex 설정으로 함께 연결하고, Claude Desktop은 별도 확장으로 연결합니다.</p>
+        <p>하네스는 AI 개발 도구에 설계, 구현, 테스트, 검증 흐름을 연결하고 체커 MCP를 함께 쓰도록 돕는 실행 환경입니다. 설치 후에는 실행 게이트와 커밋 전 점검이 켜져 있는지도 함께 확인해야 합니다.</p>
       </div>
       <span class="intro-badge">대상 선택 후 설치</span>
     </section>
@@ -679,22 +825,22 @@
       <div class="status-head">
         <div>
           <h2 id="pc-check-title">내 PC 설치 상태를 확인하세요.</h2>
-          <p>하네스와 체커가 공식 GitHub 기준 최신인지, MCP가 현재 AI 도구에 연결되어 있는지 먼저 확인합니다.</p>
+          <p>하네스 파일만 있는지, 실제 개발 게이트가 켜져 있는지, MCP가 현재 AI 도구에 연결되어 있는지 먼저 확인합니다.</p>
         </div>
         <span class="status-badge">읽기 전용 점검</span>
       </div>
       <div class="status-grid" aria-label="설치 상태 확인 항목">
         <article class="status-card">
-          <div><strong>하네스</strong><span>로컬 커밋과 GitHub main을 비교합니다.</span></div>
+          <div><strong>하네스 파일</strong><span>로컬 커밋과 최신 안정 버전을 비교합니다.</span></div>
           <em class="mini">git 상태</em>
         </article>
         <article class="status-card">
-          <div><strong>체커</strong><span>gvskb 버전, doctor, 룰셋 상태를 확인합니다.</span></div>
-          <em class="mini">보안 엔진</em>
+          <div><strong>실행 게이트</strong><span><code>guard</code>와 커밋 전 훅이 켜져 있는지 확인합니다.</span></div>
+          <em class="mini">강제 점검</em>
         </article>
         <article class="status-card">
-          <div><strong>MCP 연결</strong><span>Codex, Claude Code, Claude Desktop 설정을 확인합니다.</span></div>
-          <em class="mini">개발 중 점검</em>
+          <div><strong>체커·MCP</strong><span>gvskb 버전, doctor, AI 도구 연결을 확인합니다.</span></div>
+          <em class="mini">보안 엔진</em>
         </article>
         <article class="status-card">
           <div><strong>네트워크</strong><span>GitHub 접근과 업데이트 가능 여부를 확인합니다.</span></div>
@@ -702,8 +848,8 @@
         </article>
       </div>
       <div class="status-actions">
-        <button class="button primary" type="button" data-run="내 PC 상태 점검" data-desc="하네스 경로, 체커 버전, MCP 설정, GitHub 연결 상태를 읽기 전용으로 확인합니다. 문제가 있으면 업데이트 또는 재등록이 필요한 항목만 알려줍니다.">상태 점검 시작</button>
-        <button class="button secondary" type="button" data-run="하네스·체커 업데이트 준비" data-desc="공식 GitHub 저장소 기준으로 하네스와 체커의 변경 여부를 확인하고, 적용 전 변경 내용을 먼저 보여줍니다. 업데이트 실행은 사용자 승인 후 진행합니다.">업데이트 확인</button>
+        <button class="button primary" type="button" data-run="내 PC 상태 점검" data-desc="하네스 경로, 실행 게이트, 커밋 훅, 체커 버전, MCP 설정, GitHub 연결 상태를 읽기 전용으로 확인합니다. 문제가 있으면 필요한 항목만 알려줍니다.">상태 점검 시작</button>
+        <button class="button secondary" type="button" data-run="하네스·체커 업데이트 확인" data-desc="공식 안정 릴리스 기준으로 하네스와 체커의 변경 여부를 확인하고, 적용 전 변경 내용을 먼저 보여줍니다. 업데이트 실행은 사용자 승인 후 진행합니다.">업데이트 확인</button>
       </div>
     </section>
 
@@ -727,38 +873,23 @@
 
       <div class="tool-detail" aria-live="polite">
         <h2 id="toolTitle">ChatGPT 데스크톱·Codex용 하네스 설치</h2>
-        <p>공식 하네스를 내려받아 선택한 AI 개발 도구의 설정에 연결합니다. 설치 전 변경 내용을 먼저 확인하고, 설치 후 체커 MCP 호출 가능 여부를 검증합니다.</p>
+        <p>공식 하네스를 내려받아 선택한 AI 개발 도구의 설정에 연결합니다. 설치 전 변경 내용을 먼저 확인하고, 설치 후 실행 게이트와 체커 MCP 호출 가능 여부를 검증합니다.</p>
         <ul class="detail-list">
           <li><span>적용 기준</span><b>공식 GitHub 하네스</b></li>
           <li><span>공통 흐름</span><b>설계 · 구현 · 테스트 · 검증</b></li>
+          <li><span>강제 검증</span><b>guard · pre-commit</b></li>
           <li><span>도구별 연결</span><b id="toolEntry">~/.codex/config.toml 또는 .codex/config.toml</b></li>
           <li><span>설치 방식</span><b id="toolKind">Codex 공통 설정</b></li>
         </ul>
         <div class="install-actions">
           <button class="button primary" id="installButton" type="button" data-run="ChatGPT 데스크톱·Codex용 하네스 설치" data-desc="선택한 AI 개발 도구가 하네스와 체커 MCP를 사용할 수 있도록 설정합니다. 적용 전 변경 내용을 보여주고 사용자 확인 후 진행합니다.">선택한 하네스 설치</button>
+          <button class="button secondary" type="button" data-run="체커 MCP 등록" data-desc="개발 중 코드 조각, 프로젝트 폴더, 제출 보고서 생성을 바로 호출할 수 있도록 체커 MCP를 등록합니다.">MCP 등록 시작</button>
           <a class="button secondary" href="https://github.com/Lex6won/vibe_harness_codex" target="_blank" rel="noreferrer">설치 기준 보기</a>
         </div>
       </div>
     </section>
 
-    <section class="panel run-status" id="runStatus" aria-live="polite" hidden>
-      <div class="status-head">
-        <div>
-          <h2 id="runTitle">진행상황</h2>
-          <p id="runDesc">선택한 하네스의 준비 상태와 다음 확인 항목을 보여드립니다.</p>
-        </div>
-        <span class="status-badge">진행 중</span>
-      </div>
-      <div class="progress" aria-hidden="true"><span></span></div>
-      <div class="run-steps" aria-label="현재 진행 절차">
-        <div class="run-step active"><strong>대상 확인</strong>선택한 도구와 설치 위치를 확인합니다.</div>
-        <div class="run-step"><strong>변경 미리보기</strong>추가 또는 수정될 설정을 보여줍니다.</div>
-        <div class="run-step"><strong>실행 승인</strong>사용자 확인 후 설치 또는 등록을 진행합니다.</div>
-        <div class="run-step"><strong>연결 검증</strong>하네스와 MCP 호출 가능 여부를 확인합니다.</div>
-      </div>
-    </section>
-
-    <section class="wide-grid">
+    <section class="wide-grid" hidden>
       <div class="panel" id="mcp">
         <h2>체커 MCP 등록</h2>
         <p>개발 중에도 보안 점검을 바로 호출합니다.</p>
@@ -767,23 +898,92 @@
           <li>프로젝트 폴더 점검: <code>scan_path</code></li>
           <li>제출 보고서 생성: <code>render_report</code></li>
         </ul>
-        <button class="button primary mcp-register-button" type="button" data-run="체커 MCP 등록" data-desc="개발 중 코드 조각, 프로젝트 폴더, 제출 보고서 생성을 바로 호출할 수 있도록 체커 MCP를 등록합니다.">MCP 등록 시작</button>
       </div>
 
       <div class="panel">
         <h2>업데이트 기준</h2>
-        <p>최신 여부는 공식 저장소와 로컬 설치본을 비교해 판단합니다.</p>
+        <p>최신 여부는 공식 안정 릴리스와 로컬 설치본을 비교해 판단합니다.</p>
         <ul class="steps">
-          <li>하네스: <code>git -C &lt;harness&gt; pull origin main</code></li>
-          <li>체커: <code>git -C &lt;checker&gt; pull origin main</code></li>
-          <li>업데이트 후 <code>gg-validate.ps1</code>와 체커 상태를 다시 확인</li>
+          <li>하네스: 공식 저장소의 검증된 릴리스 또는 승인된 commit 기준 적용</li>
+          <li>체커: 검증된 패키지 버전과 룰셋·인텔 manifest 기준 적용</li>
+          <li>업데이트 전 설정 파일을 백업하고 변경 내용을 먼저 표시</li>
+          <li>업데이트 후 <code>gg-validate.ps1</code>와 <code>gvskb doctor</code>를 다시 실행</li>
           <li>경기도처럼 온라인 환경이면 GitHub 접근과 방화벽 허용 상태를 함께 확인</li>
         </ul>
       </div>
     </section>
   </main>
+
+  <section class="modal" id="runStatus" aria-live="polite" hidden>
+    <div class="modal-card panel run-status">
+      <div class="status-head">
+        <div>
+          <h2 id="runTitle">진행상황</h2>
+          <p id="runDesc">선택한 하네스의 준비 상태와 다음 확인 항목을 보여드립니다.</p>
+        </div>
+        <button class="modal-close" type="button" data-close-modal aria-label="진행상황 닫기">×</button>
+      </div>
+      <div class="progress" aria-hidden="true"><span></span></div>
+      <div class="run-steps" aria-label="현재 진행 절차">
+        <div class="run-step active"><strong>대상 확인</strong>선택한 도구와 설치 위치를 확인합니다.</div>
+        <div class="run-step"><strong>변경 미리보기</strong>추가 또는 수정될 설정을 보여줍니다.</div>
+        <div class="run-step"><strong>실행 승인</strong>사용자 확인 후 설치 또는 등록을 진행합니다.</div>
+        <div class="run-step"><strong>연결 검증</strong>하네스와 MCP 호출 가능 여부를 확인합니다.</div>
+      </div>
+      <div class="modal-actions">
+        <button class="button secondary" type="button" data-close-modal>숨기기</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="modal" id="updatePreview" aria-labelledby="update-preview-title" hidden>
+    <div class="modal-card update-preview">
+      <div class="status-head">
+        <div>
+          <h2 id="update-preview-title">구버전이 확인되면 이렇게 안내합니다.</h2>
+          <p>업데이트는 자동으로 실행하지 않습니다. 변경 내용과 검증 상태를 먼저 보여주고, 사용자가 승인한 뒤 적용합니다.</p>
+        </div>
+        <button class="modal-close" type="button" data-close-modal aria-label="업데이트 안내 닫기">×</button>
+      </div>
+      <div class="update-list" aria-label="업데이트 필요 항목 예시">
+        <article class="update-item">
+          <div>
+            <strong>체커 업데이트 권장</strong>
+            <p>최신 룰셋과 의존성 취약점 정보를 반영할 수 있습니다.</p>
+          </div>
+          <div class="update-version"><span>현재 0.3.0</span><span>안정 0.3.2</span></div>
+        </article>
+        <article class="update-item">
+          <div>
+            <strong>하네스 업데이트 가능</strong>
+            <p>표준 개발 흐름과 검증 스크립트 기준을 최신 상태로 맞춥니다.</p>
+          </div>
+          <div class="update-version"><span>현재 a58ae62</span><span>검증 완료 릴리스</span></div>
+        </article>
+        <article class="update-item">
+          <div>
+            <strong>MCP 재등록 필요</strong>
+            <p>체커 경로가 바뀐 경우 설정 파일을 백업한 뒤 다시 연결합니다.</p>
+          </div>
+          <div class="update-version"><span>설정 백업</span><span>연결 재검증</span></div>
+        </article>
+      </div>
+      <div class="update-flow" aria-label="업데이트 적용 절차">
+        <span>상태 확인</span>
+        <span>변경 내용 보기</span>
+        <span>사용자 승인</span>
+        <span>업데이트 적용</span>
+        <span>재검증</span>
+      </div>
+      <div class="modal-actions">
+        <button class="button secondary" type="button" data-close-modal>닫기</button>
+        <button class="button primary" type="button" data-run="최신 안정 버전 업데이트 승인" data-desc="사용자 승인 후 하네스와 체커를 검증된 안정 버전으로 업데이트하고, gg-validate와 체커 doctor를 다시 실행합니다.">업데이트 적용 준비</button>
+      </div>
+    </div>
+    </section>
   <script>
     const runStatus = document.querySelector("#runStatus");
+    const updatePreview = document.querySelector("#updatePreview");
     const runTitle = document.querySelector("#runTitle");
     const runDesc = document.querySelector("#runDesc");
     const toolTitle = document.querySelector("#toolTitle");
@@ -813,9 +1013,41 @@
       });
     });
 
+    function summarizeStatus(status) {
+      const gate = status.execution_gate || {};
+      const checker = status.checker || {};
+      return [
+        `하네스 파일: ${status.project_harness?.status || "확인 불가"}`,
+        `실행 게이트: ${gate.guard_script || "확인 불가"} · pre-commit ${gate.pre_commit_hook || "확인 불가"}`,
+        `체커: ${checker.version || "미설치"} · doctor ${checker.doctor_status || "확인 불가"}`,
+        `MCP: Codex ${status.mcp?.codex_project || "확인 불가"} · 공통 ${status.mcp?.common_mcp || "확인 불가"}`
+      ].join(" / ");
+    }
+
+    async function runStatusCheck() {
+      const status = await fetch("/api/local/status", { cache: "no-store" }).then((response) => response.json());
+      runDesc.textContent = summarizeStatus(status);
+    }
+
+    async function runUpdatePreview() {
+      const preview = await fetch("/api/local/update/preview", { method: "POST" }).then((response) => response.json());
+      updatePreview.hidden = false;
+      const first = preview.items?.[0];
+      if (first) {
+        document.querySelector("#update-preview-title").textContent = `${preview.flow?.join(" → ") || "업데이트 확인"}`;
+      }
+    }
+
     document.querySelectorAll("[data-run]").forEach((button) => {
-      button.addEventListener("click", () => {
+      button.addEventListener("click", async () => {
         const name = button.dataset.run;
+        if (name.includes("업데이트 확인")) {
+          await runUpdatePreview();
+          return;
+        }
+        if (button.closest("#updatePreview")) {
+          updatePreview.hidden = true;
+        }
         document.querySelectorAll("[data-run]").forEach((item) => {
           item.classList.remove("is-running");
           item.textContent = item.dataset.originalLabel || item.textContent;
@@ -826,8 +1058,27 @@
         runTitle.textContent = `${name} 진행상황`;
         runDesc.textContent = button.dataset.desc || `${name}을 선택했습니다. 설치 전 변경 내용을 먼저 보여주고, 사용자 확인 후 적용한 뒤 연결 검증 결과를 제공합니다.`;
         runStatus.hidden = false;
-        runStatus.scrollIntoView({ behavior: "smooth", block: "center" });
+        if (name.includes("내 PC 상태 점검")) {
+          try {
+            await runStatusCheck();
+          } catch (error) {
+            runDesc.textContent = `상태 점검을 완료하지 못했습니다. ${String(error.message || error)}`;
+          }
+        }
       });
+    });
+
+    document.querySelectorAll("[data-close-modal]").forEach((button) => {
+      button.addEventListener("click", () => {
+        button.closest(".modal").hidden = true;
+      });
+    });
+
+    window.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        runStatus.hidden = true;
+        updatePreview.hidden = true;
+      }
     });
   </script>
 </body>

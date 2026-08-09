@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "vibecode institution profile",
+  "type": "object",
+  "required": ["profile_version", "institution", "usage", "server_profiles", "environment", "tracks", "plugins", "libraries", "network", "exceptions"],
+  "properties": {
+    "profile_version": {"type": "integer"},
+    "institution": {
+      "type": "object",
+      "required": ["name", "code", "owner_team", "security_team", "operations_team"]
+    },
+    "usage": {
+      "type": "object",
+      "required": ["default_maturity_level", "default_service_exposure", "default_network_profile"]
+    },
+    "server_profiles": {
+      "type": "object"
+    },
+    "environment": {
+      "type": "object",
+      "required": ["development", "production"]
+    },
+    "tracks": {
+      "type": "object",
+      "required": ["enabled", "default_internal_web", "default_dashboard", "default_public_candidate", "denied"]
+    },
+    "plugins": {
+      "type": "object",
+      "required": ["ai_coding_tools", "mcp_servers", "browser_or_cloud_plugins"]
+    },
+    "libraries": {
+      "type": "object",
+      "required": ["policy_files", "additional_allowed", "additional_restricted", "additional_denied"]
+    },
+    "network": {
+      "type": "object",
+      "required": ["enabled_profiles", "admin_network_external_access", "dmz_public_requires"]
+    },
+    "exceptions": {
+      "type": "object",
+      "required": ["allowed", "required_documents", "approval_owner"]
+    }
+  }
+}

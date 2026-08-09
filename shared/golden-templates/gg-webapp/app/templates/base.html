@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}{{ app_name }}{% endblock %}</title>
+  <!-- 정적자산 self-host만. 외부 CDN 링크 금지(레일). -->
+  <link rel="stylesheet" href="static/app.css">
+</head>
+<body>
+  <header><strong>{{ app_name }}</strong> <span class="badge">내부 시제품(L1)</span></header>
+  <main>
+    {# Jinja2 자동 이스케이프로 XSS 예방 — |safe 남용 금지 #}
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

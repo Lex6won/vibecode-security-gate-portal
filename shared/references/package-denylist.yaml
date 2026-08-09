@@ -1,0 +1,29 @@
+﻿denied_packages:
+  npm:
+    - "@supabase/supabase-js"
+    - supabase-js
+    - firebase
+    - firebase-admin
+    - puppeteer
+    - playwright
+  python:
+    - pyexecjs
+    - execjs
+restricted_patterns:
+  - cdn.jsdelivr.net
+  - unpkg.com
+  - "dynamic-code-eval"
+  - "dynamic-function-constructor"
+  - postinstall
+  - "@supabase/"
+  - "@firebase/"
+  - supabase
+  - firebase
+  - hardcoded api key
+reasons:
+  supabase-js: 외부 BaaS 직접 의존. PostgreSQL + Keycloak + 서버 API로 전환.
+  "@supabase/supabase-js": 외부 BaaS 직접 의존. PostgreSQL + Keycloak + 서버 API로 전환.
+  firebase: 외부 BaaS 직접 의존. 행정망/DMZ 운영 부적합.
+  firebase-admin: 외부 BaaS 직접 의존. 행정망/DMZ 운영 부적합.
+  puppeteer: 운영 서버 리소스와 보안 부담. 예외 검토 필요.
+  playwright: 운영 서버 리소스와 보안 부담. 테스트 전용이면 분리 필요.

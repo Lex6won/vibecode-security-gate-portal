@@ -8,6 +8,8 @@
 - 총괄 관리자만 로그인해 익명 사용 현황과 점검 결과를 확인한다.
 - 소스 원문, 압축파일 원본, GitHub 토큰, 개인 식별 정보는 저장하지 않는다.
 - 담당자/부서 기반 제출 관리가 필요해지면 2차 기능으로 별도 로그인 또는 기관 인증을 설계한다.
+- 1차 로컬 웹앱은 SQLite 또는 로컬 파일 DB로 시작할 수 있지만, 스키마는 Supabase PostgreSQL로 확장 가능한 구조로 맞춘다.
+- Supabase 연계 상세와 RLS 초안은 `docs/10_supabase_design.md`, SQL 초안은 `supabase/schema.sql`에 둔다.
 
 ## ERD 요약
 
@@ -15,10 +17,12 @@
 erDiagram
   ADMIN_USERS ||--o{ AUDIT_LOGS : creates
   SCAN_JOBS ||--o{ USAGE_EVENTS : emits
+  SCAN_JOBS ||--o{ SCAN_STEPS : runs
   SCAN_JOBS ||--o{ SCAN_REPORTS : generates
   SCAN_JOBS ||--o{ SCAN_FINDINGS : has
   SCAN_JOBS ||--o{ DEPENDENCY_FINDINGS : has
   SCAN_JOBS ||--o{ REVIEW_NOTES : reviewed_by
+  SCAN_FINDINGS ||--o{ RULE_FEEDBACK : improves
 
   ADMIN_USERS {
     uuid id
@@ -32,6 +36,13 @@ erDiagram
     string target_type
     string scan_mode
     string decision
+  }
+
+  SCAN_STEPS {
+    uuid id
+    uuid scan_job_id
+    string step_name
+    string status
   }
 
   USAGE_EVENTS {
@@ -66,6 +77,12 @@ erDiagram
     uuid id
     uuid scan_job_id
     string review_status
+  }
+
+  RULE_FEEDBACK {
+    uuid id
+    string feedback_type
+    string status
   }
 
   AUDIT_LOGS {
@@ -111,6 +128,7 @@ erDiagram
 | network_mode | varchar(20) | `online`, `offline` |
 | status | varchar(30) | `queued`, `running`, `completed`, `failed` |
 | decision | varchar(30) | `submittable`, `needs_fix`, `needs_review`, `blocked` |
+| sync_status | varchar(30) | `not_enabled`, `pending`, `synced`, `failed` |
 | scanned_file_count | integer | 검사 파일 수 |
 | ignored_file_count | integer | 제외 파일 수 |
 | finding_count | integer | 전체 탐지 수 |
@@ -120,6 +138,21 @@ erDiagram
 | error_code | varchar(80) nullable | 실패 코드 |
 | started_at | datetime | 시작 시각 |
 | finished_at | datetime | 종료 시각 |
+| created_at | datetime | 생성 시각 |
+
+### scan_steps
+
+검사 단계별 진행과 실패 사유.
+
+| 컬럼 | 타입 | 설명 |
+| --- | --- | --- |
+| id | uuid | 단계 ID |
+| scan_job_id | uuid fk | 검사 ID |
+| step_name | varchar(60) | `prepare_target`, `code_scan`, `dependency_scan`, `render_report`, `package_submission` |
+| status | varchar(30) | `queued`, `running`, `completed`, `failed`, `cancelled` |
+| message | text nullable | 화면 표시용 짧은 메시지 |
+| started_at | datetime nullable | 시작 시각 |
+| finished_at | datetime nullable | 종료 시각 |
 | created_at | datetime | 생성 시각 |
 
 ### usage_events
@@ -149,6 +182,7 @@ erDiagram
 | report_type | varchar(20) | `html`, `json`, `sarif`, `submission_zip` |
 | file_name | varchar(255) | 파일명 |
 | file_path_label | varchar(500) | 사용자 표시용 저장 위치 |
+| storage_object_path | varchar(500) nullable | Supabase Storage 선택 업로드 경로 |
 | sha256 | char(64) | 파일 무결성 해시 |
 | file_size | bigint | 파일 크기 |
 | created_at | datetime | 생성 시각 |
@@ -192,6 +226,24 @@ erDiagram
 | fixed_version | varchar(80) | 수정 버전 |
 | dependency_path | text | 유입 경로 |
 | created_at | datetime | 생성 시각 |
+
+### rule_feedback
+
+체커 개선을 위한 피드백 후보. 원본 탐지를 삭제하지 않고 개선 항목만 별도 기록한다.
+
+| 컬럼 | 타입 | 설명 |
+| --- | --- | --- |
+| id | uuid | 피드백 ID |
+| scan_job_id | uuid nullable fk | 검사 ID |
+| finding_id | uuid nullable fk | 코드 탐지 ID |
+| dependency_finding_id | uuid nullable fk | 의존성 탐지 ID |
+| feedback_type | varchar(40) | `false_positive`, `over_detection`, `missed_detection`, `message_improvement`, `dependency_reachability` |
+| status | varchar(30) | `needs_rule_change`, `confirmed`, `false_positive`, `accepted_risk`, `needs_fix` |
+| rule_id | varchar(120) nullable | 룰 ID |
+| note | text nullable | 검토 메모 |
+| reviewer_id | uuid nullable fk | 관리자 ID |
+| created_at | datetime | 생성 시각 |
+| updated_at | datetime | 수정 시각 |
 
 ### review_notes
 
@@ -247,12 +299,14 @@ erDiagram
 - `scan_jobs(target_type, created_at)`
 - `scan_jobs(scan_mode, created_at)`
 - `scan_jobs(anonymous_session_id, created_at)`
+- `scan_steps(scan_job_id, created_at)`
 - `usage_events(event_type, created_at)`
 - `usage_events(client_type, created_at)`
 - `scan_findings(scan_job_id, severity)`
 - `scan_findings(rule_id, created_at)`
 - `dependency_findings(scan_job_id, severity)`
 - `scan_reports(scan_job_id, report_type)`
+- `rule_feedback(rule_id, created_at)`
 - `daily_usage_stats(stat_date, client_type, scan_mode)`
 - `audit_logs(admin_user_id, created_at)`
 
@@ -279,3 +333,13 @@ erDiagram
 - 보고서 다운로드와 검토 상태 변경은 `audit_logs`에 남긴다.
 - 보고서 파일은 저장 위치 표시명과 SHA-256 해시를 함께 기록해 결과물 변조 여부를 확인한다.
 - 오탐/과탐 보정은 원본 탐지 결과를 삭제하지 않고 `review_notes`로 별도 기록한다.
+- 체커 룰 개선 후보는 `rule_feedback`에 남기고, 실제 룰 변경은 별도 적대적 검증과 릴리스 승인을 거친다.
+
+## Supabase 연계 원칙
+
+- Supabase에는 중앙 관리자 화면과 익명 통계를 위한 메타데이터만 저장한다.
+- 브라우저에서 `scan_jobs`, `scan_findings`, `dependency_findings`에 직접 쓰지 않는다.
+- 로컬 웹앱은 중앙 포털 API 또는 Supabase Edge Function으로 메타데이터를 전송한다.
+- Edge Function은 service role로 저장하되, service role key는 로컬 앱과 브라우저에 포함하지 않는다.
+- 총괄 관리자는 Supabase Auth로 로그인하고 RLS로 조회 권한을 제한한다.
+- 보고서 파일 업로드는 기본 꺼짐이며, 사용자가 선택한 경우에만 private Storage bucket에 저장한다.

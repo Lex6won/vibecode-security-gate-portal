@@ -1,0 +1,75 @@
+permission_model_version: 1
+
+principles:
+  - "Read project context before changing files."
+  - "Never push to a remote repository unless the user explicitly asks."
+  - "Never deploy to production unless the user explicitly asks and the release gate is satisfied."
+  - "Never send messages, email, chat, or tickets to external people without explicit approval."
+  - "Never store secrets, personal data samples, or real citizen records in prompts, reports, or committed files."
+
+modes:
+  planning:
+    default_write_scope: "none"
+    allowed_outputs:
+      - "_workspace/00_input.md"
+      - "_workspace/00_feature_brief.md"
+      - "artifact:work_status"
+    blocked_actions:
+      - "dependency_install"
+      - "external_write"
+      - "repository_push"
+      - "production_deploy"
+
+  development:
+    default_write_scope: "_workspace/source"
+    allowed_outputs:
+      - "_workspace/source/"
+      - "artifact:screen_feature_design"
+      - "artifact:db_table_definition"
+      - "artifact:runtime_environment"
+      - "artifact:work_status"
+    blocked_actions:
+      - "repository_push"
+      - "production_deploy"
+      - "external_message_send"
+
+  security_check:
+    default_write_scope: "_workspace"
+    allowed_outputs:
+      - "artifact:security_report"
+      - "artifact:mcp_result_report"
+      - "artifact:work_status"
+    blocked_actions:
+      - "mark_officially_approved"
+      - "production_deploy"
+
+  release:
+    default_write_scope: "_workspace,dist"
+    allowed_outputs:
+      - "artifact:deployment_guide"
+      - "artifact:deployment_request"
+      - "artifact:exception_request"
+      - "artifact:package_exception_request"
+      - "dist/"
+    blocked_actions:
+      - "repository_push_without_user_request"
+      - "production_deploy_without_user_request"
+
+safe_output_policy:
+  preview_before_apply: true
+  destructive_actions_require_user_approval: true
+  external_system_writes_require_user_approval: true
+  real_personal_data_in_outputs: "forbidden"
+  secrets_in_outputs: "forbidden"
+
+artifact_ids:
+  work_status: "current stage, decisions, risk flags, next action"
+  screen_feature_design: "screen and feature design"
+  db_table_definition: "database table definition"
+  runtime_environment: "development stack and runtime environment"
+  security_report: "human-readable security report"
+  mcp_result_report: "raw or summarized vibecode-checker MCP result"
+  deployment_guide: "server installation and deployment guide"
+  deployment_request: "deployment request form"
+  exception_request: "security or operating exception request"
+  package_exception_request: "package exception request"

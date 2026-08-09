@@ -503,7 +503,7 @@
 <body>
   <main>
     <header class="topbar">
-      <a class="top-title" href="./first-screen-gg-v2-1.html" aria-label="홈으로 이동">
+      <a class="top-title" href="/" aria-label="홈으로 이동">
         <i class="gg-mark" aria-hidden="true">경</i>
         <div>
           <strong>도움말</strong>
@@ -524,7 +524,7 @@
       </div>
       <div class="search-box" role="search">
         <input aria-label="도움말 검색어" placeholder="예: 제출 점검, GitHub URL, MCP 등록">
-        <button type="button">검색</button>
+        <button class="help-search" type="button">검색</button>
       </div>
     </section>
 
@@ -565,27 +565,27 @@
           <li class="post">
             <span class="label">검사 전</span>
             <div><strong>폴더, 압축파일, GitHub URL 중 무엇을 선택해야 하나요?</strong><span>내 PC 소스는 폴더, 제출용 묶음은 압축파일, 원격 저장소는 GitHub URL을 사용합니다.</span></div>
-            <a class="open-link" href="#">보기</a>
+            <a class="open-link" href="/scan">보기</a>
           </li>
           <li class="post">
             <span class="label">점검 방식</span>
             <div><strong>빠른 점검, 표준 점검, 제출 점검은 어떻게 다른가요?</strong><span>빠른 점검은 개발 중 확인, 표준 점검은 제출 전 기본 검사, 제출 점검은 제출 패키지까지 생성합니다.</span></div>
-            <a class="open-link" href="#">보기</a>
+            <a class="open-link" href="/scan?mode=quick">보기</a>
           </li>
           <li class="post">
             <span class="label">보고서</span>
             <div><strong>검사 후 어떤 파일을 확인해야 하나요?</strong><span>HTML 보고서로 내용을 확인하고, JSON 증거 보고서와 제출 ZIP은 제출 또는 이력 관리에 사용합니다.</span></div>
-            <a class="open-link" href="#">보기</a>
+            <a class="open-link" href="/scan?mode=submission">보기</a>
           </li>
           <li class="post">
             <span class="label warn">오류 해결</span>
             <div><strong>GitHub 연결이나 의존성 점검이 실패하면 어떻게 하나요?</strong><span>네트워크 연결, 방화벽 허용, 저장소 접근 권한, 최신 룰셋 상태를 순서대로 확인합니다.</span></div>
-            <a class="open-link" href="#">보기</a>
+            <a class="open-link" href="/harness#pc-check">보기</a>
           </li>
           <li class="post">
             <span class="label">설치·업데이트</span>
             <div><strong>하네스와 체커가 최신인지 어떻게 확인하나요?</strong><span>상태 점검에서 하네스 커밋, 체커 버전, MCP 연결, GitHub 접근 상태를 먼저 확인한 뒤 필요한 항목만 업데이트합니다.</span></div>
-            <a class="open-link" href="./skill-harness.html#pc-check">보기</a>
+            <a class="open-link" href="/harness#pc-check">보기</a>
           </li>
         </ul>
       </div>
@@ -599,16 +599,37 @@
           <li>의존성 취약점 점검 완료 여부 확인</li>
           <li>HTML 보고서와 JSON 증거 보고서 생성 여부 확인</li>
         </ul>
-        <p><a class="button" href="./security-scan.html">보안점검으로 이동</a></p>
+        <p><a class="button" href="/scan">보안점검으로 이동</a></p>
       </aside>
     </section>
   </main>
   <script>
+    const helpSearchInput = document.querySelector(".search-box input");
+    const helpSearchButton = document.querySelector(".search-box button");
+    const helpPosts = Array.from(document.querySelectorAll(".post"));
+
+    function filterHelpPosts(category = "전체") {
+      const keyword = (helpSearchInput?.value || "").trim();
+      helpPosts.forEach((post) => {
+        const text = post.textContent || "";
+        const label = post.querySelector(".label")?.textContent || "";
+        const matchesCategory = category === "전체" || label.includes(category);
+        const matchesKeyword = !keyword || text.includes(keyword);
+        post.hidden = !(matchesCategory && matchesKeyword);
+      });
+    }
+
     document.querySelectorAll(".tabs .tab").forEach((tab) => {
       tab.addEventListener("click", () => {
         document.querySelectorAll(".tabs .tab").forEach((item) => item.classList.remove("active"));
         tab.classList.add("active");
+        filterHelpPosts(tab.textContent.trim());
       });
+    });
+
+    helpSearchButton?.addEventListener("click", () => {
+      const activeTab = document.querySelector(".tabs .tab.active")?.textContent.trim() || "전체";
+      filterHelpPosts(activeTab);
     });
   </script>
 </body>

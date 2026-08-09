@@ -1,0 +1,6 @@
+# approved-packages.yaml(python core) 안에서만.
+streamlit==1.60.0
+pandas==3.0.5
+plotly==6.9.0
+sqlalchemy==2.0.51
+psycopg==3.3.4

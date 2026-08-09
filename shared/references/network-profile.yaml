@@ -1,0 +1,83 @@
+﻿# Canonical network/deploy profile for vibecode-harness.
+# All agents must prefer this file. .claude/references/deploy-context.yaml is a compatibility pointer only.
+
+determinant: "시민이 접근하나?"
+default_if_unclear: admin-network
+
+profiles:
+  admin-network:
+    aliases: [internal, 행정망, 내부]
+    audience: [직원만, 타기관공무원]
+    users: 공무원, 내부 직원
+    external_runtime_access: none_by_default
+    external_outbound: none
+    cdn: self_host_only
+    llm_api: "직접 불가 → 망연계 프록시 / DMZ 중계 / 내부 sLLM"
+    external_api: "불가 → 망연계 / 데이터 사전반입"
+    packages: "오프라인 미러(pip/npm/RPM)"
+    mcp: development_or_internal_check_only
+    gvskb_intel: "offline bundle, GVSKB_MODE=offline"
+    auth: "Keycloak OIDC / GPKI 연계, 직접 구현 금지"
+    deploy: 행정망 WEB/WAS/DB
+    server_db_location: 행정망내부
+    gate: 표준_내부심사
+    allowed_tracks: [local-automation, streamlit-internal, fastapi-web, react-fastapi, node-api]
+    forbidden_tracks: []
+    gvskb_profile: internal-db-query
+    note: "타기관 공무원 접근은 망연계 이슈를 별도 기록한다."
+
+  dmz-public:
+    aliases: [external, 외부망, DMZ, 대민]
+    audience: [시민, 도민, 외부 이용자]
+    users: 시민, 도민, 관리자 공무원
+    external_runtime_access: approved_proxy_or_dmz_only
+    external_outbound: controlled
+    cdn: self_host_default
+    llm_api: "승인 경로 가능, 호출률·비용 방어 필수"
+    external_api: conditional
+    packages: "오프라인 미러 동일"
+    mcp: treated_as_external_api_if_runtime
+    gvskb_intel: "온라인 갱신 가능"
+    auth: "시민 인증/익명 정책 + 관리자 계정 분리"
+    deploy: DMZ WEB/WAS/DB with WAF/IPS
+    server_db_location: 외부망
+    gate: "DAST·WAF 필수, 건별 위원회 승인"
+    allowed_tracks: [fastapi-web, react-fastapi, node-api]
+    forbidden_tracks: [streamlit-internal]
+    gvskb_profile: web-civil-service
+    data_source: "내부자료 참조 시 단방향 사전반입. 내부 DB 직결 금지."
+
+  internet-prototype:
+    aliases: [prototype, internet, 외부시제품]
+    audience: [개발자, 시제품 확인자]
+    users: 개발자, 제한된 확인자
+    external_runtime_access: prototype_only
+    external_outbound: prototype_only
+    cdn: allowed_for_prototype_only
+    llm_api: prototype_only
+    external_api: prototype_only
+    packages: public_registry_possible
+    mcp: development_only
+    auth: prototype_only
+    deploy: 운영 반입 전 재정렬 필요
+    gate: prototype_review
+    allowed_tracks: [fastapi-web, react-fastapi, node-api, streamlit-internal]
+    forbidden_tracks: []
+    gvskb_profile: public-default-strict
+
+safety_rules:
+  - id: no-auto-citizen
+    rule: "대민(dmz-public) 자동 승인 금지. 시민 배포는 반드시 사람/위원회 승인."
+  - id: intent-matches-code
+    rule: "설계 답변과 코드 현실을 일치시킨다. admin-network이면 외부통신 코드 차단."
+  - id: no-cdn-admin
+    rule: "행정망은 CDN 금지, self-host만 허용."
+  - id: no-runtime-mcp-admin
+    rule: "행정망 런타임 MCP/외부 API 호출은 기본 금지. 개발·검증 도구로만 사용."
+
+profile_map:
+  internal_default: internal-db-query
+  internal_web: web-civil-service
+  citizen_web: web-civil-service
+  citizen_chatbot: civil-complaint-chatbot
+  public_strict: public-default-strict

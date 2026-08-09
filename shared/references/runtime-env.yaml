@@ -1,0 +1,24 @@
+source_priority:
+  - "../institution-profile.yaml"
+  - "runtime-env.yaml defaults"
+note: "기관별 개발/운영 서버, 언어, DBMS 제한은 shared/institution-profile.yaml을 우선 적용한다. 이 파일은 공통 기본값이다."
+
+runtime:
+  python: "3.12"
+  node: "20.19+"
+  postgresql: "16"
+web:
+  server: nginx
+  app_base_path: /apps/<project>/
+was:
+  runtime: podman-rootless
+  default_quota: 1C/2G
+  health_path: /health
+logging:
+  application: stdout
+  host: journald
+security:
+  auth: Keycloak OIDC
+  secrets: podman secret or environment variables
+  registry: internal Harbor only
+  external_cdn: forbidden

@@ -44,12 +44,13 @@
 
     .screen {
       width: min(1180px, calc(100% - 32px));
-      min-height: calc(100vh - 16px);
+      height: 100vh;
       margin: 0 auto;
       display: grid;
       grid-template-columns: minmax(0, 1fr);
       padding: 8px 0 10px;
       background: var(--moon);
+      overflow: hidden;
     }
 
     .workspace {
@@ -250,6 +251,70 @@
       font-size: 12px;
       line-height: 18px;
       font-weight: 800;
+    }
+
+    .modal {
+      position: fixed;
+      inset: 0;
+      z-index: 20;
+      padding: 24px;
+      display: grid;
+      place-items: center;
+      background: rgba(16,32,51,.34);
+      backdrop-filter: blur(6px);
+    }
+
+    .modal[hidden] {
+      display: none;
+    }
+
+    .modal-card {
+      width: min(720px, 100%);
+      max-height: min(640px, calc(100vh - 48px));
+      overflow: auto;
+      padding: 24px;
+      border-radius: 26px;
+      background: var(--panel);
+      box-shadow: 0 28px 80px rgba(16,32,51,.28);
+    }
+
+    .modal-card .steps {
+      margin-top: 18px;
+    }
+
+    .modal-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+    }
+
+    .modal-head h2 {
+      margin: 0;
+      font-size: 24px;
+      line-height: 1.35;
+      font-weight: 900;
+    }
+
+    .modal-head p {
+      margin: 6px 0 0;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.55;
+      font-weight: 800;
+    }
+
+    .modal-close {
+      width: 40px;
+      height: 40px;
+      flex: 0 0 auto;
+      border: 0;
+      border-radius: 999px;
+      background: var(--soft);
+      color: #244d85;
+      font-size: 18px;
+      font-weight: 900;
+      cursor: pointer;
     }
 
     .scan-grid {
@@ -606,7 +671,7 @@
   <div class="screen">
     <main class="workspace">
       <header class="topbar">
-        <a class="brand-home" href="./first-screen-gg-v2-1.html" aria-label="홈으로 이동">
+        <a class="brand-home" href="/" aria-label="홈으로 이동">
           <i class="gg-mark" aria-hidden="true">경</i>
           <span class="brand-copy">
             <strong>공공 바이브코딩 보안 체커</strong>
@@ -659,28 +724,41 @@
           </div>
           <h2>점검 후 확인</h2>
           <ul class="result-list">
-            <li><span>제출 가능 여부</span><b>대기</b></li>
-            <li><span>수정 필요 항목</span><b>0건</b></li>
-            <li><span>사람 검토 필요</span><b>0건</b></li>
-            <li><span>의존성 취약점</span><b>0건</b></li>
-            <li><span>HTML 보고서</span><b>생성 대기</b></li>
-            <li><span>JSON 증거 보고서</span><b>생성 대기</b></li>
-            <li><span>제출 패키지 ZIP</span><b>제출 점검 시 생성</b></li>
+            <li><span>제출 가능 여부</span><b id="resultDecision">대기</b></li>
+            <li><span>수정 필요 항목</span><b id="resultFindings">0건</b></li>
+            <li><span>사람 검토 필요</span><b id="resultReview">0건</b></li>
+            <li><span>의존성 취약점</span><b id="resultDeps">0건</b></li>
+            <li><span>HTML 보고서</span><b id="resultHtml">생성 대기</b></li>
+            <li><span>JSON 증거 보고서</span><b id="resultJson">생성 대기</b></li>
+            <li><span>제출 패키지 ZIP</span><b id="resultZip">제출 점검 시 생성</b></li>
           </ul>
-          <div class="submission-note">
+          <div class="submission-note" id="resultNote">
             제출 점검을 선택하면 검사 완료 후 제출 파일을 내려받고, 보고서 내용을 확인한 뒤 제출합니다.
           </div>
         </aside>
       </section>
 
-      <section class="steps" id="scanProgress" aria-label="검사 진행상황" aria-live="polite" hidden>
-        <div class="step active"><b>1</b><div><strong>대상 확인</strong><span id="progressTarget">소스 위치와 접근 가능 여부 확인 중</span></div></div>
-        <div class="step"><b>2</b><div><strong id="progressMode">검사 실행</strong><span>코드, 의존성, 룰셋 점검 대기</span></div></div>
-        <div class="step"><b>3</b><div><strong>결과 생성</strong><span>보고서 다운로드와 제출 준비 대기</span></div></div>
-      </section>
     </main>
 
   </div>
+
+  <section class="modal" id="scanProgress" aria-label="검사 진행상황" aria-live="polite" hidden>
+    <div class="modal-card">
+      <div class="modal-head">
+        <div>
+          <h2>검사를 진행하고 있습니다.</h2>
+          <p>현재 단계와 다음 작업만 표시합니다. 상세 로그는 필요할 때만 확인합니다.</p>
+        </div>
+        <button class="modal-close" type="button" aria-label="진행상황 닫기">×</button>
+      </div>
+      <div class="steps" aria-label="검사 진행 단계">
+        <div class="step active"><b>1</b><div><strong>대상 확인</strong><span id="progressTarget">소스 위치와 접근 가능 여부 확인 중</span></div></div>
+        <div class="step"><b>2</b><div><strong id="progressMode">검사 실행</strong><span>코드, 의존성, 룰셋 점검 대기</span></div></div>
+        <div class="step"><b>3</b><div><strong>결과 생성</strong><span>보고서 다운로드와 제출 준비 대기</span></div></div>
+      </div>
+    </div>
+  </section>
+
   <script>
     const targetHelp = document.querySelector("#targetHelp");
     const targetInput = document.querySelector("#targetInput");
@@ -694,6 +772,14 @@
     const progressTarget = document.querySelector("#progressTarget");
     const progressMode = document.querySelector("#progressMode");
     const modeButtons = Array.from(document.querySelectorAll(".mode"));
+    const resultDecision = document.querySelector("#resultDecision");
+    const resultFindings = document.querySelector("#resultFindings");
+    const resultReview = document.querySelector("#resultReview");
+    const resultDeps = document.querySelector("#resultDeps");
+    const resultHtml = document.querySelector("#resultHtml");
+    const resultJson = document.querySelector("#resultJson");
+    const resultZip = document.querySelector("#resultZip");
+    const resultNote = document.querySelector("#resultNote");
     let activeTarget = "folder";
     let selectedReady = false;
     let pendingMode = null;
@@ -763,7 +849,109 @@
       mode.classList.add("active");
     }
 
-    function runScan(mode) {
+    function setResultPending(message) {
+      resultDecision.textContent = "점검 중";
+      resultFindings.textContent = "확인 중";
+      resultReview.textContent = "확인 중";
+      resultDeps.textContent = "확인 중";
+      resultHtml.textContent = "생성 중";
+      resultJson.textContent = "생성 중";
+      resultZip.textContent = "제출 점검 시 생성";
+      resultNote.textContent = message;
+    }
+
+    function setResultBlocked(message) {
+      resultDecision.textContent = "진행 불가";
+      resultFindings.textContent = "-";
+      resultReview.textContent = "-";
+      resultDeps.textContent = "-";
+      resultHtml.textContent = "생성 안 됨";
+      resultJson.textContent = "생성 안 됨";
+      resultZip.textContent = "생성 안 됨";
+      resultNote.textContent = message;
+    }
+
+    function renderReportLinks(job) {
+      resultNote.replaceChildren();
+      const intro = document.createElement("span");
+      intro.textContent = job.error || `결과 ID ${job.id} · `;
+      resultNote.append(intro);
+
+      const reports = job.reports || [];
+      if (!reports.length) {
+        const empty = document.createElement("span");
+        empty.textContent = "생성된 보고서가 없습니다.";
+        resultNote.append(empty);
+        return;
+      }
+
+      reports.forEach((report, index) => {
+        const link = document.createElement("a");
+        link.href = report.url || `/reports/${encodeURIComponent(report.file_name)}`;
+        link.textContent = report.file_name;
+        link.target = "_blank";
+        link.rel = "noreferrer";
+        link.style.marginLeft = index === 0 ? "0" : "8px";
+        resultNote.append(link);
+      });
+    }
+
+    function setResultDone(job) {
+      const findingCount = job.summary?.finding_count ?? 0;
+      const dependencyCount = job.summary?.dependency_finding_count ?? 0;
+      const reportNames = (job.reports || []).map((item) => item.file_name);
+      const hasJson = reportNames.some((name) => name.endsWith(".json") || !name.includes("."));
+      const hasHtml = reportNames.some((name) => name.endsWith(".html"));
+      const decision = job.status === "failed" ? "점검 실패" : findingCount > 0 ? "검토 필요" : "제출 가능";
+
+      resultDecision.textContent = decision;
+      resultFindings.textContent = `${findingCount}건`;
+      resultReview.textContent = job.decision === "needs_review" ? "필요" : "0건";
+      resultDeps.textContent = `${dependencyCount}건`;
+      resultHtml.textContent = hasHtml ? "생성됨" : "생성 대기";
+      resultJson.textContent = hasJson ? "생성됨" : "생성됨";
+      resultZip.textContent = job.mode === "submission" ? "추가 구현 필요" : "제출 점검 시 생성";
+      renderReportLinks(job);
+    }
+
+    async function pollResult(scanId) {
+      for (let count = 0; count < 90; count += 1) {
+        const progress = await fetch(`/api/scan/${scanId}/progress`, { cache: "no-store" }).then((response) => response.json());
+        if (progress.error) {
+          setResultBlocked(progress.error);
+          return;
+        }
+        if (progress.status === "completed" || progress.status === "failed") {
+          const job = await fetch(`/api/scan/${scanId}/result`, { cache: "no-store" }).then((response) => response.json());
+          setResultDone(job);
+          return;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 1200));
+      }
+      setResultBlocked("점검 시간이 길어지고 있습니다. 잠시 후 결과 조회를 다시 시도하세요.");
+    }
+
+    async function startApiScan(mode) {
+      const scanMode = mode.dataset.mode;
+      const targetType = activeTarget === "url" ? "github_url" : activeTarget === "zip" ? "archive" : "folder";
+      const targetRef = activeTarget === "url" ? targetInput.value.trim() : targetInput.value.trim();
+      const response = await fetch("/api/scan/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          scan_mode: scanMode,
+          target_type: targetType,
+          target_ref: targetRef
+        })
+      });
+      const started = await response.json();
+      if (!response.ok) {
+        throw new Error(started.error || "점검을 시작하지 못했습니다.");
+      }
+      await pollResult(started.scan_id);
+    }
+
+    async function runScan(mode) {
       if (!selectedReady) {
         pendingMode = mode;
         openTargetPicker();
@@ -774,7 +962,18 @@
       progressTarget.textContent = `${getTargetLabel()} 접근 가능 여부 확인 중`;
       progressMode.textContent = `${mode.dataset.modeTitle} 실행`;
       scanProgress.hidden = false;
-      scanProgress.scrollIntoView({ behavior: "smooth", block: "center" });
+      setResultPending(`${mode.dataset.modeTitle}을 시작했습니다.`);
+
+      if (activeTarget !== "url") {
+        setResultBlocked("브라우저 파일 선택은 보안상 실제 로컬 경로를 서버에 전달하지 않습니다. 폴더와 압축파일 검사는 데스크톱 앱 또는 로컬 브리지에서 연결합니다. 현재 화면에서는 GitHub URL 점검을 먼저 사용할 수 있습니다.");
+        return;
+      }
+
+      try {
+        await startApiScan(mode);
+      } catch (error) {
+        setResultBlocked(String(error.message || error));
+      }
     }
 
     document.querySelectorAll("[data-target]").forEach((tab) => {
@@ -847,6 +1046,16 @@
 
     savePicker.addEventListener("change", () => {
       savePath.textContent = "선택한 폴더에 결과물을 저장합니다.";
+    });
+
+    document.querySelector(".modal-close").addEventListener("click", () => {
+      scanProgress.hidden = true;
+    });
+
+    window.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        scanProgress.hidden = true;
+      }
     });
   </script>
 </body>

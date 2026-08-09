@@ -1,0 +1,716 @@
+import { createServer } from "node:http";
+import { spawn } from "node:child_process";
+import { createReadStream, existsSync, mkdirSync, statSync } from "node:fs";
+import { rm, readdir, readFile, writeFile } from "node:fs/promises";
+import { extname, join, normalize, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { randomUUID } from "node:crypto";
+
+const __dirname = fileURLToPath(new URL(".", import.meta.url));
+const ROOT = resolve(__dirname, "..");
+const DESIGN_DIR = join(ROOT, "design", "html-prototype");
+const REPORT_DIR = join(ROOT, "reports");
+const TMP_DIR = join(ROOT, "tmp", "scan-targets");
+const HARNESS_SOURCE_DIR = resolve(ROOT, "..", "vibe_harness_codex");
+const PORT = Number(process.env.PORT || 8787);
+
+const jobs = new Map();
+
+const staticRoutes = new Map([
+  ["/", "main page.html"],
+  ["/first-screen-gg-v2-1.html", "main page.html"],
+  ["/scan", "security-scan.html"],
+  ["/harness", "skill-harness.html"],
+  ["/help", "help.html"],
+  ["/admin", "admin.html"],
+  ["/admin/login", "admin-login.html"]
+]);
+
+const contentTypes = {
+  ".html": "text/html; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+  ".js": "text/javascript; charset=utf-8",
+  ".json": "application/json; charset=utf-8",
+  ".md": "text/markdown; charset=utf-8",
+  ".png": "image/png",
+  ".svg": "image/svg+xml",
+  ".zip": "application/zip"
+};
+
+function json(response, status, body) {
+  const payload = JSON.stringify(body, null, 2);
+  response.writeHead(status, {
+    "Content-Type": "application/json; charset=utf-8",
+    "X-Content-Type-Options": "nosniff",
+    "Cache-Control": "no-store"
+  });
+  response.end(payload);
+}
+
+function text(response, status, body) {
+  response.writeHead(status, {
+    "Content-Type": "text/plain; charset=utf-8",
+    "X-Content-Type-Options": "nosniff",
+    "Cache-Control": "no-store"
+  });
+  response.end(body);
+}
+
+function notFound(response) {
+  json(response, 404, { error: "not_found" });
+}
+
+function safeStaticPath(pathname) {
+  const routeFile = staticRoutes.get(pathname);
+  const target = routeFile ? join(DESIGN_DIR, routeFile) : join(DESIGN_DIR, pathname);
+  const resolved = resolve(normalize(target));
+  if (!resolved.startsWith(resolve(DESIGN_DIR))) return null;
+  return resolved;
+}
+
+function serveStatic(request, response, pathname) {
+  const target = safeStaticPath(pathname);
+  if (!target || !existsSync(target) || !statSync(target).isFile()) {
+    notFound(response);
+    return;
+  }
+
+  const type = contentTypes[extname(target).toLowerCase()] || "application/octet-stream";
+  response.writeHead(200, {
+    "Content-Type": type,
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "same-origin"
+  });
+  createReadStream(target).pipe(response);
+}
+
+function serveReport(response, filename) {
+  const decoded = decodeURIComponent(filename || "");
+  if (!/^[A-Za-z0-9._-]+$/.test(decoded)) {
+    notFound(response);
+    return;
+  }
+  const target = resolve(join(REPORT_DIR, decoded));
+  if (!target.startsWith(resolve(REPORT_DIR)) || !existsSync(target) || !statSync(target).isFile()) {
+    notFound(response);
+    return;
+  }
+  const type = contentTypes[extname(target).toLowerCase()] || "application/octet-stream";
+  response.writeHead(200, {
+    "Content-Type": type,
+    "X-Content-Type-Options": "nosniff",
+    "Content-Disposition": `attachment; filename="${decoded.replace(/"/g, "")}"`
+  });
+  createReadStream(target).pipe(response);
+}
+
+function runCommand(command, args, options = {}) {
+  return new Promise((resolveCommand) => {
+    const child = spawn(command, args, {
+      cwd: options.cwd || ROOT,
+      shell: false,
+      env: {
+        ...process.env,
+        PYTHONUTF8: "1",
+        PYTHONIOENCODING: "utf-8",
+        ...(options.env || {})
+      }
+    });
+
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk.toString("utf8");
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk.toString("utf8");
+    });
+    child.on("error", (error) => {
+      resolveCommand({ ok: false, code: -1, stdout, stderr: String(error.message || error) });
+    });
+    child.on("close", (code) => {
+      resolveCommand({ ok: code === 0, code, stdout, stderr });
+    });
+  });
+}
+
+async function readJson(request) {
+  const chunks = [];
+  for await (const chunk of request) chunks.push(chunk);
+  if (chunks.length === 0) return {};
+  const raw = Buffer.concat(chunks).toString("utf8");
+  return JSON.parse(raw);
+}
+
+async function gitSummary(repoPath) {
+  if (!existsSync(repoPath)) {
+    return { installed: false, status: "missing" };
+  }
+
+  const [commit, branch, remote, dirty] = await Promise.all([
+    runCommand("git", ["-C", repoPath, "rev-parse", "--short", "HEAD"]),
+    runCommand("git", ["-C", repoPath, "branch", "--show-current"]),
+    runCommand("git", ["-C", repoPath, "remote", "get-url", "origin"]),
+    runCommand("git", ["-C", repoPath, "status", "--short"])
+  ]);
+
+  return {
+    installed: commit.ok,
+    status: commit.ok ? "present" : "invalid",
+    path: repoPath,
+    commit: commit.stdout.trim(),
+    branch: branch.stdout.trim(),
+    remote: remote.stdout.trim(),
+    dirty: dirty.stdout.trim().length > 0
+  };
+}
+
+async function checkerSummary() {
+  const [version, doctor] = await Promise.all([
+    runCommand("gvskb", ["version"]),
+    runCommand("gvskb", ["doctor"])
+  ]);
+
+  const doctorText = `${doctor.stdout}\n${doctor.stderr}`;
+  const hasError = /ERROR\s+[1-9]/.test(doctorText);
+  const hasWarn = /WARN\s+[1-9]/.test(doctorText) || doctor.code !== 0;
+
+  return {
+    installed: version.ok,
+    version: version.stdout.trim(),
+    doctor_status: hasError ? "error" : hasWarn ? "warn" : "ok",
+    doctor_exit_code: doctor.code,
+    doctor_summary: doctorText.split(/\r?\n/).filter(Boolean).slice(-8)
+  };
+}
+
+async function mcpSummary() {
+  const codexProject = existsSync(join(ROOT, ".codex", "config.toml"));
+  const commonMcp = existsSync(join(ROOT, ".mcp.json"));
+  let commonMcpValid = false;
+
+  if (commonMcp) {
+    try {
+      JSON.parse(await readFile(join(ROOT, ".mcp.json"), "utf8"));
+      commonMcpValid = true;
+    } catch {
+      commonMcpValid = false;
+    }
+  }
+
+  return {
+    codex_project: codexProject ? "registered" : "missing",
+    common_mcp: commonMcp ? commonMcpValid ? "registered" : "invalid_json" : "missing",
+    checker_command: "gvskb-server"
+  };
+}
+
+async function executionGateSummary() {
+  let packageJson = {};
+  try {
+    packageJson = JSON.parse(await readFile(join(ROOT, "package.json"), "utf8"));
+  } catch {
+    packageJson = {};
+  }
+
+  const hooksPath = await runCommand("git", ["config", "--get", "core.hooksPath"]);
+  const normalizedHooksPath = hooksPath.stdout.trim().replaceAll("\\", "/");
+  const preCommitPath = normalizedHooksPath
+    ? join(ROOT, normalizedHooksPath, "pre-commit")
+    : join(ROOT, ".githooks", "pre-commit");
+
+  return {
+    guard_script: packageJson.scripts?.guard ? "configured" : "missing",
+    security_scan_script: packageJson.scripts?.["security:scan"] ? "configured" : "missing",
+    hook_path: normalizedHooksPath || "not_configured",
+    pre_commit_hook: hooksPath.ok && existsSync(preCommitPath) ? "active" : "missing_or_not_configured",
+    npm_package_gate: existsSync(join(ROOT, "shared", "enforcement", "gvskb_gate.js")) ? "present" : "missing",
+    pypi_package_gate: existsSync(join(ROOT, "shared", "enforcement", "gvskb_gate.py")) ? "present" : "missing"
+  };
+}
+
+async function localStatus() {
+  const [projectHarness, sourceHarness, checker, mcp, executionGate] = await Promise.all([
+    Promise.resolve({
+      installed: existsSync(join(ROOT, "shared", "harness.yaml")),
+      status: existsSync(join(ROOT, "shared", "harness.yaml")) ? "applied" : "missing",
+      path: ROOT
+    }),
+    gitSummary(HARNESS_SOURCE_DIR),
+    checkerSummary(),
+    mcpSummary(),
+    executionGateSummary()
+  ]);
+
+  return {
+    checked_at: new Date().toISOString(),
+    project_harness: projectHarness,
+    source_harness: sourceHarness,
+    checker,
+    mcp,
+    execution_gate: executionGate,
+    network: {
+      mode: "online",
+      github: "checked_by_update_preview",
+      osv: checker.doctor_status === "error" ? "unknown" : "reachable_or_cached"
+    }
+  };
+}
+
+function updatePreview() {
+  return {
+    status: "preview_only",
+    applies_without_approval: false,
+    flow: ["상태 확인", "변경 내용 보기", "사용자 승인", "업데이트 적용", "재검증"],
+    items: [
+      {
+        target: "harness",
+        current_source: HARNESS_SOURCE_DIR,
+        channel: "stable",
+        source: "official_release_or_approved_commit",
+        validation: "gg-validate.ps1 required"
+      },
+      {
+        target: "checker",
+        current_command: "gvskb",
+        channel: "stable",
+        source: "validated_package_and_ruleset_manifest",
+        validation: "gvskb doctor required"
+      },
+      {
+        target: "mcp",
+        source: "project settings",
+        validation: "config backup and connection test required"
+      }
+    ]
+  };
+}
+
+function createJob(mode, targetType, targetRef) {
+  const id = randomUUID();
+  const job = {
+    id,
+    mode,
+    target_type: targetType,
+    target_ref: targetRef,
+    status: "queued",
+    decision: "incomplete",
+    steps: [],
+    reports: [],
+    created_at: new Date().toISOString()
+  };
+  jobs.set(id, job);
+  return job;
+}
+
+function updateJob(job, patch) {
+  Object.assign(job, patch);
+  job.updated_at = new Date().toISOString();
+}
+
+function crc32(buffer) {
+  let crc = ~0;
+  for (const byte of buffer) {
+    crc ^= byte;
+    for (let index = 0; index < 8; index += 1) {
+      crc = (crc >>> 1) ^ (0xedb88320 & -(crc & 1));
+    }
+  }
+  return ~crc >>> 0;
+}
+
+function dosDateTime(date = new Date()) {
+  const time = (date.getHours() << 11) | (date.getMinutes() << 5) | Math.floor(date.getSeconds() / 2);
+  const day = ((date.getFullYear() - 1980) << 9) | ((date.getMonth() + 1) << 5) | date.getDate();
+  return { time, day };
+}
+
+async function createZip(zipPath, entries) {
+  const localParts = [];
+  const centralParts = [];
+  let offset = 0;
+  const { time, day } = dosDateTime();
+
+  for (const entry of entries) {
+    const nameBuffer = Buffer.from(entry.name, "utf8");
+    const data = Buffer.isBuffer(entry.data) ? entry.data : Buffer.from(String(entry.data), "utf8");
+    const crc = crc32(data);
+
+    const local = Buffer.alloc(30);
+    local.writeUInt32LE(0x04034b50, 0);
+    local.writeUInt16LE(20, 4);
+    local.writeUInt16LE(0x0800, 6);
+    local.writeUInt16LE(0, 8);
+    local.writeUInt16LE(time, 10);
+    local.writeUInt16LE(day, 12);
+    local.writeUInt32LE(crc, 14);
+    local.writeUInt32LE(data.length, 18);
+    local.writeUInt32LE(data.length, 22);
+    local.writeUInt16LE(nameBuffer.length, 26);
+    local.writeUInt16LE(0, 28);
+    localParts.push(local, nameBuffer, data);
+
+    const central = Buffer.alloc(46);
+    central.writeUInt32LE(0x02014b50, 0);
+    central.writeUInt16LE(20, 4);
+    central.writeUInt16LE(20, 6);
+    central.writeUInt16LE(0x0800, 8);
+    central.writeUInt16LE(0, 10);
+    central.writeUInt16LE(time, 12);
+    central.writeUInt16LE(day, 14);
+    central.writeUInt32LE(crc, 16);
+    central.writeUInt32LE(data.length, 20);
+    central.writeUInt32LE(data.length, 24);
+    central.writeUInt16LE(nameBuffer.length, 28);
+    central.writeUInt16LE(0, 30);
+    central.writeUInt16LE(0, 32);
+    central.writeUInt16LE(0, 34);
+    central.writeUInt16LE(0, 36);
+    central.writeUInt32LE(0, 38);
+    central.writeUInt32LE(offset, 42);
+    centralParts.push(central, nameBuffer);
+
+    offset += local.length + nameBuffer.length + data.length;
+  }
+
+  const centralSize = centralParts.reduce((sum, part) => sum + part.length, 0);
+  const end = Buffer.alloc(22);
+  end.writeUInt32LE(0x06054b50, 0);
+  end.writeUInt16LE(0, 4);
+  end.writeUInt16LE(0, 6);
+  end.writeUInt16LE(entries.length, 8);
+  end.writeUInt16LE(entries.length, 10);
+  end.writeUInt32LE(centralSize, 12);
+  end.writeUInt32LE(offset, 16);
+  end.writeUInt16LE(0, 20);
+
+  await writeFile(zipPath, Buffer.concat([...localParts, ...centralParts, end]));
+}
+
+function isAllowedGithubUrl(value) {
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" && url.hostname.toLowerCase() === "github.com" && url.pathname.split("/").filter(Boolean).length >= 2;
+  } catch {
+    return false;
+  }
+}
+
+async function prepareScanTarget(job) {
+  if (job.target_type === "folder") {
+    const targetPath = resolve(String(job.target_ref || ""));
+    if (!targetPath || !existsSync(targetPath)) {
+      throw new Error("검사 대상을 찾지 못했습니다.");
+    }
+    return targetPath;
+  }
+
+  if (job.target_type === "github_url") {
+    const targetUrl = String(job.target_ref || "").trim();
+    if (!isAllowedGithubUrl(targetUrl)) {
+      throw new Error("GitHub URL은 https://github.com/소유자/저장소 형식만 지원합니다.");
+    }
+    mkdirSync(TMP_DIR, { recursive: true });
+    const cloneDir = join(TMP_DIR, job.id);
+    await rm(cloneDir, { recursive: true, force: true });
+    const clone = await runCommand("git", ["clone", "--depth", "1", targetUrl, cloneDir]);
+    if (!clone.ok) {
+      throw new Error(`GitHub 저장소를 가져오지 못했습니다: ${clone.stderr || clone.stdout}`);
+    }
+    return cloneDir;
+  }
+
+  throw new Error("압축파일 검사는 업로드 저장소와 해제 검증 구현 후 연결합니다.");
+}
+
+async function runScanJob(job) {
+  updateJob(job, {
+    status: "running",
+    steps: [{ name: "prepare_target", status: "running" }]
+  });
+
+  let targetPath = "";
+  try {
+    targetPath = await prepareScanTarget(job);
+  } catch (error) {
+    updateJob(job, {
+      status: "failed",
+      decision: "incomplete",
+      error: String(error.message || error),
+      steps: [{ name: "prepare_target", status: "failed" }]
+    });
+    return;
+  }
+
+  mkdirSync(REPORT_DIR, { recursive: true });
+  mkdirSync(TMP_DIR, { recursive: true });
+  const outputBase = join(REPORT_DIR, job.id);
+  const args = ["scan", targetPath, "--format", "json", "--output", outputBase, "--max-files", "700", "--fail-on", "never"];
+  if (job.mode === "quick") {
+    args.push("--profile", "dev-quick");
+  }
+  if (job.mode !== "quick") args.push("--check-deps");
+
+  updateJob(job, {
+    steps: [
+      { name: "prepare_target", status: "completed" },
+      { name: "code_scan", status: "running" }
+    ]
+  });
+
+  const scan = await runCommand("gvskb", args);
+  const jsonCandidates = [`${outputBase}.json`, outputBase];
+  let parsed = null;
+  let jsonPath = "";
+
+  for (const candidate of jsonCandidates) {
+    if (existsSync(candidate)) {
+      try {
+        parsed = JSON.parse(await readFile(candidate, "utf8"));
+        jsonPath = candidate;
+        break;
+      } catch {
+        parsed = null;
+      }
+    }
+  }
+
+  if (parsed && jsonPath) {
+    updateJob(job, {
+      steps: [
+        { name: "prepare_target", status: "completed" },
+        { name: "code_scan", status: "completed" },
+        { name: "render_report", status: "running" }
+      ]
+    });
+    await runCommand("gvskb", ["report", jsonPath, "--format", "html", "--output", join(REPORT_DIR, `${job.id}-report`)]);
+  }
+
+  const findingCount = parsed?.summary?.finding_count ?? parsed?.findings?.length ?? 0;
+  const scannedFileCount = parsed?.summary?.scanned_file_count ?? parsed?.scanned_file_count ?? parsed?.scanned_files?.length ?? 0;
+  const dependencyFindingCount = parsed?.summary?.dependency_finding_count ?? parsed?.dependency_audit?.summary?.finding_count ?? 0;
+  const decision = parsed?.decision || (
+    scannedFileCount === 0 ? "needs_review" : parsed?.summary?.blocked ? "blocked" : findingCount > 0 ? "needs_review" : "allow"
+  );
+  let packageFile = null;
+
+  if (job.mode === "submission" && parsed && jsonPath) {
+    const currentFiles = await readdir(REPORT_DIR).catch(() => []);
+    const packageEntries = [];
+    for (const file of currentFiles.filter((name) => name === job.id || name.startsWith(`${job.id}-report`))) {
+      packageEntries.push({ name: `reports/${file}`, data: await readFile(join(REPORT_DIR, file)) });
+    }
+    packageEntries.push({
+      name: "submission-manifest.json",
+      data: JSON.stringify({
+        scan_id: job.id,
+        created_at: new Date().toISOString(),
+        target_type: job.target_type,
+        target_ref: job.target_ref,
+        decision,
+        summary: {
+          scanned_file_count: scannedFileCount,
+          finding_count: findingCount,
+          dependency_finding_count: dependencyFindingCount
+        },
+        notice: "이 패키지는 보안 검토 증거이며 공식 보안 승인 자체가 아닙니다."
+      }, null, 2)
+    });
+    packageFile = `${job.id}-submission.zip`;
+    await createZip(join(REPORT_DIR, packageFile), packageEntries);
+  }
+
+  const finalReportFiles = await readdir(REPORT_DIR).catch(() => []);
+  const finalReportItems = [];
+  for (const file of finalReportFiles) {
+    if (file === job.id || file.startsWith(`${job.id}.`) || file.startsWith(`${job.id}-report`) || file === packageFile) {
+      finalReportItems.push({
+        file_name: file,
+        path: join(REPORT_DIR, file),
+        url: `/reports/${encodeURIComponent(file)}`
+      });
+    }
+  }
+
+  updateJob(job, {
+    status: scan.ok || parsed ? "completed" : "failed",
+    decision,
+    steps: [
+      { name: "prepare_target", status: "completed" },
+      { name: "code_scan", status: scan.ok || parsed ? "completed" : "failed" },
+      { name: "render_report", status: finalReportItems.length > 0 ? "completed" : "pending" }
+    ],
+    reports: finalReportItems,
+    checker_exit_code: scan.code,
+    checker_stdout_tail: scan.stdout.split(/\r?\n/).filter(Boolean).slice(-12),
+    checker_stderr_tail: scan.stderr.split(/\r?\n/).filter(Boolean).slice(-12),
+    summary: {
+      scanned_file_count: scannedFileCount,
+      finding_count: findingCount,
+      dependency_finding_count: dependencyFindingCount
+    }
+  });
+}
+
+function adminSummary() {
+  const scans = Array.from(jobs.values());
+  const todayPrefix = new Date().toISOString().slice(0, 10);
+  const today = scans.filter((job) => String(job.created_at || "").startsWith(todayPrefix));
+  const allow = scans.filter((job) => job.decision === "allow").length;
+  const needsReview = scans.filter((job) => job.decision === "needs_review").length;
+  const blocked = scans.filter((job) => job.decision === "blocked").length;
+  return {
+    total: scans.length,
+    today: today.length,
+    allow,
+    needs_review: needsReview,
+    blocked,
+    generated_at: new Date().toISOString()
+  };
+}
+
+function publicJob(job) {
+  return {
+    id: job.id,
+    mode: job.mode,
+    target_type: job.target_type,
+    target_ref: job.target_ref,
+    status: job.status,
+    decision: job.decision,
+    summary: job.summary || null,
+    reports: job.reports || [],
+    created_at: job.created_at,
+    updated_at: job.updated_at || null,
+    error: job.error || null
+  };
+}
+
+async function startScan(request, response) {
+  const body = await readJson(request);
+  const mode = ["quick", "standard", "submission"].includes(body.scan_mode) ? body.scan_mode : "standard";
+  const targetType = ["folder", "archive", "github_url"].includes(body.target_type) ? body.target_type : "folder";
+  const job = createJob(mode, targetType, body.target_ref);
+
+  if (targetType === "archive") {
+    updateJob(job, {
+      status: "failed",
+      decision: "incomplete",
+      error: "압축파일 해제 검사는 다음 구현 단계에서 연결합니다. 현재는 로컬 폴더 검사를 먼저 지원합니다."
+    });
+  } else {
+    runScanJob(job).catch((error) => {
+      updateJob(job, {
+        status: "failed",
+        decision: "blocked",
+        error: String(error.message || error)
+      });
+    });
+  }
+
+  json(response, 202, {
+    scan_id: job.id,
+    status: job.status,
+    progress_url: `/api/scan/${job.id}/progress`,
+    result_url: `/api/scan/${job.id}/result`
+  });
+}
+
+async function handleApi(request, response, pathname) {
+  if (request.method === "GET" && pathname === "/health") {
+    json(response, 200, { status: "ok", app: "vibecode-security-gate-portal" });
+    return;
+  }
+
+  if (request.method === "GET" && pathname === "/api/local/status") {
+    json(response, 200, await localStatus());
+    return;
+  }
+
+  if (request.method === "POST" && pathname === "/api/local/update/preview") {
+    json(response, 200, updatePreview());
+    return;
+  }
+
+  if (request.method === "POST" && pathname === "/api/local/update/apply") {
+    const body = await readJson(request);
+    if (body.approval_token !== "user-confirmed") {
+      json(response, 409, { status: "blocked", reason: "approval_required" });
+      return;
+    }
+    json(response, 501, { status: "not_implemented", reason: "업데이트 적용은 승인 레이어와 재검증 구현 후 연결합니다." });
+    return;
+  }
+
+  if (request.method === "POST" && pathname === "/api/local/mcp/register") {
+    const mcp = await mcpSummary();
+    const executionGate = await executionGateSummary();
+    const alreadyRegistered = mcp.codex_project === "registered" && mcp.common_mcp === "registered";
+    json(response, 200, {
+      status: alreadyRegistered ? "already_registered" : "needs_user_approval",
+      applies_without_approval: false,
+      mcp,
+      execution_gate: executionGate,
+      next_action: alreadyRegistered
+        ? "체커 MCP가 등록되어 있습니다. 연결 검증과 개발 게이트 상태를 확인하세요."
+        : "설정 파일 백업과 사용자 승인 후 MCP 등록을 진행해야 합니다."
+    });
+    return;
+  }
+
+  if (request.method === "POST" && pathname === "/api/scan/start") {
+    await startScan(request, response);
+    return;
+  }
+
+  if (request.method === "GET" && pathname === "/api/admin/summary") {
+    json(response, 200, adminSummary());
+    return;
+  }
+
+  if (request.method === "GET" && pathname === "/api/admin/scans") {
+    json(response, 200, {
+      scans: Array.from(jobs.values()).sort((a, b) => String(b.created_at).localeCompare(String(a.created_at))).map(publicJob)
+    });
+    return;
+  }
+
+  const progressMatch = pathname.match(/^\/api\/scan\/([^/]+)\/progress$/);
+  if (request.method === "GET" && progressMatch) {
+    const job = jobs.get(progressMatch[1]);
+    if (!job) return notFound(response);
+    json(response, 200, { scan_id: job.id, status: job.status, steps: job.steps, error: job.error || null });
+    return;
+  }
+
+  const resultMatch = pathname.match(/^\/api\/scan\/([^/]+)\/result$/);
+  if (request.method === "GET" && resultMatch) {
+    const job = jobs.get(resultMatch[1]);
+    if (!job) return notFound(response);
+    json(response, 200, job);
+    return;
+  }
+
+  notFound(response);
+}
+
+createServer(async (request, response) => {
+  try {
+    const url = new URL(request.url || "/", `http://${request.headers.host || "localhost"}`);
+    if (url.pathname === "/health" || url.pathname.startsWith("/api/")) {
+      await handleApi(request, response, url.pathname);
+      return;
+    }
+
+    const reportMatch = url.pathname.match(/^\/reports\/(.+)$/);
+    if (reportMatch) {
+      serveReport(response, reportMatch[1]);
+      return;
+    }
+
+    serveStatic(request, response, decodeURIComponent(url.pathname));
+  } catch (error) {
+    text(response, 500, `server_error: ${String(error.message || error)}`);
+  }
+}).listen(PORT, "127.0.0.1", () => {
+  console.log(`VibeCode Security Gate Portal: http://127.0.0.1:${PORT}`);
+});

@@ -1,0 +1,109 @@
+core_process_enforcement_version: 1
+
+purpose:
+  - "Make the harness enforce the core development process, not only describe it in README files."
+  - "Prevent implementation-complete claims when there is no runnable service, no user-scenario evidence, or no checker-backed security evidence."
+  - "Keep the main mission as working software; checker and harness evidence supports the mission but cannot replace it."
+
+principles:
+  implementation_first: "For service/app requests, deliver a runnable service or static site before claiming completion."
+  completion_evidence_required: "runnable_url_or_file, scenario_result, checker_gate_status, harness_gate_status, incomplete_reason_if_any"
+  health_only_is_not_user_scenario: "A /health check is useful but never enough when the user-facing flow can be exercised."
+  clickable_controls_are_user_flow: "Primary buttons, links, tabs, and modal actions are part of the user flow and must be checked before completion."
+  proportional_but_real: "L1 may use a small scenario test; L2/L3 must test the primary business flow, result/report flow, and operator/admin flow when present."
+  package_gate_before_install: "Packages are not avoided by default; they are checked before install or version change and then used when safe or approved."
+  security_checker_is_evidence: "vibecode-checker findings and reports are evidence for review, not official approval."
+
+mandatory_processes:
+  service_implementation:
+    required_when: "The user asks to build, implement, fix, or complete a service, app, page, API, or automation."
+    must_do:
+      - "Create or update runnable source code in the approved workspace or project path."
+      - "Start or open the service when feasible and record the URL/path."
+      - "Do not report completion with design files, README changes, or checker output only."
+    block_when:
+      - "implementation_claim_without_runnable_service"
+      - "source_missing_or_unreachable"
+      - "design_only_delivered_for_implementation_request"
+
+  scenario_test:
+    required_when: "Any user-facing or operator-facing behavior was implemented or changed."
+    command_rule: "Provide npm run scenario:test, python script, PowerShell script, or a recorded manual checklist when automation is not feasible."
+    must_cover:
+      - "page_or_entrypoint_load"
+      - "primary_user_action"
+      - "result_visibility_or_saved_output"
+      - "primary_buttons_and_links_reachable"
+      - "no_placeholder_href_or_dead_click_target"
+      - "error_or_empty_state_when_relevant"
+      - "admin_or_operator_flow_when_present"
+      - "installation_status_or_update_flow_when_present"
+    block_when:
+      - "scenario_test_missing_for_user_facing_service"
+      - "scenario_test_failed"
+      - "health_only_when_user_flow_exists"
+      - "broken_click_target_or_placeholder_href"
+
+  security_check:
+    required_when: "Source is implemented, dependencies change, release readiness is claimed, or the user asks for security validation."
+    quick: "Use during coding for risky changes, changed manifests, and explicit pre-commit checks."
+    standard: "Use after functional implementation completion on full source and declared dependencies."
+    full: "Use before deployment, official handoff, or security/AX submission; save checker HTML and JSON evidence."
+    block_when:
+      - "checker_skipped_but_security_claimed_complete"
+      - "scanned_file_count_zero_treated_as_safe"
+      - "critical_or_high_unresolved_without_reviewer_route"
+
+  package_gate:
+    required_when: "Before adding a new Python/npm package or changing a dependency version."
+    must_do:
+      - "Run gvskb_gate.py for PyPI packages."
+      - "Run gvskb_gate.js for npm packages, including TypeScript toolchain dependencies."
+      - "Use approved or safe packages when the checker passes; propose alternatives when it blocks."
+    block_when:
+      - "direct_package_install_without_gate"
+      - "denied_or_not_found_package_without_replacement"
+
+  release_submission:
+    required_when: "The work is being prepared for deployment, handoff, or formal review."
+    default_outputs:
+      - "vibecode-checker saved HTML report"
+      - "vibecode-checker saved JSON evidence report"
+    must_notice: "Tell the user the two checker reports are submitted to the security team or AX team as review evidence, not official approval."
+    block_when:
+      - "full_checker_html_or_json_missing"
+      - "official_approval_claimed_by_harness"
+
+recording_requirements:
+  implementation_log:
+    - "implemented_source_paths"
+    - "run_url_or_openable_file"
+    - "user_scenarios_tested"
+    - "scenario_test_result"
+    - "checker_profile_and_result"
+    - "harness_gate_result"
+    - "extra_time_estimate_for_harness_and_checker"
+    - "extra_token_estimate_for_harness_and_checker"
+    - "checker_or_harness_improvement_candidates"
+  final_response:
+    - "what_changed"
+    - "how_it_was_verified"
+    - "what_remains_incomplete_or_needs_human_review"
+
+guard_command:
+  required_for_project_level_work: true
+  minimum_contents:
+    - "syntax_or_static_check"
+    - "harness_validation_or_policy_check"
+    - "scenario_test_or_recorded_manual_user_flow"
+    - "button_link_contract_test_for_user_facing_pages"
+    - "checker_quick_or_standard_as_stage_requires"
+  recommended_names:
+    - "npm run guard"
+    - "python -m scripts.guard"
+    - "powershell ./scripts/guard.ps1"
+
+known_boundaries:
+  - "The harness can require guard commands and evidence, but cannot stop a user or tool from bypassing it in a raw terminal."
+  - "README instructions are not enforcement unless they are wired into AGENTS.md, guard commands, validation scripts, CI, or pre-commit hooks."
+  - "Scenario tests should avoid Playwright/Puppeteer as production dependencies; browser automation is allowed only as separated test/dev tooling when approved."

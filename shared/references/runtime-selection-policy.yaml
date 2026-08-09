@@ -1,0 +1,120 @@
+runtime_selection_version: 1
+
+purpose:
+  - "Recommend an allowed language, framework, DBMS, and track from agency server conditions and business use."
+  - "Do not ask civil servants to choose a language or framework unless policy has multiple equally safe options."
+
+default_platform:
+  web_server: nginx
+  production_dbms: postgresql
+  reverse_proxy: true
+  health_path: "/health"
+
+implementation_language_policy:
+  allowed_function_implementation_languages:
+    - python
+    - javascript
+    - typescript
+  allowed_runtime_labels:
+    python: "Python/FastAPI/Streamlit/local automation"
+    javascript: "Node.js API or browser JavaScript frontend build served by nginx"
+    typescript: "TypeScript source compiled through the approved Node.js toolchain; runtime remains Node.js or browser JavaScript"
+  typescript_policy: "allowed for approved React/Vite and Node tracks because vibecode-checker scans .ts and .tsx"
+  decision_rule: "If a requested stack requires another implementation language, convert it to an approved Python, JavaScript, or TypeScript track or mark needs-review."
+
+server_profiles:
+  small:
+    cpu: 1
+    memory_gb: 2
+    recommended_for:
+      - internal_dashboard
+      - simple_crud
+      - file_report_generator
+    avoid:
+      - headless_browser
+      - heavy_batch
+      - multi_worker_queue
+
+  standard:
+    cpu: 2
+    memory_gb: 4
+    recommended_for:
+      - internal_web
+      - file_upload
+      - api_service
+      - small_rag
+
+  large_or_special:
+    cpu: 4
+    memory_gb: 8
+    recommended_for:
+      - batch_processing
+      - document_search
+      - high_volume_public_service
+    requires_review: true
+
+recommendations:
+  internal_dashboard:
+    preferred_track: streamlit-internal
+    language: python
+    language_version_source: "institution-profile.yaml environment.*.allowed_languages.python"
+    framework: streamlit
+    dbms: "none-or-postgresql"
+    server_profile: small
+    reason: "Fast internal visualization and Excel-oriented work."
+
+  internal_crud_web:
+    preferred_track: fastapi-web
+    language: python
+    framework: fastapi
+    dbms: postgresql
+    server_profile: standard
+    reason: "Nginx reverse proxy and PostgreSQL fit simple internal business apps."
+
+  file_upload_tool:
+    preferred_track: fastapi-web
+    language: python
+    framework: fastapi
+    dbms: postgresql
+    server_profile: standard
+    reason: "Server-side upload validation and audit logging are easier to control."
+
+  static_spa:
+    preferred_track: react-fastapi
+    frontend_language: javascript-or-typescript
+    frontend_framework: react-vite
+    backend_language: python
+    backend_framework: fastapi
+    dbms: postgresql
+    server_profile: standard
+    reason: "Node is build-time only; nginx serves static assets and FastAPI handles data."
+
+  node_api:
+    preferred_track: node-api
+    language: javascript-or-typescript
+    framework: express
+    dbms: postgresql
+    server_profile: standard
+    reason: "Use only when Node API is explicitly allowed by the agency profile or migration context."
+
+  local_automation:
+    preferred_track: local-automation
+    language: python
+    framework: cli-script
+    dbms: "none-or-sqlite"
+    server_profile: small
+    reason: "Local or L1-only task automation should stay simple and avoid production coupling."
+
+decision_rules:
+  - "If production server is small and the service is internal dashboard, prefer streamlit-internal."
+  - "If persistent shared data is required, use production DBMS from institution-profile.yaml; default to PostgreSQL when allowed."
+  - "If public/citizen access exists, do not use streamlit-internal."
+  - "If the frontend is React, Node is allowed for build tooling; production runtime should remain nginx/static plus approved backend."
+  - "Write functional source in Python, JavaScript, or TypeScript only. Do not create Java, Go, PHP, Ruby, C#, Rust, or native-runtime implementation unless the institution grants an exception."
+  - "If the frontend is React, Node is allowed for JavaScript/TypeScript build tooling; production runtime should remain nginx/static plus approved backend."
+  - "If requested language is not in institution-profile.yaml, mark as needs-review and suggest an approved track."
+  - "If server profile cannot support the requested runtime, mark as needs-user or needs-operations-review."
+
+output_requirements:
+  - "Record selected language, framework, DBMS, server profile, and reason in 04_runtime_environment artifact."
+  - "Record rejected alternatives when user requested an unapproved language or DBMS."

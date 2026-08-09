@@ -1,0 +1,35 @@
+gates:
+  G0_lifecycle:
+    description: maturity level, exposure, data level, and lifecycle-quality-gates alignment
+    block: L2/L3 work missing proportional artifacts or risk escalation
+
+  G1_template:
+    description: approved golden template
+    block: source not based on selected golden template
+
+  G2_code:
+    description: vibecode-checker standard/full evidence plus internal rescan when required
+    official_authority: server_rescan
+    block: unresolved critical/high code, secret, PII, or unsafe external call findings
+
+  G3_package:
+    description: checker-mediated registry/local governance decision, lockfiles, dependency scan evidence, installed/vendor evidence for full release, and safe replacements
+    block: denied package, unknown L2/L3 dependency, missing lockfile, blocked package without replacement
+    warn: restricted package without recorded condition
+
+  G4_image:
+    description: Harbor Trivy image scan
+    block: Critical/High CVE
+
+  G5_operation:
+    description: DEV validation, final checker report submission, human approval, PRD deploy, DMZ DAST/WAF for public
+    required_for_release_default:
+      - "vibecode-checker saved HTML report submitted or ready for submission to security/AX team"
+      - "vibecode-checker saved JSON evidence submitted or ready for submission to security/AX team"
+      - "user was told the two final reports must be submitted and are not official approval"
+    conditional_only:
+      - "deployment application form when the institution requires one"
+      - "exception request when unresolved exceptions exist"
+      - "package review request when package review is required"
+      - "server install guide when operations needs installation handoff"
+    block: production deploy, official approval claimed by harness alone, or missing final checker HTML/JSON reports

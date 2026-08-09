@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}항목{% endblock %}
+{% block content %}
+<h1>항목</h1>
+<form method="post" action="items">
+  <input name="title" placeholder="제목" required maxlength="200">
+  <button type="submit">등록</button>
+</form>
+<ul>
+  {% for it in items %}<li>{{ it.title }}</li>{% endfor %}
+</ul>
+<p><a href="/">← 홈</a></p>
+{% endblock %}

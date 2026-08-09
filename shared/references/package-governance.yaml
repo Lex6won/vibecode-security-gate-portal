@@ -1,0 +1,317 @@
+package_governance_version: 2
+
+purpose:
+  - "Define how Python(PyPI) and JavaScript/TypeScript(npm) package decisions flow through the harness."
+  - "Ensure blocked or uncertain packages do not stop development without a safe replacement path."
+  - "Prepare for a package registry platform while keeping the harness dependent only on checker verdicts."
+
+source_of_truth:
+  current_mode: "local-seed-plus-checker-verdict"
+  future_mode: "registry-service-through-vibecode-checker"
+  generated_snapshot: "generated/package-policy.snapshot.json"
+  normal_decision_input: "vibecode-checker/gvskb verdict"
+  runtime_gate:
+    pypi: "shared/enforcement/gvskb_gate.py"
+    npm: "shared/enforcement/gvskb_gate.js"
+    purpose: "Check newly added packages before install while keeping coding flow lightweight."
+    final_submission_impact: "none; final release submission remains checker HTML and JSON reports."
+  fallback_order:
+    - "shared/references/package-denylist.yaml"
+    - "vibecode-checker/gvskb scan_dependencies verdict"
+    - "generated/package-policy.snapshot.json when created by the approved registry platform"
+    - "shared/institution-profile.yaml libraries"
+    - "shared/references/approved-packages.yaml"
+    - "shared/references/package-alternatives.yaml"
+    - "shared/references/package-risk-policy.md"
+  important_boundary: "The harness does not directly query registry APIs for normal package decisions; the checker mediates registry lookup."
+
+roles:
+  harness:
+    responsibility:
+      - "Block local denied packages and enforce checker verdicts."
+      - "Require replacement, safe version, cooldown wait, review request, or exception path before install/use."
+      - "Record applied mode, env_grade, verdict, evidence, and remaining risk."
+    cannot_do:
+      - "final_approve_package"
+      - "silently_update_official_catalog"
+      - "send_to_external_platform_without_user_or_policy_approval"
+      - "claim_that_no_findings_equals_safe"
+  vibecode_checker:
+    responsibility:
+      - "Collect dependency risk evidence from manifests and lockfiles."
+      - "Ask the registry service when configured."
+      - "Return a single verdict and supporting fields."
+    output_role: "verdict_and_evidence_provider"
+  registry_service:
+    responsibility:
+      - "Store PyPI/npm allow, deny, conditional, under-review, hold, cooldown, and stale decisions."
+      - "Expose decisions to vibecode-checker."
+    output_role: "governance_source_of_truth"
+  package_platform:
+    responsibility: "Manage review queue, reviewer decisions, package status, and generated policy snapshots."
+    output_role: "future_workflow_system"
+  human_reviewer:
+    responsibility: "Final approval, restriction, denial, or exception decision."
+
+ecosystems:
+  allowed:
+    - pypi
+    - npm
+  denied_by_default:
+    - maven
+    - gradle
+    - go
+    - cargo
+    - nuget
+    - composer
+    - rubygems
+    - pub
+  note: "Functional implementation must stay in Python, JavaScript, or TypeScript. Other package ecosystems imply an unapproved runtime/language unless explicitly excepted by the institution."
+
+statuses:
+  core: "Golden-template dependency; allowed only while checker verdict does not block."
+  approved: "Human, platform, or registry approved."
+  restricted: "Allowed with enforceable conditions; record condition and reason."
+  proposed-approved: "Checker found no blocking evidence but human/platform review is not final."
+  denied-candidate: "Checker or policy found risky evidence; default block pending review."
+  denied: "Human/platform/registry/local policy denied; do not use."
+  needs-review: "Insufficient evidence, stale evidence, unknown package, or conditional policy."
+  exception-required: "Not approved for normal use; exception document required."
+
+checker_verdict_mapping:
+  malicious: denied
+  registry_rejected: denied
+  not_found: denied
+  vulnerable: "denied-candidate or needs-review depending on severity and mode"
+  cooldown_hold: needs-review
+  checked_stale: needs-review
+  registry_approved: approved
+  checked_clean: proposed-approved
+  unknown: needs-review
+  error: needs-review
+
+absolute_block:
+  verdicts:
+    - malicious
+    - registry_rejected
+    - not_found
+  flags:
+    - in_kev
+  action: "block in MONITOR, WARN, and ENFORCE"
+
+local_catalog_priority:
+  rules:
+    - "Local denylist blocks before local allowlist."
+    - "Local denylist cannot be overridden by registry_approved."
+    - "registry_rejected returned by checker cannot be overridden by local allowlist."
+    - "If local allowlist and checker pass both agree, allow with evidence record."
+    - "If local allowlist says yes but checker returns unknown/error/cooldown/stale/checked=false, apply enforcement mode."
+    - "If no local entry but checker returns registry_approved or checked_clean, allow or proposed-allow according to mode and maturity."
+
+enforcement_mode_summary:
+  MONITOR: "Log/warn except absolute blocks."
+  WARN: "Block absolute and high/critical vulnerable cases; warn on uncertain/stale/cooldown evidence."
+  ENFORCE: "Fail safe on unknown/error/cooldown and block medium+ vulnerable cases."
+  source: "shared/references/harness-enforcement-contract.yaml"
+
+promotion_rules:
+  checked_clean: proposed-approved
+  registry_approved_checked_true: approved
+  registry_approved_checked_false: needs-review
+  low_or_medium_vulnerability: needs-review
+  high_or_critical_vulnerability: denied-candidate
+  malicious_or_registry_rejected_or_not_found: denied
+  typosquat_warning_existing_package: "warn-only-in-harness; registry-may-set-under-review"
+  typosquat_or_slopsquat_not_found: denied
+  external_baas_sdk: denied-candidate
+  cdn_runtime_dependency: denied-candidate
+  postinstall_required: needs-review
+  unknown_license: needs-review
+  no_checker_available: needs-review
+
+replacement_rules:
+  required_before_exception: true
+  source: "shared/references/package-alternatives.yaml"
+  order:
+    - "standard_library_or_platform_builtin"
+    - "already_in_golden_template"
+    - "approved_core_package"
+    - "restricted_package_with_documented_condition"
+    - "safe_version_from_checker_or_registry"
+    - "cooldown_wait_then_retry"
+    - "smaller_feature_scope_without_new_package"
+    - "package_review_request"
+    - "exception_request"
+  applies_to_statuses:
+    - denied
+    - denied-candidate
+    - needs-review
+    - exception-required
+    - restricted
+  must_record:
+    - blocked_or_requested_package
+    - ecosystem
+    - requested_version
+    - checker_verdict
+    - verdict_severity
+    - registry_status
+    - applied_mode
+    - applied_env_grade
+    - reason
+    - recommended_replacement
+    - safe_version_or_wait_days
+    - implementation_note
+    - feature_impact
+    - residual_risk
+    - review_or_exception_needed
+  coding_rule: "Do not install the risky package first and replace later. New PyPI and npm packages, including TypeScript tooling and libraries, must pass the checker gate before dependency installation or version change."
+
+required_evidence:
+  - package_name
+  - ecosystem
+  - requested_version
+  - requested_by_project
+  - manifest_file
+  - requested_use
+  - selected_track
+  - network_profile
+  - enforcement_mode
+  - env_grade
+  - checker_name
+  - checker_version
+  - scan_time
+  - checker_verdict
+  - verdict_severity
+  - checked
+  - kev_checked
+  - requires_review
+  - version_exact
+  - source_scope
+  - vulnerability_summary
+  - malicious_package_signal
+  - kev_signal
+  - cooldown_summary
+  - registry_status
+  - registry_decision
+  - registry_stale
+  - intel_cache_state
+  - license_summary
+  - maintainer_or_popularity_signal
+  - network_or_postinstall_behavior
+  - alternative_considered
+  - recommended_replacement
+  - feature_impact
+  - recommended_status
+  - reviewer
+  - reviewer_decision_time
+
+future_platform_integration:
+  allowed_patterns:
+    file_drop:
+      description: "Write a JSON review request into an agreed local/outbox directory for platform ingestion."
+      default_path: "outbox/package-review-requests/"
+      safety: "Lowest coupling; good before platform API is stable."
+    rest_api:
+      description: "POST package evidence to the package platform API."
+      safety: "Requires auth, audit log, retries, idempotency, explicit institution policy, and no personal/secrets payload."
+    message_queue:
+      description: "Publish package review events to an internal queue."
+      safety: "Useful for high-volume enterprise integration after schema and retry policy review."
+    database_write:
+      description: "Direct DB insert/update."
+      safety: "Not recommended unless the platform owns the schema and provides a reviewed stored procedure or service account policy."
+  recommended_first_step: "file_drop"
+  do_not_send:
+    - "source_code"
+    - "secrets"
+    - "personal_data"
+    - "full_lockfile_if_it_contains_private_registry_tokens"
+    - "developer personal identity"
+
+catalog_export:
+  purpose: "Provide registry seed data without converting name-only allowed packages into version-level approvals."
+  approved_source: "shared/references/approved-packages.yaml"
+  denied_source: "shared/references/package-denylist.yaml"
+  export_status_mapping:
+    approved_source_entries: "scope_catalog only; do not import as APPROVED without exact version and checker evidence"
+    restricted_source_entries: "scope_catalog with conditions; do not import as CONDITIONAL without enforceable condition and exact version"
+    denied_source_entries: REJECTED
+    denied_patterns: "not a registry package decision; keep in harness gate/pattern checks"
+    mixed_catalog_entries: "must carry explicit status/scope per entry"
+  approval_basis_for_bulk_allowlist: "not used for name-only package entries"
+  version_rule: "Registry APPROVED is a version-level decision keyed by ecosystem, name, and version. Name-only approved catalog entries define allowed scope, not safety."
+  auto_approval_path: "approved name scope + checker checked_clean for exact version + registry auto-approval rules can create version-level APPROVED."
+  absence_rule: "A package absent from the local catalog is unknown, not automatically denied."
+  registry_response_2026_08_03:
+    - "Denied package names may be imported as REJECTED because that is conservative for all versions."
+    - "Approved package names must not be imported as APPROVED because that would approve all versions."
+    - "Restricted package names need enforceable conditions before registry conditional decisions can be created."
+
+unknown_coverage_transition:
+  recommended_denominator: "direct_dependencies_only"
+  direct_dependency_source_scopes:
+    - single
+    - manifest
+  transitive_or_observed_source_scopes:
+    - lockfile
+    - installed
+  recommended_enforce_criteria:
+    - "direct dependency unknown ratio <= institution-approved threshold"
+    - "and version-level registered/approved baseline count reached"
+    - "and the condition only triggers human/security review for ENFORCE, not automatic mode transition"
+  starter_values_for_security_team_decision:
+    direct_dependency_unknown_ratio: "10%"
+    version_level_registered_count: 200
+    observation_period: "3 consecutive weeks"
+    transition_action: "review-not-auto-switch"
+
+bypass_governance:
+  principle: "Bypass is a recorded exception path, not silent disabling of the harness."
+  default_never_bypass:
+    - malicious
+    - registry_rejected
+    - not_found
+    - in_kev
+    - local_catalog_denied
+  pending_checker_proposal:
+    - "gvskb proposes a structured override path for not_found when the package is private/internal and absent from public PyPI/npm by design."
+    - "Registry response 2026-08-03 accepts the harness position that absolute blocks and catalog denied are not bypassable by code. Until a later three-party change, route private not_found cases to reviewer/internal-prefix policy instead of install."
+  structured_override:
+    shape:
+      reason_code: "approved enum value"
+      approval_ref: "document or ticket number, not a person name"
+      mode: "MONITOR/WARN/ENFORCE"
+      expires_at: "default 7 days if institution enables override expiry"
+    no_free_text_primary_reason: true
+  preapproved_reason_codes:
+    - DEV_ONLY_NO_RUNTIME_USE
+    - OFFLINE_EVIDENCE_PENDING
+    - SECURITY_REVIEW_TICKET_OPENED
+  unrecognized_reason_code_handling: "Record with warning for audit continuity; do not drop the override record merely because the code is new."
+  approval_ref_validation: "Reject email, IP address, person name, employee id, or other personal identifiers. Use document/ticket references only."
+  reporting: "Report bypass counts monthly by reason code, package ecosystem, maturity level, and env_grade."
+
+checker_signal_handling:
+  kev_checked:
+    - "Do not treat in_kev=false as no known exploitation unless kev_checked=true."
+    - "kev_checked=false is degraded evidence; route to internal report and enforce according to mode."
+    - "If kev_checked is absent, fall back only to cache_sources_used containing cisa-kev. Other cache sources such as osv-malicious do not prove KEV comparison."
+  version_exact:
+    - "Do not block solely on vulnerability evidence from version_exact=false."
+    - "Use version_exact=false to request pinning, lockfile, exact installed-version check, or review."
+  registry_status:
+    ok: "Institution decision was available."
+    non_ok: "unreachable, rejected, item_failed, unauthorized, disabled, and unknown future values mean no usable institution allow decision."
+  registry_stale:
+    - "Old blocks remain blocks."
+    - "Use stale notation in internal records; ordinary user UI should stay action-oriented."
+  source_scope:
+    single_or_manifest: "direct dependency; unknown can block in ENFORCE."
+    lockfile_or_installed: "transitive/observed dependency; unknown alone does not block in ENFORCE."
+
+checker_limitations:
+  - "Dependency scanning can find known vulnerabilities, registry policy results, cooldown issues, not_found packages, and some malicious/typosquat signals, but cannot prove a package is safe."
+  - "Accuracy depends on vulnerability/intel freshness, package registry metadata, lockfile quality, transitive dependency visibility, and offline cache freshness."
+  - "Unknown or newly staged malicious packages may not be detected."
+  - "Runtime behavior, install scripts, private package contents, and compromised maintainers may require additional review."
+  - "Final operational approval remains a human/platform governance decision."
