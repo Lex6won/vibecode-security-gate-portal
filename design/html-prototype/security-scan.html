@@ -453,6 +453,69 @@
       cursor: pointer;
     }
 
+    .modal-actions {
+      margin-top: 22px;
+      display: flex;
+      justify-content: flex-end;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .button {
+      min-height: 44px;
+      padding: 0 18px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border: 0;
+      border-radius: 999px;
+      background: var(--green);
+      color: #ffffff;
+      font-size: 14px;
+      line-height: 20px;
+      font-weight: 900;
+      letter-spacing: 0;
+      cursor: pointer;
+      box-shadow: 0 8px 18px rgba(31,107,95,.18);
+      transition: transform .14s ease, box-shadow .14s ease, background-color .14s ease;
+    }
+
+    .button.primary {
+      background: var(--green);
+      color: #ffffff;
+    }
+
+    .button.secondary {
+      border: 1px solid #9ab9e8;
+      background: var(--soft);
+      color: #244d85;
+      box-shadow: none;
+    }
+
+    .button:hover,
+    .button:focus-visible {
+      transform: translateY(-2px);
+      box-shadow: 0 12px 22px rgba(55,112,191,.22);
+    }
+
+    .button:active {
+      transform: translateY(1px) scale(.99);
+      box-shadow: inset 0 0 0 2px rgba(255,255,255,.32);
+    }
+
+    .button:focus-visible,
+    .modal-close:focus-visible {
+      outline: 3px solid rgba(55,112,191,.3);
+      outline-offset: 3px;
+    }
+
+    .button:disabled {
+      cursor: not-allowed;
+      opacity: .58;
+      transform: none;
+      box-shadow: none;
+    }
+
     .scan-grid {
       display: contents;
     }
@@ -845,9 +908,9 @@
           </div>
 
           <div class="mode-grid" aria-label="검사 방식">
-            <button class="mode" type="button" data-mode="quick" data-mode-title="간편 점검"><strong>간편 점검</strong><span>고위험 코드와 의존성을 빠르게 확인합니다.</span><em>개발 중 확인</em></button>
-            <button class="mode active" type="button" data-mode="standard" data-mode-title="표준 점검"><strong>표준 점검</strong><span>전체 파일과 의존성을 점검하고 보고서를 만듭니다.</span><em>개발 완료 후</em></button>
-            <button class="mode" type="button" data-mode="submission" data-mode-title="제출 점검"><strong>제출 점검</strong><span>표준 점검 후 제출 패키지 ZIP을 생성합니다.</span><em>제출 전 확인</em></button>
+            <button class="mode" type="button" data-mode="quick" data-mode-title="간편 점검"><strong>간편 점검</strong><span>개발 중 고위험 규칙과 의존성을 빠르게 확인합니다. 제출용 검사는 아닙니다.</span><em>개발 중 확인</em></button>
+            <button class="mode active" type="button" data-mode="standard" data-mode-title="표준 점검"><strong>표준 점검</strong><span>전체 파일과 의존성을 표준 규칙으로 검사합니다. 제출 패키지는 만들지 않습니다.</span><em>개발 완료 후</em></button>
+            <button class="mode" type="button" data-mode="submission" data-mode-title="제출 점검"><strong>제출 점검</strong><span>표준 전체 검사 후 제출용 보고서와 ZIP을 함께 만듭니다.</span><em>제출 전 확인</em></button>
           </div>
         </div>
 
@@ -1182,7 +1245,7 @@
       resultZip.textContent = "생성 안 됨";
     }
 
-    function setResultDone(job) {
+    function setResultDone(job, saveError = null) {
       const findingCount = job.summary?.finding_count ?? 0;
       const dependencyCount = job.summary?.dependency_finding_count ?? 0;
       const reportNames = (job.reports || []).map((item) => item.file_name);
@@ -1209,7 +1272,10 @@
       resultJson.textContent = hasJson ? "생성됨" : "생성됨";
       resultZip.textContent = job.mode === "submission" ? hasZip ? "생성됨" : "생성 안 됨" : "제출 점검 시 생성";
       const saveStep = (job.steps || []).find((step) => step.name === "save_reports");
-      if (browserSavedReports.length) {
+      if (saveError) {
+        savePath.textContent = `점검은 완료되었지만 결과 파일 저장에 실패했습니다. ${saveError}`;
+        progressSaveDetail.textContent = "결과 저장을 확인한 뒤 저장 위치를 다시 선택하세요.";
+      } else if (browserSavedReports.length) {
         savePath.textContent = `${selectedSaveDir} 폴더에 결과물 ${browserSavedReports.length}개를 저장했습니다.`;
       } else if (saveStep?.status === "skipped") {
         progressSaveDetail.textContent = "결과 저장을 완료하지 못했습니다.";
@@ -1231,16 +1297,18 @@
       progressSaveDetail.textContent = `${selectedSaveDir} 폴더에 결과물을 저장했습니다.`;
     }
 
-    function showScanCompleted(job, progress) {
+    function showScanCompleted(job, progress, saveError = null) {
       const completedSteps = (job.steps || []).map((step) => ({
         ...step,
-        status: step.name === "save_reports" ? "completed" : step.status
+        status: step.name === "save_reports" ? saveError ? "failed" : "completed" : step.status
       }));
       renderProgress({
         ...progress,
         status: "completed",
         percent: 100,
-        message: "점검과 파일 저장이 완료되었습니다. 아래 결과를 확인하세요.",
+        message: saveError
+          ? "점검이 완료되었습니다. 결과 파일 저장을 확인하세요."
+          : "점검과 파일 저장이 완료되었습니다. 아래 결과를 확인하세요.",
         steps: completedSteps
       });
       scanCompleteActions.hidden = false;
@@ -1264,9 +1332,18 @@
             const resultResponse = await fetch(`/api/scan/${scanId}/result`, { cache: "no-store" });
             const job = await resultResponse.json();
             if (!resultResponse.ok) throw new Error(job.error || "점검 결과를 불러오지 못했습니다.");
-            await saveReportsToSelectedDirectory(job);
-            showScanCompleted(job, progress);
-            setResultDone(job);
+            if (progress.status === "failed" || job.status === "failed") {
+              setResultBlocked(job.report_save_error || job.error || "점검을 완료하지 못했습니다. 다시 확인해 주세요.");
+              return;
+            }
+            let saveError = null;
+            try {
+              await saveReportsToSelectedDirectory(job);
+            } catch (error) {
+              saveError = String(error.message || error);
+            }
+            showScanCompleted(job, progress, saveError);
+            setResultDone(job, saveError);
             return;
           }
         } catch (error) {
@@ -1419,6 +1496,11 @@
         }
         return true;
       } catch (error) {
+        if (error && error.name === "AbortError") {
+          savePath.textContent = "저장 위치 선택을 취소했습니다. 점검을 시작하려면 저장 위치를 선택하세요.";
+          pendingMode = null;
+          return false;
+        }
         const message = String(error.message || error);
         savePath.textContent = `${message} 저장 위치를 다시 선택하세요.`;
         pendingMode = null;

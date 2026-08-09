@@ -178,8 +178,12 @@ async function assertLocalPickerContract() {
   assert.ok(html.includes('confirmTargetProgress.addEventListener("click", async () =>'), "source preparation confirmation must be wired");
   assert.ok(!html.includes('id="resultNote"'), "scan results must not show the obsolete yellow result-ID section");
   assert.ok(html.includes('id="scanCompleteActions"') && html.includes('id="closeCompletedScan"'), "completed scans must offer a clear result-confirmation action");
-  assert.ok(html.includes('showScanCompleted(job, progress)') && html.includes('점검과 파일 저장이 완료되었습니다.'), "completed scan must visibly confirm local report saving");
+  assert.ok(html.includes('function showScanCompleted(job, progress, saveError = null)') && html.includes('점검과 파일 저장이 완료되었습니다.'), "completed scan must visibly confirm local report saving");
+  assert.ok(html.includes('showScanCompleted(job, progress, saveError)') && html.includes('결과 파일 저장을 확인하세요.'), "scan completion must remain visible when local report saving fails");
+  assert.ok(html.includes('progress.status === "failed" || job.status === "failed"'), "checker failures must not be treated as local save or connection retries");
+  assert.ok(html.includes('.modal-actions {') && html.includes('.button.primary {'), "modal confirmation buttons must use the shared portal button design");
   assert.ok(html.includes('window.showDirectoryPicker'), "report save location must use the browser directory picker");
+  assert.ok(html.includes('error.name === "AbortError"') && html.includes('저장 위치 선택을 취소했습니다.'), "save-location cancellation must be shown as guidance, not a browser error");
   assert.ok(html.includes('targetSelectionInFlight'), "native target picker must prevent duplicate picker windows");
 }
 

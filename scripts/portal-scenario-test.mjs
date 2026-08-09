@@ -110,6 +110,20 @@ async function scenarioQuickScan() {
   return result;
 }
 
+async function scenarioStandardScan() {
+  const result = await startScan("standard", "folder", "src");
+  assert.equal(result.status, "completed");
+  assert.equal(result.decision, "allow");
+  assert.equal(result.summary.profile_fallback, null, "standard scan must not silently fall back from public-default-strict");
+  assert.equal(result.summary.coverage_truncated, false, "standard scan fixture must not silently truncate files");
+  assert.equal(result.summary.dependency_incomplete, false, "standard scan fixture must complete the dependency check");
+  assert.ok(result.reports.some((report) => /_보안점검(?:_\d+)?\.html$/.test(report.file_name)), "standard scan must create an HTML report");
+  assert.ok(result.reports.some((report) => /_보안점검(?:_\d+)?\.md$/.test(report.file_name)), "standard scan must create a Markdown report");
+  assert.ok(result.reports.some((report) => /_보안점검(?:_\d+)?\.json$/.test(report.file_name)), "standard scan must create JSON evidence");
+  assert.ok(!result.reports.some((report) => report.file_name.endsWith("_제출패키지.zip")), "standard scan must not create a submission ZIP");
+  return result;
+}
+
 async function scenarioStandardSubmission() {
   const result = await startScan("submission", "folder", "src");
   assert.equal(result.status, "completed");
@@ -272,6 +286,7 @@ try {
   await waitForServer(child);
   await assertPagesLoad();
   const quick = await scenarioQuickScan();
+  const standard = await scenarioStandardScan();
   const submission = await scenarioStandardSubmission();
   const localTargets = await scenarioLocalFolderAndZip(fixture);
   const browserTargets = await scenarioBrowserSelectedTargets(fixture);
@@ -283,6 +298,7 @@ try {
     scenarios: {
       pages_loaded: true,
       quick_scan: quick.id,
+      standard_scan: standard.id,
       submission_scan: submission.id,
     local_folder_scan: localTargets.localFolder.id,
     zip_scan: localTargets.archive.id,
