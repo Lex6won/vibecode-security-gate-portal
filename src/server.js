@@ -263,10 +263,14 @@ async function pickLocalPath(kind) {
 
   const isFolder = kind === "folder" || kind === "save_dir";
   const folderTitle = kind === "save_dir" ? "결과 저장 폴더 선택" : "검사할 프로젝트 폴더 선택";
+  const utf8Output = "$OutputEncoding = New-Object System.Text.UTF8Encoding($false); [Console]::OutputEncoding = $OutputEncoding\n";
   const script = isFolder
     ? modernFolderPickerScript(folderTitle)
     : "Add-Type -AssemblyName System.Windows.Forms; $dialog = New-Object System.Windows.Forms.OpenFileDialog; $dialog.Title = '검사할 ZIP 파일 선택'; $dialog.Filter = 'ZIP archive (*.zip)|*.zip'; $dialog.Multiselect = $false; if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { [Console]::Out.Write($dialog.FileName) }; $dialog.Dispose()";
-  const picked = await runCommand(POWERSHELL, ["-NoProfile", "-STA", "-Command", script], { timeout_ms: 300000 });
+  const picked = await runCommand(POWERSHELL, ["-NoProfile", "-STA", "-Command", `${utf8Output}${script}`], {
+    timeout_ms: 300000,
+    windowsHide: false
+  });
   const selectedPath = picked.stdout.trim();
   if (!selectedPath) {
     throw new Error(picked.stderr.trim() || "선택이 취소되었습니다.");
