@@ -1,7 +1,7 @@
 import { createServer } from "node:http";
 import { spawn } from "node:child_process";
 import { createReadStream, createWriteStream, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
-import { copyFile, rm, readdir, readFile } from "node:fs/promises";
+import { copyFile, rm, readdir, readFile, writeFile } from "node:fs/promises";
 import { pipeline } from "node:stream/promises";
 import { basename, dirname, extname, isAbsolute, join, normalize, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -1035,6 +1035,45 @@ function adminSummary() {
   };
 }
 
+function adminExportPayload() {
+  const scans = Array.from(jobs.values())
+    .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))
+    .map((job) => ({
+      scan_id: job.id,
+      mode: job.mode,
+      target_type: job.target_type,
+      status: job.status,
+      decision: job.decision,
+      scanned_file_count: Number(job.summary?.scanned_file_count || 0),
+      finding_count: Number(job.summary?.finding_count || 0),
+      dependency_finding_count: Number(job.summary?.dependency_finding_count || 0),
+      created_at: job.created_at,
+      updated_at: job.updated_at || null
+    }));
+  return {
+    report_type: "관리자 점검 현황",
+    generated_at: new Date().toISOString(),
+    summary: adminSummary(),
+    scans
+  };
+}
+
+async function saveAdminExport(saveDir) {
+  const destination = resolve(String(saveDir || ""));
+  if (!saveDir || !existsSync(destination) || !statSync(destination).isDirectory()) {
+    throw new Error("저장할 폴더를 확인할 수 없습니다. 폴더를 다시 선택하세요.");
+  }
+  const timestamp = new Date().toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "");
+  const fileName = `${timestamp}_관리자점검현황.json`;
+  const target = resolve(join(destination, fileName));
+  const destinationRelative = relative(destination, target);
+  if (destinationRelative.startsWith("..") || isAbsolute(destinationRelative)) {
+    throw new Error("선택한 폴더에 보고서를 저장할 수 없습니다.");
+  }
+  await writeFile(target, `${JSON.stringify(adminExportPayload(), null, 2)}\n`, "utf8");
+  return { file_name: fileName, saved_location_label: basename(destination) || destination };
+}
+
 function publicJob(job) {
   const targetLabel = job.target_type === "github_url"
     ? "GitHub repository"
@@ -1225,6 +1264,17 @@ async function handleApi(request, response, pathname) {
     json(response, 200, {
       scans: Array.from(jobs.values()).sort((a, b) => String(b.created_at).localeCompare(String(a.created_at))).map(publicJob)
     });
+    return;
+  }
+
+  if (request.method === "POST" && pathname === "/api/admin/export") {
+    if (!requireAdmin(request, response)) return;
+    try {
+      const body = await readJson(request);
+      json(response, 200, { status: "saved", ...(await saveAdminExport(body.save_dir)) });
+    } catch (error) {
+      json(response, 400, { error: "admin_export_failed", message: String(error.message || error) });
+    }
     return;
   }
 

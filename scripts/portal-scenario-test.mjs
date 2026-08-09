@@ -238,7 +238,7 @@ async function scenarioHarnessAndMcp() {
   return { status, preview, apply, mcp };
 }
 
-async function scenarioAdmin() {
+async function scenarioAdmin(exportDirectory) {
   const unauthorized = await fetch(`${baseUrl}/api/admin/summary`);
   assert.equal(unauthorized.status, 401, "admin summary must reject unauthenticated requests");
 
@@ -260,10 +260,23 @@ async function scenarioAdmin() {
   assert.ok(Array.isArray(list.scans));
   assert.ok(list.scans.length >= 2);
   assert.ok(list.scans[0].reports.some((report) => report.url?.startsWith("/reports/")), "admin scan must expose report URL");
-  return { summary, list };
+
+  const exported = await fetchJson("/api/admin/export", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ save_dir: exportDirectory })
+  });
+  assert.equal(exported.status, "saved", "admin export must save a report");
+  assert.equal(exported.saved_location_label, "admin-export", "admin export must expose only the folder label");
+  const savedPayload = JSON.parse(await readFile(join(exportDirectory, exported.file_name), "utf8"));
+  assert.equal(savedPayload.report_type, "관리자 점검 현황");
+  assert.ok(savedPayload.scans.length >= 2, "admin export must include scan metadata");
+  return { summary, list, exported };
 }
 
 const fixture = await createZipFixture();
+const adminExportDirectory = join(fixture.fixtureDir, "admin-export");
+await mkdir(adminExportDirectory);
 const child = spawn(process.execPath, ["src/server.js"], {
   cwd: process.cwd(),
   env: {
@@ -298,7 +311,7 @@ try {
   const localTargets = await scenarioLocalFolderAndZip(fixture);
   const browserTargets = await scenarioBrowserSelectedTargets(fixture);
   await scenarioHarnessAndMcp();
-  await scenarioAdmin();
+  await scenarioAdmin(adminExportDirectory);
   console.log(JSON.stringify({
     status: "passed",
     base_url: baseUrl,
