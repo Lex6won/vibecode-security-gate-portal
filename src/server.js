@@ -488,10 +488,32 @@ const scanStepProgress = {
   save_reports: { percent: 96, message: "선택한 PC 폴더에 결과를 저장하고 있습니다." }
 };
 
+function elapsedSeconds(since) {
+  const timestamp = Date.parse(since || "");
+  if (!Number.isFinite(timestamp)) return 0;
+  return Math.max(0, Math.floor((Date.now() - timestamp) / 1000));
+}
+
+function formatElapsed(seconds) {
+  if (seconds < 60) return `${seconds}초`;
+  const minutes = Math.floor(seconds / 60);
+  const remainder = seconds % 60;
+  return remainder ? `${minutes}분 ${remainder}초` : `${minutes}분`;
+}
+
 function progressForJob(job) {
   if (job.status === "completed") return { percent: 100, message: "검사가 완료되었습니다." };
   const active = [...(job.steps || [])].reverse().find((step) => step.status === "running");
-  if (active) return scanStepProgress[active.name] || { percent: 8, message: "검사를 준비하고 있습니다." };
+  if (active) {
+    const base = scanStepProgress[active.name] || { percent: 8, message: "검사를 준비하고 있습니다." };
+    const elapsed = elapsedSeconds(job.updated_at || job.created_at);
+    if (active.name === "code_scan") {
+      // Long scans advance smoothly but never imply completion before the report is built.
+      const percent = Math.min(84, Math.round(28 + 56 * (1 - Math.exp(-elapsed / 240))));
+      return { percent, message: `${base.message} (${formatElapsed(elapsed)} 경과)`, elapsed_seconds: elapsed };
+    }
+    return { ...base, elapsed_seconds: elapsed };
+  }
   const failed = [...(job.steps || [])].reverse().find((step) => step.status === "failed");
   if (failed) return { ...(scanStepProgress[failed.name] || { percent: 0 }), message: job.error || "검사 중 문제가 발생했습니다." };
   return { percent: 0, message: "검사를 기다리고 있습니다." };

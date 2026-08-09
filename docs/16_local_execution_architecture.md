@@ -41,7 +41,10 @@ PC status check
 
 The progress layer is visible only while an update or scan is running.
 
-- Show actual `0-100%` progress from the local job state.
+- Make the overall `0-100%` progress the primary signal. The active stage and elapsed time are secondary information.
+- Use weighted job stages for the overall value: target preparation, code/dependency scan, report rendering, and selected-folder save.
+- Do not impose a client polling or checker scan time limit. A user may close the layer, but the local scan continues and the result remains queryable.
+- During a long code scan, advance the weighted value smoothly from elapsed local job time, never past the report-rendering range. This is an estimate, not a fabricated completion time.
 - Show current stage, next stage, and one short explanation.
 - Animate the progress bar and visibly highlight the active stage.
 - Distinguish completed, failed, and cancelled states.
@@ -60,7 +63,7 @@ The progress layer is visible only while an update or scan is running.
 | Harness latest comparison | Partial | Local commit/status exists; official main comparison is missing. | Add remote main comparison. |
 | Checker latest comparison | Partial | Version and doctor exist; approved release comparison is missing. | Add release-channel comparison. |
 | User-approved update | Incomplete | Preview exists, apply returns 501. | Add backup, apply, and revalidation. |
-| Percent progress | Incomplete | Stage list exists but is not connected to percent or job state. | Add percent/message API and animated layer. |
+| Percent progress | Implemented with stage-weighted estimate | `/api/scan/{id}/progress` returns job state, percent, active steps, elapsed code-scan time, and a message; the layer shows a full-width animated overall bar. | Add checker-emitted file/phase progress events for exact throughput-based progress. |
 | Central metadata storage | Design only | No Supabase transport is implemented. | Keep external transmission disabled until opt-in Edge Function exists. |
 
 ## Verification rules
