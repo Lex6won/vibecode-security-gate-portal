@@ -1,7 +1,7 @@
 import { createServer } from "node:http";
 import { spawn } from "node:child_process";
 import { createReadStream, createWriteStream, existsSync, mkdirSync, statSync } from "node:fs";
-import { copyFile, rm, readdir, readFile, writeFile } from "node:fs/promises";
+import { copyFile, rm, readdir, readFile } from "node:fs/promises";
 import { pipeline } from "node:stream/promises";
 import { basename, dirname, extname, isAbsolute, join, normalize, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -619,7 +619,7 @@ function reportStemForJob(job, targetPath) {
   const base = [koreaReportTimestamp(new Date()), targetName, "보안점검"].filter(Boolean).join("_");
   let candidate = base;
   let suffix = 2;
-  while ([".json", ".html", ".md", "_제출패키지.zip"].some((extension) => existsSync(join(REPORT_DIR, `${candidate}${extension}`)))) {
+  while ([".json", ".html", ".md"].some((extension) => existsSync(join(REPORT_DIR, `${candidate}${extension}`)))) {
     candidate = `${base}_${suffix}`;
     suffix += 1;
   }
@@ -729,85 +729,6 @@ function progressForJob(job) {
   const failed = [...(job.steps || [])].reverse().find((step) => step.status === "failed");
   if (failed) return { ...(scanStepProgress[failed.name] || { percent: 0 }), message: job.error || "검사 중 문제가 발생했습니다." };
   return { percent: 0, message: "검사를 기다리고 있습니다." };
-}
-
-function crc32(buffer) {
-  let crc = ~0;
-  for (const byte of buffer) {
-    crc ^= byte;
-    for (let index = 0; index < 8; index += 1) {
-      crc = (crc >>> 1) ^ (0xedb88320 & -(crc & 1));
-    }
-  }
-  return ~crc >>> 0;
-}
-
-function dosDateTime(date = new Date()) {
-  const time = (date.getHours() << 11) | (date.getMinutes() << 5) | Math.floor(date.getSeconds() / 2);
-  const day = ((date.getFullYear() - 1980) << 9) | ((date.getMonth() + 1) << 5) | date.getDate();
-  return { time, day };
-}
-
-async function createZip(zipPath, entries) {
-  const localParts = [];
-  const centralParts = [];
-  let offset = 0;
-  const { time, day } = dosDateTime();
-
-  for (const entry of entries) {
-    const nameBuffer = Buffer.from(entry.name, "utf8");
-    const data = Buffer.isBuffer(entry.data) ? entry.data : Buffer.from(String(entry.data), "utf8");
-    const crc = crc32(data);
-
-    const local = Buffer.alloc(30);
-    local.writeUInt32LE(0x04034b50, 0);
-    local.writeUInt16LE(20, 4);
-    local.writeUInt16LE(0x0800, 6);
-    local.writeUInt16LE(0, 8);
-    local.writeUInt16LE(time, 10);
-    local.writeUInt16LE(day, 12);
-    local.writeUInt32LE(crc, 14);
-    local.writeUInt32LE(data.length, 18);
-    local.writeUInt32LE(data.length, 22);
-    local.writeUInt16LE(nameBuffer.length, 26);
-    local.writeUInt16LE(0, 28);
-    localParts.push(local, nameBuffer, data);
-
-    const central = Buffer.alloc(46);
-    central.writeUInt32LE(0x02014b50, 0);
-    central.writeUInt16LE(20, 4);
-    central.writeUInt16LE(20, 6);
-    central.writeUInt16LE(0x0800, 8);
-    central.writeUInt16LE(0, 10);
-    central.writeUInt16LE(time, 12);
-    central.writeUInt16LE(day, 14);
-    central.writeUInt32LE(crc, 16);
-    central.writeUInt32LE(data.length, 20);
-    central.writeUInt32LE(data.length, 24);
-    central.writeUInt16LE(nameBuffer.length, 28);
-    central.writeUInt16LE(0, 30);
-    central.writeUInt16LE(0, 32);
-    central.writeUInt16LE(0, 34);
-    central.writeUInt16LE(0, 36);
-    central.writeUInt32LE(0, 38);
-    central.writeUInt32LE(offset, 42);
-    centralParts.push(central, nameBuffer);
-
-    offset += local.length + nameBuffer.length + data.length;
-  }
-
-  const centralSize = centralParts.reduce((sum, part) => sum + part.length, 0);
-  const end = Buffer.alloc(22);
-  end.writeUInt32LE(0x06054b50, 0);
-  end.writeUInt16LE(0, 4);
-  end.writeUInt16LE(0, 6);
-  end.writeUInt16LE(entries.length, 8);
-  end.writeUInt16LE(entries.length, 10);
-  end.writeUInt32LE(centralSize, 12);
-  end.writeUInt32LE(offset, 16);
-  end.writeUInt16LE(0, 20);
-
-  await writeFile(zipPath, Buffer.concat([...localParts, ...centralParts, end]));
 }
 
 function isAllowedGithubUrl(value) {
@@ -947,38 +868,10 @@ async function runScanJob(job) {
       scannedFileCount === 0 ? "needs_review" : parsed?.summary?.blocked ? "blocked" : findingCount > 0 ? "needs_review" : "allow"
     );
   const decision = job.mode === "quick" && baseDecision === "allow" ? "quick_complete" : baseDecision;
-  let packageFile = null;
-
-  if (job.mode === "submission" && parsed && jsonPath) {
-    const currentFiles = await readdir(REPORT_DIR).catch(() => []);
-    const packageEntries = [];
-    for (const file of currentFiles.filter((name) => name === `${reportStem}.json` || name === `${reportStem}.html` || name === `${reportStem}.md`)) {
-      packageEntries.push({ name: `reports/${file}`, data: await readFile(join(REPORT_DIR, file)) });
-    }
-    packageEntries.push({
-      name: "submission-manifest.json",
-      data: JSON.stringify({
-        scan_id: job.id,
-        created_at: new Date().toISOString(),
-        target_type: job.target_type,
-        target_label: job.target_type === "github_url" ? "GitHub repository" : job.target_type === "archive" ? "Local ZIP archive" : "Local folder",
-        decision,
-        summary: {
-          scanned_file_count: scannedFileCount,
-          finding_count: findingCount,
-          dependency_finding_count: dependencyFindingCount
-        },
-        notice: "이 패키지는 보안 검토 증거이며 공식 보안 승인 자체가 아닙니다."
-      }, null, 2)
-    });
-    packageFile = `${reportStem}_제출패키지.zip`;
-    await createZip(join(REPORT_DIR, packageFile), packageEntries);
-  }
-
   const finalReportFiles = await readdir(REPORT_DIR).catch(() => []);
   const finalReportItems = [];
   for (const file of finalReportFiles) {
-    if (file === `${reportStem}.json` || file === `${reportStem}.html` || file === `${reportStem}.md` || file === packageFile) {
+    if (file === `${reportStem}.json` || file === `${reportStem}.html` || file === `${reportStem}.md`) {
       finalReportItems.push({
         file_name: file,
         path: join(REPORT_DIR, file),
@@ -1078,7 +971,7 @@ function publicJob(job) {
 
 async function startScan(request, response) {
   const body = await readJson(request);
-  const mode = ["quick", "standard", "submission"].includes(body.scan_mode) ? body.scan_mode : "standard";
+  const mode = ["quick", "standard"].includes(body.scan_mode) ? body.scan_mode : "standard";
   const targetType = ["folder", "archive", "github_url", "browser_folder", "browser_archive"].includes(body.target_type) ? body.target_type : "folder";
   const saveDir = body.save_dir ? resolve(String(body.save_dir)) : "";
   const job = createJob(mode, targetType, body.target_ref, saveDir, body.target_label);

@@ -28,7 +28,6 @@
 | 체커 연동 | 구현 | `gvskb scan`, `gvskb doctor`, `dev-quick` 사용 |
 | 화면-API 연결 | 부분 구현 | GitHub URL 점검과 상태 점검은 실제 API 연결 |
 | 보고서 저장 | 구현 | 서버 `reports/` 폴더에 JSON, HTML, Markdown 저장 |
-| 제출 ZIP | 구현 | 제출 점검 시 JSON, HTML, Markdown, manifest를 ZIP으로 생성 |
 | 보고서 다운로드 | 구현 | `/reports/{file}` 경로로 결과 파일 다운로드 |
 | 관리자 API | 구현 | 현재 세션 점검 요약과 이력 조회 |
 
@@ -39,7 +38,6 @@
 | 폴더 선택 후 즉시 검사 | 미구현 | 브라우저는 보안상 실제 로컬 절대 경로를 서버에 제공하지 않음 |
 | 압축파일 업로드 검사 | 미구현 | 업로드 저장소, 압축 해제 안전검증, 경로 탈출 방어 필요 |
 | HTML 보고서 생성 | 구현 | `gvskb report`로 HTML/Markdown 생성 |
-| 제출 패키지 ZIP | 구현 | Node 내장 코드로 ZIP 생성, 외부 패키지 미사용 |
 | 하네스 설치 실행 | 미구현 | 변경 미리보기, 백업, 사용자 승인, 재검증 구현 필요 |
 | MCP 자동 등록 | 미구현 | 도구별 설정 백업과 복구 절차 필요 |
 | 관리자 실제 데이터 | 부분 구현 | 현재 세션의 점검 이력은 API 연결, Supabase 영속 저장은 미구현 |
@@ -104,7 +102,6 @@
 | 로컬 폴더 API 검사 | `src` 1개 파일 스캔, findings 0, decision `allow` |
 | GitHub URL API 검사 | `octocat/Hello-World` clone 후 스캔, 검사 파일 0건으로 `needs_review` |
 | 화면 연결 | 보안점검 화면의 GitHub URL 점검, 하네스 화면의 상태 점검 API 연결 |
-| 제출 점검 | JSON, HTML, Markdown, ZIP 생성 확인 |
 | 관리자 API | 현재 세션 기준 total/today/allow 집계 확인 |
 
 검사 파일 0건은 안전으로 보지 않는다.
@@ -113,7 +110,6 @@
 ## 2026-08-09 추가 구현
 
 - `gvskb report`를 사용해 검사 JSON에서 HTML/Markdown 보고서를 생성한다.
-- 제출 점검 모드에서 제출 ZIP을 생성한다.
 - 외부 zip 패키지를 설치하지 않고 Node.js 내장 Buffer로 ZIP을 생성했다.
 - `/reports/{file}` 다운로드 경로를 추가했다.
 - `/api/admin/summary`, `/api/admin/scans`를 추가했다.
@@ -142,7 +138,7 @@
 
 1. 모든 주요 페이지 로드
 2. 빠른 점검 실행
-3. 제출 점검 실행과 ZIP 생성
+3. 표준 점검 실행과 HTML·JSON·Markdown 보고서 생성
 4. 하네스/MCP 상태 확인
 5. 관리자 현황 조회
 

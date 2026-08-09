@@ -80,13 +80,12 @@ Supabase `auth.users`와 연결되는 관리자 프로필이다.
 - `code_scan`
 - `dependency_scan`
 - `render_report`
-- `package_submission`
 
 ### scan_reports
 
 보고서 파일의 메타데이터만 저장한다.
 
-- `report_type`: `html`, `json`, `markdown`, `sarif`, `submission_zip`
+- `report_type`: `html`, `json`, `markdown`, `sarif`
 - `sha256`
 - `file_size`
 - `storage_object_path`: 사용자가 명시 업로드한 경우만 저장

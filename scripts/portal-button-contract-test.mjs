@@ -173,6 +173,8 @@ async function assertLocalPickerContract() {
   assert.ok(html.includes('const picker = activeTarget === "folder" ? folderPickerInput : archivePickerInput') && html.includes('picker.click()'), "folder selection button must open the browser file picker");
   assert.ok(html.includes('fetch("/api/local/upload-target"'), "browser-selected source files must be sent to the local scanner");
   assert.ok(html.includes('id="targetProgress"'), "source selection must show immediate progress feedback");
+  assert.equal((html.match(/data-mode=/g) || []).length, 2, "scan page must expose only quick and standard modes");
+  assert.ok(!html.includes('data-mode="submission"') && !html.includes('id="resultZip"'), "submission mode and ZIP result must be removed from the user flow");
   assert.ok(html.includes('state: "선택 창 여는 중"') && html.includes('state: "파일 읽는 중"'), "source selection must explain picker and file-reading progress");
   assert.ok(html.includes('id="confirmTargetProgress"') && html.includes('확인하고 점검 시작'), "prepared source must require a clear confirmation before the queued scan starts");
   assert.ok(html.includes('confirmTargetProgress.addEventListener("click", async () =>'), "source preparation confirmation must be wired");

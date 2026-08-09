@@ -122,7 +122,7 @@ erDiagram
 | target_type | varchar(20) | `folder`, `archive`, `github_url` |
 | target_label | varchar(500) | 화면 표시용 대상명. 로컬 전체 경로는 저장하지 않는다 |
 | target_fingerprint_hash | char(64) nullable | 대상 식별용 해시. 원문 경로/URL 저장 대체 |
-| scan_mode | varchar(20) | `quick`, `standard`, `submission` |
+| scan_mode | varchar(20) | `quick`, `standard` |
 | checker_version | varchar(40) | 체커 버전 |
 | ruleset_version | varchar(80) | 룰셋/인텔 버전 |
 | network_mode | varchar(20) | `online`, `offline` |
@@ -148,7 +148,7 @@ erDiagram
 | --- | --- | --- |
 | id | uuid | 단계 ID |
 | scan_job_id | uuid fk | 검사 ID |
-| step_name | varchar(60) | `prepare_target`, `code_scan`, `dependency_scan`, `render_report`, `package_submission` |
+| step_name | varchar(60) | `prepare_target`, `code_scan`, `dependency_scan`, `render_report` |
 | status | varchar(30) | `queued`, `running`, `completed`, `failed`, `cancelled` |
 | message | text nullable | 화면 표시용 짧은 메시지 |
 | started_at | datetime nullable | 시작 시각 |
@@ -179,7 +179,7 @@ erDiagram
 | --- | --- | --- |
 | id | uuid | 보고서 ID |
 | scan_job_id | uuid fk | 검사 ID |
-| report_type | varchar(20) | `html`, `json`, `sarif`, `submission_zip` |
+| report_type | varchar(20) | `html`, `json`, `markdown`, `sarif` |
 | file_name | varchar(255) | 파일명 |
 | file_path_label | varchar(500) | 사용자 표시용 저장 위치 |
 | storage_object_path | varchar(500) nullable | Supabase Storage 선택 업로드 경로 |

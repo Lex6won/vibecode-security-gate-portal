@@ -7,7 +7,7 @@ The public Vibecoding Security Gate is not a central service that uploads and sc
 - The harness and checker are installed on the user's PC.
 - The portal runs as a local web screen on `127.0.0.1`, or as a future desktop application screen.
 - Folders, archives, and source downloaded from GitHub are scanned only on the user's PC.
-- HTML, JSON, and submission ZIP reports are saved to a user-selected folder on that PC.
+- HTML, JSON, and Markdown reports are saved to a user-selected folder on that PC.
 - The central service receives only opt-in anonymous usage and result-summary metadata.
 - Original source, original archives, GitHub tokens, full local paths, report bodies, and code snippets are never sent to the central database.
 
@@ -33,8 +33,8 @@ PC status check
 | Folder scan | User PC | Use a local native folder picker and pass only its local path to the local engine. Browser file-count selection is insufficient. |
 | Archive scan | User PC temporary directory | Support ZIP first, extract to an isolated temporary directory, scan it, and clean it after completion. |
 | GitHub scan | User PC temporary directory | Allow only HTTPS GitHub owner/repository URLs and use shallow clone. Remove the temporary clone after scanning. |
-| Checker execution | User PC | Quick uses `dev-quick`; standard and submission include dependency checks. Zero scanned files must be incomplete, not safe. |
-| Report save | User-selected PC folder | Copy HTML, JSON, and submission ZIP to the chosen folder. Central upload is off by default. |
+| Checker execution | User PC | Quick uses `dev-quick`; standard uses the strict profile and both include dependency checks. Zero scanned files must be incomplete, not safe. |
+| Report save | User-selected PC folder | Copy HTML, JSON, and Markdown reports to the chosen folder. Central upload is off by default. |
 | Metadata sync | Future Supabase Edge Function | Explicit opt-in only; send anonymous client ID, mode, count summaries, versions, and success/failure reason. |
 
 ## Progress layer requirements
@@ -76,7 +76,7 @@ The current local portal is supported and verified on Windows. Its folder/ZIP pi
 ## Verification rules
 
 1. Folder, ZIP, and GitHub targets must each reach a real local checker execution in automated scenario tests.
-2. Quick, standard, and submission scans must prove their different options and artifacts.
+2. Quick and standard scans must prove their different options and artifacts.
 3. Updating must refuse dirty worktrees and worktrees not on the official `main` branch.
 4. API responses, administrator views, and central metadata payloads must not expose original source or full local paths.
 5. Reports must be copied to the selected local folder.

@@ -750,7 +750,6 @@
       const reports = scan.reports || [];
       const html = reports.find((item) => item.file_name.endsWith(".html"));
       const json = reports.find((item) => item.file_name.endsWith(".json") || !item.file_name.includes("."));
-      const zip = reports.find((item) => item.file_name.endsWith(".zip"));
       detailList.innerHTML = `
         <li><span>점검 대상</span><b>${escapeHtml(scan.target_type)}</b></li>
         <li><span>점검 ID</span><b>${escapeHtml(scan.id.slice(0, 8))}</b></li>
@@ -759,7 +758,6 @@
         <li><span>발견 항목</span><b>${scan.summary?.finding_count ?? 0}건</b></li>
         <li><span>HTML 보고서</span><b>${html ? "생성됨" : "대기"}</b></li>
         <li><span>JSON 증거 보고서</span><b>${json ? "생성됨" : "대기"}</b></li>
-        <li><span>제출 ZIP</span><b>${zip ? "생성됨" : "제출 점검 시"}</b></li>
       `;
     }
 
