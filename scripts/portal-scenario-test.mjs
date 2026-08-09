@@ -84,7 +84,7 @@ async function assertPagesLoad() {
   const pages = [
     ["/", "오늘 할 일을 선택하세요"],
     ["/scan", "대상을 선택하고 점검하세요"],
-    ["/harness", "설치할 하네스를 선택하세요"],
+    ["/harness", "하네스 설치"],
     ["/admin/login", "관리자 로그인"],
     ["/admin", "사용 현황과 점검 결과"],
     ["/help", "도움말"]

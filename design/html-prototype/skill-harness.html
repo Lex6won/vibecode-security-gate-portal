@@ -38,7 +38,7 @@
       margin: 0 auto;
       padding: 8px 0;
       display: grid;
-      grid-template-rows: 68px 110px 214px minmax(0, 1fr);
+      grid-template-rows: 68px minmax(0, 1fr);
       gap: 12px;
       overflow: hidden;
     }
@@ -126,7 +126,7 @@
     .top-title {
       min-width: 0;
       display: grid;
-      grid-template-columns: 38px minmax(0, 1fr);
+      grid-template-columns: 70px minmax(0, 1fr);
       gap: 12px;
       align-items: center;
       flex: 1 1 auto;
@@ -142,18 +142,23 @@
     }
 
     .gg-mark {
-      width: 38px;
-      height: 38px;
+      width: 70px;
+      height: 50px;
       display: grid;
       place-items: center;
-      border-radius: 11px;
-      background: linear-gradient(135deg, var(--harbor), #244d85);
-      color: #ffffff;
-      font-style: normal;
-      font-size: 15px;
-      line-height: 1;
-      font-weight: 900;
-      box-shadow: inset 0 0 0 2px rgba(255,255,255,.18);
+      overflow: hidden;
+      border-radius: 8px;
+      background: #ffffff;
+      box-shadow: 0 0 0 1px rgba(55,112,191,.16);
+    }
+
+    .gg-mark img {
+      width: 100%;
+      height: 100%;
+      display: block;
+      object-fit: cover;
+      object-position: center;
+      transform: scale(1.3);
     }
 
     .top-title strong {
@@ -170,6 +175,186 @@
       font-size: 13px;
       line-height: 18px;
       font-weight: 800;
+    }
+
+    .workspace-grid {
+      min-height: 0;
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .service-panel {
+      min-height: 0;
+      padding: 26px;
+      display: grid;
+      align-content: start;
+      gap: 18px;
+      border-radius: 24px;
+      background: var(--panel);
+      box-shadow: 0 18px 45px rgba(55,112,191,.12);
+    }
+
+    .service-panel.harness-panel {
+      border: 3px solid rgba(31,107,95,.65);
+    }
+
+    .service-panel.mcp-panel {
+      border: 3px solid rgba(55,112,191,.48);
+    }
+
+    .service-heading {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .service-number {
+      width: 46px;
+      height: 46px;
+      display: grid;
+      place-items: center;
+      flex: 0 0 auto;
+      border-radius: 999px;
+      background: var(--herb);
+      color: var(--ink);
+      font-size: 18px;
+      font-weight: 900;
+    }
+
+    .mcp-panel .service-number {
+      background: var(--harbor);
+      color: #ffffff;
+    }
+
+    .service-kicker {
+      margin: 0 0 2px;
+      color: #244d85;
+      font-size: 13px;
+      font-weight: 900;
+    }
+
+    .service-heading h1 {
+      margin: 0;
+      font-size: 28px;
+      line-height: 1.2;
+      font-weight: 900;
+    }
+
+    .service-copy {
+      min-height: 72px;
+      margin: 0;
+      color: var(--muted);
+      font-size: 15px;
+      line-height: 1.7;
+      font-weight: 750;
+    }
+
+    .target-tools {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .target-tool {
+      min-height: 38px;
+      padding: 0 13px;
+      border: 2px solid var(--line);
+      border-radius: 999px;
+      background: #ffffff;
+      color: #244d85;
+      font-size: 13px;
+      font-weight: 900;
+      cursor: pointer;
+      transition: transform .14s ease, border-color .14s ease, background-color .14s ease, box-shadow .14s ease;
+    }
+
+    .target-tool:hover,
+    .target-tool:focus-visible {
+      transform: translateY(-1px);
+      border-color: var(--harbor);
+      box-shadow: 0 8px 18px rgba(55,112,191,.14);
+    }
+
+    .target-tool.active {
+      border-color: var(--green);
+      background: #effbd1;
+      color: var(--ink);
+    }
+
+    .feature-note {
+      min-height: 60px;
+      padding: 12px 14px;
+      display: flex;
+      align-items: center;
+      border-radius: 16px;
+      background: var(--soft);
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.5;
+      font-weight: 800;
+    }
+
+    .feature-note code {
+      white-space: nowrap;
+      word-break: normal;
+    }
+
+    .action-grid {
+      margin-top: auto;
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .action-button {
+      min-height: 128px;
+      padding: 16px 12px;
+      display: grid;
+      align-content: center;
+      justify-items: center;
+      gap: 7px;
+      border: 2px solid var(--line);
+      border-radius: 18px;
+      background: #ffffff;
+      color: var(--ink);
+      cursor: pointer;
+      transition: transform .14s ease, border-color .14s ease, background-color .14s ease, box-shadow .14s ease;
+    }
+
+    .action-button strong {
+      font-size: 17px;
+      line-height: 1.25;
+      font-weight: 900;
+      text-align: center;
+    }
+
+    .action-button span {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.4;
+      font-weight: 800;
+      text-align: center;
+    }
+
+    .action-button.install {
+      border-color: var(--green);
+      background: #f7ffed;
+    }
+
+    .action-button.update {
+      border-color: var(--harbor);
+      background: #f6f9ff;
+    }
+
+    .action-button:hover,
+    .action-button:focus-visible {
+      transform: translateY(-3px);
+      box-shadow: 0 14px 26px rgba(55,112,191,.18);
+    }
+
+    .action-button:active {
+      transform: translateY(1px) scale(.99);
     }
 
     h1 {
@@ -509,6 +694,12 @@
       outline: 2px solid var(--harbor);
     }
 
+    .run-step.completed {
+      background: #edf9ed;
+      color: var(--green);
+      outline: 1px solid rgba(31,107,95,.28);
+    }
+
     .run-step strong {
       display: block;
       margin-bottom: 4px;
@@ -747,6 +938,7 @@
       }
 
       .install-panel,
+      .workspace-grid,
       .status-grid,
       .status-check,
       .update-list,
@@ -757,6 +949,10 @@
 
       .intro-panel {
         grid-template-columns: 1fr;
+      }
+
+      .service-panel {
+        min-height: 560px;
       }
 
       main {
@@ -781,7 +977,7 @@
     @media (min-width: 961px) and (max-height: 800px) {
       main {
         padding: 6px 0;
-        grid-template-rows: 62px 94px 166px minmax(0, 1fr);
+        grid-template-rows: 62px minmax(0, 1fr);
         gap: 8px;
       }
 
@@ -865,6 +1061,39 @@
         padding: 5px 8px;
         font-size: 12px;
       }
+
+      .service-panel {
+        padding: 18px;
+        gap: 12px;
+      }
+
+      .service-heading h1 {
+        font-size: 23px;
+      }
+
+      .service-copy {
+        min-height: 0;
+        font-size: 13px;
+      }
+
+      .feature-note {
+        min-height: 46px;
+        padding: 9px 11px;
+        font-size: 11px;
+      }
+
+      .action-button {
+        min-height: 88px;
+        padding: 10px 8px;
+      }
+
+      .action-button strong {
+        font-size: 15px;
+      }
+
+      .action-button span {
+        font-size: 11px;
+      }
     }
 
     @media (prefers-reduced-motion: reduce) {
@@ -881,7 +1110,7 @@
   <main>
     <header class="topbar">
       <a class="top-title" href="/" aria-label="홈으로 이동">
-        <i class="gg-mark" aria-hidden="true">경</i>
+        <span class="gg-mark" aria-hidden="true"><img src="./assets/images/gyeonggi-signature-ko.jpg" alt=""></span>
         <div>
           <strong>하네스 설치 및 MCP 등록</strong>
           <span>AI로 만든 개발 소스의 보안 위험을 빠르게 확인합니다.</span>
@@ -893,80 +1122,41 @@
       </div>
     </header>
 
-    <section class="intro-panel" aria-labelledby="install-title">
-      <div>
-        <h1 id="install-title">설치할 하네스를 선택하세요.</h1>
-        <p>하네스는 AI 개발 도구에 설계, 구현, 테스트, 검증 흐름을 연결하고 체커 MCP를 함께 쓰도록 돕는 실행 환경입니다. 설치 후에는 실행 게이트와 커밋 전 점검이 켜져 있는지도 함께 확인해야 합니다.</p>
-      </div>
-      <span class="intro-badge">대상 선택 후 설치</span>
-    </section>
-
-    <section class="panel status-check" id="pc-check" aria-labelledby="pc-check-title">
-      <div class="status-head">
-        <div>
-          <h2 id="pc-check-title">내 PC 설치 상태를 확인하세요.</h2>
-          <p>하네스, 실행 게이트, 체커 MCP, 네트워크 상태를 읽기 전용으로 확인합니다.</p>
+    <section class="workspace-grid" aria-label="설치와 업데이트 기능">
+      <section class="service-panel harness-panel" aria-labelledby="harness-title">
+        <div class="service-heading">
+          <span class="service-number">1</span>
+          <div><p class="service-kicker">표준 개발 흐름</p><h1 id="harness-title">하네스 설치</h1></div>
         </div>
-        <span class="status-badge">읽기 전용 점검</span>
-      </div>
-      <div class="status-grid" aria-label="설치 상태 확인 항목">
-        <article class="status-card">
-          <div><strong>하네스 파일</strong><span>로컬 버전과 공식 안정본을 비교합니다.</span></div>
-          <em class="mini">git 상태</em>
-        </article>
-        <article class="status-card">
-          <div><strong>실행 게이트</strong><span><code>guard</code>와 커밋 전 훅을 확인합니다.</span></div>
-          <em class="mini">강제 점검</em>
-        </article>
-        <article class="status-card">
-          <div><strong>체커·MCP</strong><span>버전, doctor, 연결 설정을 확인합니다.</span></div>
-          <em class="mini">보안 엔진</em>
-        </article>
-        <article class="status-card">
-          <div><strong>네트워크</strong><span>GitHub 접근과 업데이트 가능 여부를 봅니다.</span></div>
-          <em class="mini">온라인 환경</em>
-        </article>
-      </div>
-      <div class="status-actions">
-        <button class="button primary" type="button" data-run="내 PC 상태 점검" data-desc="하네스 경로, 실행 게이트, 커밋 훅, 체커 버전, MCP 설정, GitHub 연결 상태를 읽기 전용으로 확인합니다. 문제가 있으면 필요한 항목만 알려줍니다.">상태 점검 시작</button>
-        <button class="button secondary" type="button" data-run="하네스·체커 업데이트 확인" data-desc="공식 안정 릴리스 기준으로 하네스와 체커의 변경 여부를 확인하고, 적용 전 변경 내용을 먼저 보여줍니다. 업데이트 실행은 사용자 승인 후 진행합니다.">업데이트 확인</button>
-      </div>
-    </section>
-
-    <section class="install-panel" aria-label="하네스 도구 선택">
-      <div class="tool-selector" role="radiogroup" aria-label="설치할 도구 선택">
-        <h2>어디에 설치할까요?</h2>
-        <p>하네스 내용은 같고, 선택한 도구에 맞는 연결 설정만 달라집니다.</p>
-        <button class="tool-option active" type="button" role="radio" aria-checked="true" data-tool-title="ChatGPT 데스크톱·Codex용 하네스 설치" data-tool-kind="Codex 공통 설정" data-tool-entry="~/.codex/config.toml 또는 .codex/config.toml" data-tool-action="ChatGPT 데스크톱·Codex용 하네스 설치">
-          <i>C</i><span><strong>ChatGPT 데스크톱 · Codex</strong><span>Codex MCP 설정 공유</span></span><em>선택됨</em>
-        </button>
-        <button class="tool-option" type="button" role="radio" aria-checked="false" data-tool-title="Claude Code용 하네스 설치" data-tool-kind="Claude Code 프로젝트 설정" data-tool-entry=".mcp.json, .claude/CLAUDE.md" data-tool-action="Claude Code용 하네스 설치">
-          <i>CL</i><span><strong>Claude Code</strong><span>Claude 호환본</span></span><em>선택</em>
-        </button>
-        <button class="tool-option" type="button" role="radio" aria-checked="false" data-tool-title="Claude Desktop용 하네스 연결" data-tool-kind="Desktop Extension" data-tool-entry=".mcpb 확장 또는 Desktop Extensions" data-tool-action="Claude Desktop용 하네스 연결">
-          <i>CD</i><span><strong>Claude Desktop</strong><span>별도 데스크톱 확장</span></span><em>선택</em>
-        </button>
-        <button class="tool-option" type="button" role="radio" aria-checked="false" data-tool-title="Lovable용 하네스 설치" data-tool-kind="산출물 정렬" data-tool-entry="adapters/lovable" data-tool-action="Lovable용 하네스 설치">
-          <i>L</i><span><strong>Lovable</strong><span>프로토타입 정렬</span></span><em>선택</em>
-        </button>
-      </div>
-
-      <div class="tool-detail" aria-live="polite">
-        <h2 id="toolTitle">ChatGPT 데스크톱·Codex용 하네스 설치</h2>
-        <p>공식 하네스를 내려받아 선택한 AI 개발 도구의 설정에 연결합니다. 설치 전 변경 내용을 먼저 확인하고, 설치 후 실행 게이트와 체커 MCP 호출 가능 여부를 검증합니다.</p>
-        <ul class="detail-list">
-          <li><span>적용 기준</span><b>공식 GitHub 하네스</b></li>
-          <li><span>공통 흐름</span><b>설계 · 구현 · 테스트 · 검증</b></li>
-          <li><span>강제 검증</span><b>guard · pre-commit</b></li>
-          <li><span>도구별 연결</span><b id="toolEntry">~/.codex/config.toml 또는 .codex/config.toml</b></li>
-          <li><span>설치 방식</span><b id="toolKind">Codex 공통 설정</b></li>
-        </ul>
-        <div class="install-actions">
-          <button class="button primary" id="installButton" type="button" data-run="ChatGPT 데스크톱·Codex용 하네스 설치 준비" data-desc="선택한 AI 개발 도구의 하네스 설정 위치와 체커 MCP 연결 상태를 먼저 확인합니다. 실제 설정 변경은 백업과 사용자 승인을 거친 뒤에만 진행합니다.">설치 준비</button>
-          <button class="button secondary" type="button" data-run="체커 MCP 등록" data-desc="개발 중 코드 조각, 프로젝트 폴더, 제출 보고서 생성을 바로 호출할 수 있도록 체커 MCP를 등록합니다.">MCP 등록 시작</button>
-          <a class="button secondary" href="https://github.com/Lex6won/vibe_harness_codex" target="_blank" rel="noreferrer">설치 기준 보기</a>
+        <p class="service-copy">하네스는 설계, 구현, 테스트, 검증을 같은 순서로 진행하게 돕는 개발 기준입니다. 설치하면 커밋 전 점검과 체커 사용 기준을 함께 확인할 수 있습니다.</p>
+        <div class="target-tools" role="radiogroup" aria-label="하네스 설치 대상">
+          <button class="target-tool active" type="button" role="radio" aria-checked="true" data-install-target="ChatGPT 데스크톱 · Codex">ChatGPT 데스크톱 · Codex</button>
+          <button class="target-tool" type="button" role="radio" aria-checked="false" data-install-target="Claude Code">Claude Code</button>
+          <button class="target-tool" type="button" role="radio" aria-checked="false" data-install-target="Claude Desktop">Claude Desktop</button>
+          <button class="target-tool" type="button" role="radio" aria-checked="false" data-install-target="Lovable">Lovable</button>
         </div>
-      </div>
+        <div class="feature-note">대상을 선택하면 해당 도구의 설정 위치와 연결 방식을 확인합니다. 설정 파일은 백업과 사용자 승인 전에는 변경하지 않습니다.</div>
+        <div class="action-grid" aria-label="하네스 기능">
+          <button class="action-button" type="button" data-action="harness-version"><strong>설치 버전 확인</strong><span>로컬과 공식 버전을 비교합니다.</span></button>
+          <button class="action-button install" type="button" data-action="harness-install"><strong>설치</strong><span>선택한 도구의 설치 준비를 확인합니다.</span></button>
+          <button class="action-button update" type="button" data-action="harness-update"><strong>업데이트</strong><span>공식 안정 버전을 확인합니다.</span></button>
+        </div>
+      </section>
+
+      <section class="service-panel mcp-panel" aria-labelledby="mcp-title">
+        <div class="service-heading">
+          <span class="service-number">2</span>
+          <div><p class="service-kicker">개발 중 보안 점검</p><h1 id="mcp-title">체커 MCP</h1></div>
+        </div>
+        <p class="service-copy">체커 MCP를 연결하면 Codex와 Claude Code 같은 AI 코딩 도구에서 개발 중 코드와 프로젝트를 점검하고, 제출 보고서를 생성할 수 있습니다.</p>
+        <div class="feature-note">코드 조각 점검, 프로젝트 폴더 점검, 제출 보고서 생성 기능을 AI 개발 도구 안에서 바로 호출할 수 있습니다.</div>
+        <div class="feature-note">체커는 설치된 버전, <code>gvskb doctor</code>, MCP 연결 설정, 공식 업데이트 가능 여부를 함께 확인합니다.</div>
+        <div class="action-grid" aria-label="체커 MCP 기능">
+          <button class="action-button" type="button" data-action="mcp-version"><strong>현재 버전 확인</strong><span>체커와 MCP 연결 상태를 봅니다.</span></button>
+          <button class="action-button install" type="button" data-action="mcp-install"><strong>설치</strong><span>MCP 등록 준비 상태를 확인합니다.</span></button>
+          <button class="action-button update" type="button" data-action="mcp-update"><strong>업데이트</strong><span>체커의 공식 버전을 비교합니다.</span></button>
+        </div>
+      </section>
     </section>
 
   </main>
@@ -980,12 +1170,12 @@
         </div>
         <button class="modal-close" type="button" data-close-modal aria-label="진행상황 닫기">×</button>
       </div>
-      <div class="progress" aria-hidden="true"><span></span></div>
-      <div class="run-steps" aria-label="현재 진행 절차">
-        <div class="run-step active"><strong>대상 확인</strong>선택한 도구와 설치 위치를 확인합니다.</div>
-        <div class="run-step"><strong>변경 미리보기</strong>추가 또는 수정될 설정을 보여줍니다.</div>
-        <div class="run-step"><strong>실행 승인</strong>사용자 확인 후 설치 또는 등록을 진행합니다.</div>
-        <div class="run-step"><strong>연결 검증</strong>하네스와 MCP 호출 가능 여부를 확인합니다.</div>
+      <div class="progress" aria-hidden="true"><span id="runProgress"></span></div>
+      <div class="run-steps" aria-label="완료 내역">
+        <div class="run-step"><strong>요청 확인</strong>선택한 기능을 확인했습니다.</div>
+        <div class="run-step"><strong>로컬 확인</strong>설치 정보와 설정을 읽었습니다.</div>
+        <div class="run-step"><strong>공식 비교</strong>공식 기준을 확인했습니다.</div>
+        <div class="run-step"><strong>결과 안내</strong>완료 내역을 표시합니다.</div>
       </div>
       <div class="modal-actions">
         <button class="button secondary" type="button" data-close-modal>숨기기</button>
@@ -1003,21 +1193,21 @@
         <button class="modal-close" type="button" data-close-modal aria-label="업데이트 안내 닫기">×</button>
       </div>
       <div class="update-list" aria-label="업데이트 필요 항목 예시">
-        <article class="update-item">
+        <article class="update-item" data-update-target="checker">
           <div>
             <strong>체커 업데이트 권장</strong>
             <p>최신 룰셋과 의존성 취약점 정보를 반영할 수 있습니다.</p>
           </div>
           <div class="update-version"><span id="checkerCurrentVersion">현재 확인 중</span><span id="checkerAvailableVersion">최신 확인 중</span></div>
         </article>
-        <article class="update-item">
+        <article class="update-item" data-update-target="harness">
           <div>
             <strong>하네스 업데이트 가능</strong>
             <p>표준 개발 흐름과 검증 스크립트 기준을 최신 상태로 맞춥니다.</p>
           </div>
           <div class="update-version"><span id="harnessCurrentVersion">현재 확인 중</span><span id="harnessAvailableVersion">최신 확인 중</span></div>
         </article>
-        <article class="update-item">
+        <article class="update-item" data-update-target="mcp">
           <div>
             <strong>MCP 재등록 필요</strong>
             <p>체커 경로가 바뀐 경우 설정 파일을 백업한 뒤 다시 연결합니다.</p>
@@ -1034,7 +1224,7 @@
       </div>
       <div class="modal-actions">
         <button class="button secondary" type="button" data-close-modal>닫기</button>
-        <button class="button primary" id="applyUpdateButton" type="button" data-run="최신 안정 버전 업데이트 승인" data-desc="사용자 승인 후 하네스와 체커를 검증된 안정 버전으로 업데이트하고, gg-validate와 체커 doctor를 다시 실행합니다.">업데이트 적용 준비</button>
+        <button class="button primary" id="applyUpdateButton" type="button" data-action="apply-update">업데이트 적용 준비</button>
       </div>
     </div>
     </section>
@@ -1043,133 +1233,116 @@
     const updatePreview = document.querySelector("#updatePreview");
     const runTitle = document.querySelector("#runTitle");
     const runDesc = document.querySelector("#runDesc");
-    const toolTitle = document.querySelector("#toolTitle");
-    const toolKind = document.querySelector("#toolKind");
-    const toolEntry = document.querySelector("#toolEntry");
-    const installButton = document.querySelector("#installButton");
     const applyUpdateButton = document.querySelector("#applyUpdateButton");
+    const runProgress = document.querySelector("#runProgress");
     const checkerCurrentVersion = document.querySelector("#checkerCurrentVersion");
     const checkerAvailableVersion = document.querySelector("#checkerAvailableVersion");
     const harnessCurrentVersion = document.querySelector("#harnessCurrentVersion");
     const harnessAvailableVersion = document.querySelector("#harnessAvailableVersion");
+    let selectedInstallTarget = "ChatGPT 데스크톱 · Codex";
+    let selectedUpdateScope = "harness";
 
-    document.querySelectorAll(".tool-option").forEach((button) => {
+    document.querySelectorAll("[data-install-target]").forEach((button) => {
       button.addEventListener("click", () => {
-        document.querySelectorAll(".tool-option").forEach((item) => {
+        document.querySelectorAll("[data-install-target]").forEach((item) => {
           item.classList.remove("active");
           item.setAttribute("aria-checked", "false");
-          item.querySelector("em").textContent = "선택";
         });
-
         button.classList.add("active");
         button.setAttribute("aria-checked", "true");
-        button.querySelector("em").textContent = "선택됨";
-
-        toolTitle.textContent = button.dataset.toolTitle;
-        toolKind.textContent = button.dataset.toolKind;
-        toolEntry.textContent = button.dataset.toolEntry;
-        installButton.dataset.run = `${button.dataset.toolAction} 준비`;
-        installButton.dataset.desc = `${button.dataset.toolAction} 설정 위치와 체커 MCP 연결 상태를 먼저 확인합니다. 실제 설정 변경은 백업과 사용자 승인 후에만 진행합니다.`;
-        installButton.textContent = "설치 준비";
-        installButton.classList.remove("is-running");
+        selectedInstallTarget = button.dataset.installTarget;
       });
     });
 
-    function summarizeStatus(status) {
+    function showComplete(title, description) {
+      runTitle.textContent = title;
+      runDesc.textContent = description;
+      runProgress.style.width = "100%";
+      document.querySelectorAll(".run-step").forEach((step) => {
+        step.classList.remove("active");
+        step.classList.add("completed");
+      });
+      runStatus.hidden = false;
+    }
+
+    function harnessStatusSummary(status) {
       const gate = status.execution_gate || {};
+      return `하네스 ${status.source_harness?.commit || "미설치"}, 공식 저장소 ${status.source_harness?.remote?.status || "확인 불가"}, 실행 게이트 ${gate.guard_script || "확인 불가"}, 커밋 전 훅 ${gate.pre_commit_hook || "확인 불가"} 상태입니다.`;
+    }
+
+    function mcpStatusSummary(status) {
       const checker = status.checker || {};
-      return [
-        `하네스: ${status.source_harness?.commit || "미설치"} · 공식 ${status.source_harness?.remote?.status || "확인 불가"}`,
-        `실행 게이트: ${gate.guard_script || "확인 불가"} · pre-commit ${gate.pre_commit_hook || "확인 불가"}`,
-        `체커: ${checker.version || "미설치"} · 공식 ${checker.remote?.status || "확인 불가"} · doctor ${checker.doctor_status || "확인 불가"}`,
-        `MCP: Codex ${status.mcp?.codex_project || "확인 불가"} · 공통 ${status.mcp?.common_mcp || "확인 불가"} · GitHub ${status.network?.github || "확인 불가"}`
-      ].join(" / ");
+      const mcp = status.mcp || {};
+      return `체커 ${checker.version || "미설치"}, doctor ${checker.doctor_status || "확인 불가"}, Codex MCP ${mcp.codex_project || "확인 불가"}, 공통 MCP ${mcp.common_mcp || "확인 불가"} 상태입니다.`;
     }
 
-    async function runStatusCheck() {
-      const status = await fetch("/api/local/status", { cache: "no-store" }).then((response) => response.json());
-      runDesc.textContent = summarizeStatus(status);
+    async function readLocalStatus() {
+      const response = await fetch("/api/local/status", { cache: "no-store" });
+      if (!response.ok) throw new Error("로컬 설치 상태를 확인할 수 없습니다.");
+      return response.json();
     }
 
-    async function runUpdatePreview() {
+    async function runUpdatePreview(scope) {
       const preview = await fetch("/api/local/update/preview", { method: "POST" }).then((response) => response.json());
-      updatePreview.hidden = false;
+      selectedUpdateScope = scope;
       const harness = preview.items?.find((item) => item.target === "harness");
       const checker = preview.items?.find((item) => item.target === "checker");
-      if (harness || checker) {
-        document.querySelector("#update-preview-title").textContent = `${preview.flow?.join(" → ") || "업데이트 확인"}`;
-        checkerCurrentVersion.textContent = `현재 ${checker?.current_version || "확인 불가"}`;
-        checkerAvailableVersion.textContent = `공식 ${checker?.available_version || "확인 불가"}`;
-        harnessCurrentVersion.textContent = `현재 ${harness?.current_version || "확인 불가"}`;
-        harnessAvailableVersion.textContent = `공식 ${harness?.available_version || "확인 불가"}`;
-        applyUpdateButton.disabled = Boolean(preview.blocked_targets?.length);
-        applyUpdateButton.textContent = preview.blocked_targets?.length ? "수정 중인 작업 폴더 확인 필요" : "업데이트 적용 준비";
-      }
+      const isHarness = scope === "harness";
+      document.querySelector("#update-preview-title").textContent = isHarness ? "하네스 업데이트 확인 완료" : "체커 MCP 업데이트 확인 완료";
+      checkerCurrentVersion.textContent = `현재 ${checker?.current_version || "확인 불가"}`;
+      checkerAvailableVersion.textContent = `공식 ${checker?.available_version || "확인 불가"}`;
+      harnessCurrentVersion.textContent = `현재 ${harness?.current_version || "확인 불가"}`;
+      harnessAvailableVersion.textContent = `공식 ${harness?.available_version || "확인 불가"}`;
+      document.querySelectorAll("[data-update-target]").forEach((item) => {
+        const target = item.dataset.updateTarget;
+        item.hidden = isHarness ? target !== "harness" : target === "harness";
+      });
+      const blocked = (preview.blocked_targets || []).includes(scope === "harness" ? "harness" : "checker");
+      applyUpdateButton.disabled = blocked;
+      applyUpdateButton.textContent = blocked ? "수정 중인 작업 폴더 확인 필요" : "업데이트 적용 준비";
+      updatePreview.hidden = false;
     }
 
-    async function runMcpRegistrationCheck() {
+    async function runMcpInstall() {
       const result = await fetch("/api/local/mcp/register", { method: "POST" }).then((response) => response.json());
-      runTitle.textContent = "체커 MCP 등록 상태";
-      runDesc.textContent = result.next_action || "MCP 등록 상태를 확인하지 못했습니다.";
-      runStatus.hidden = false;
+      showComplete("체커 MCP 설치 확인 완료", result.next_action || "MCP 등록 상태를 확인하지 못했습니다.");
     }
 
     async function applyApprovedUpdate() {
-      if (!window.confirm("하네스와 체커를 공식 main 기준으로 업데이트하고 재검증할까요? 수정 중인 작업 폴더는 자동으로 변경하지 않습니다.")) return;
+      const label = selectedUpdateScope === "harness" ? "하네스" : "체커 MCP";
+      if (!window.confirm(`${label}를 공식 main 기준으로 업데이트하고 재검증할까요? 수정 중인 작업 폴더는 자동으로 변경하지 않습니다.`)) return;
       const response = await fetch("/api/local/update/apply", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ approval_token: "user-confirmed" })
+        body: JSON.stringify({ approval_token: "user-confirmed", targets: [selectedUpdateScope === "harness" ? "harness" : "checker"] })
       });
       const result = await response.json();
       updatePreview.hidden = true;
-      runTitle.textContent = "업데이트 및 재검증 결과";
-      runDesc.textContent = result.status === "blocked"
+      const description = result.status === "blocked"
         ? "수정 중이거나 main이 아닌 하네스 또는 체커 작업 폴더가 있어 업데이트하지 않았습니다. 변경을 커밋·보관하고 main 기준 설치본에서 다시 시도하세요."
         : `업데이트 상태: ${result.status}. 하네스 검증 ${result.post_checks?.harness_validate || "확인 불가"}, 체커 doctor ${result.post_checks?.checker_doctor || "확인 불가"}`;
-      runStatus.hidden = false;
+      showComplete("업데이트 및 재검증 완료", description);
     }
 
-    document.querySelectorAll("[data-run]").forEach((button) => {
+    document.querySelectorAll("[data-action]").forEach((button) => {
       button.addEventListener("click", async () => {
-        const name = button.dataset.run;
-        if (name.includes("업데이트 확인")) {
-          await runUpdatePreview();
-          return;
-        }
-        if (name === "체커 MCP 등록") {
-          try {
-            await runMcpRegistrationCheck();
-          } catch (error) {
-            runTitle.textContent = "체커 MCP 등록 상태";
-            runDesc.textContent = `MCP 등록 상태를 확인하지 못했습니다. ${String(error.message || error)}`;
-            runStatus.hidden = false;
+        try {
+          if (button.dataset.action === "apply-update") return applyApprovedUpdate();
+          if (button.dataset.action === "harness-update") return runUpdatePreview("harness");
+          if (button.dataset.action === "mcp-update") return runUpdatePreview("mcp");
+          if (button.dataset.action === "harness-version") {
+            return showComplete("하네스 설치 버전 확인 완료", harnessStatusSummary(await readLocalStatus()));
           }
-          return;
-        }
-        if (button.id === "applyUpdateButton") {
-          await applyApprovedUpdate();
-          return;
-        }
-        if (button.closest("#updatePreview")) {
-          updatePreview.hidden = true;
-        }
-        document.querySelectorAll("[data-run]").forEach((item) => {
-          item.classList.remove("is-running");
-          item.textContent = item.dataset.originalLabel || item.textContent;
-        });
-        button.dataset.originalLabel = button.dataset.originalLabel || button.textContent;
-        button.textContent = "진행 중";
-        button.classList.add("is-running");
-        runTitle.textContent = `${name} 진행상황`;
-        runDesc.textContent = button.dataset.desc || `${name}을 선택했습니다. 설치 전 변경 내용을 먼저 보여주고, 사용자 확인 후 적용한 뒤 연결 검증 결과를 제공합니다.`;
-        runStatus.hidden = false;
-        if (name.includes("내 PC 상태 점검") || (name.includes("하네스") && name.includes("준비"))) {
-          try {
-            await runStatusCheck();
-          } catch (error) {
-            runDesc.textContent = `상태 점검을 완료하지 못했습니다. ${String(error.message || error)}`;
+          if (button.dataset.action === "harness-install") {
+            await readLocalStatus();
+            return showComplete("하네스 설치 준비 완료", `${selectedInstallTarget}용 설치 대상과 로컬 실행 환경을 확인했습니다. 실제 설정 파일 변경은 백업과 사용자 승인 후에만 진행합니다.`);
           }
+          if (button.dataset.action === "mcp-version") {
+            return showComplete("체커 MCP 현재 버전 확인 완료", mcpStatusSummary(await readLocalStatus()));
+          }
+          if (button.dataset.action === "mcp-install") return runMcpInstall();
+        } catch (error) {
+          showComplete("기능 실행 결과", `완료하지 못했습니다. ${String(error.message || error)}`);
         }
       });
     });

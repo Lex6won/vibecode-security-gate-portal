@@ -34,6 +34,8 @@ const contentTypes = {
   ".json": "application/json; charset=utf-8",
   ".md": "text/markdown; charset=utf-8",
   ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
   ".svg": "image/svg+xml",
   ".zip": "application/zip"
 };
@@ -391,14 +393,22 @@ async function updatePreview() {
   };
 }
 
-async function applyUpdates() {
+async function applyUpdates(targets = ["harness", "checker"]) {
   const preview = await updatePreview();
-  if (preview.blocked_targets.length) {
-    return { status: "blocked", reason: "update_not_eligible", blocked_targets: preview.blocked_targets, blocked_reasons: preview.blocked_reasons };
+  const requestedTargets = targets.filter((target) => target === "harness" || target === "checker");
+  const eligibleTargets = requestedTargets.length ? requestedTargets : ["harness", "checker"];
+  const blockedTargets = preview.blocked_targets.filter((target) => eligibleTargets.includes(target));
+  if (blockedTargets.length) {
+    return {
+      status: "blocked",
+      reason: "update_not_eligible",
+      blocked_targets: blockedTargets,
+      blocked_reasons: Object.fromEntries(blockedTargets.map((target) => [target, preview.blocked_reasons[target]]))
+    };
   }
 
   const results = [];
-  for (const item of preview.items.filter((candidate) => candidate.target === "harness" || candidate.target === "checker")) {
+  for (const item of preview.items.filter((candidate) => eligibleTargets.includes(candidate.target))) {
     const repoPath = item.target === "harness" ? HARNESS_SOURCE_DIR : (await checkerSummary()).source?.path;
     if (!repoPath || !existsSync(repoPath)) {
       results.push({ target: item.target, status: "manual_update_required", reason: "editable_git_checkout_missing" });
@@ -408,12 +418,16 @@ async function applyUpdates() {
     results.push({ target: item.target, status: pulled.ok ? "updated_or_current" : "failed", detail: (pulled.stderr || pulled.stdout).trim().slice(-500) });
   }
 
-  const harnessValidation = await runCommand(
-    POWERSHELL,
-    ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", join(HARNESS_SOURCE_DIR, "shared", "scripts", "gg-validate.ps1")],
-    { cwd: HARNESS_SOURCE_DIR, timeout_ms: 120000 }
-  );
-  const checkerValidation = await runCommand("gvskb", ["doctor"], { timeout_ms: 120000 });
+  const harnessValidation = eligibleTargets.includes("harness")
+    ? await runCommand(
+      POWERSHELL,
+      ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", join(HARNESS_SOURCE_DIR, "shared", "scripts", "gg-validate.ps1")],
+      { cwd: HARNESS_SOURCE_DIR, timeout_ms: 120000 }
+    )
+    : { ok: true };
+  const checkerValidation = eligibleTargets.includes("checker")
+    ? await runCommand("gvskb", ["doctor"], { timeout_ms: 120000 })
+    : { ok: true };
   const hasFailure = results.some((result) => result.status === "failed") || !harnessValidation.ok || !checkerValidation.ok;
   return {
     status: hasFailure ? "needs_review" : "applied",
@@ -902,7 +916,7 @@ async function handleApi(request, response, pathname) {
       json(response, 409, { status: "blocked", reason: "approval_required" });
       return;
     }
-    json(response, 200, await applyUpdates());
+    json(response, 200, await applyUpdates(Array.isArray(body.targets) ? body.targets : undefined));
     return;
   }
 
