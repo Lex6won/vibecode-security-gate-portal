@@ -47,11 +47,11 @@ async function waitForServer(child) {
   throw new Error("test server did not become ready");
 }
 
-async function startScan(scanMode, targetType, targetRef, saveDir = "") {
+async function startScan(scanMode, targetType, targetRef, saveDir = "", targetLabel = "") {
   const started = await fetchJson("/api/scan/start", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ scan_mode: scanMode, target_type: targetType, target_ref: targetRef, save_dir: saveDir })
+    body: JSON.stringify({ scan_mode: scanMode, target_type: targetType, target_ref: targetRef, target_label: targetLabel, save_dir: saveDir })
   });
   assert.ok(started.scan_id, "scan_id must be returned");
   for (let attempt = 0; attempt < 90; attempt += 1) {
@@ -98,10 +98,15 @@ async function assertPagesLoad() {
 async function scenarioQuickScan() {
   const result = await startScan("quick", "folder", "src");
   assert.equal(result.status, "completed");
-  assert.equal(result.decision, "allow");
+  assert.equal(result.decision, "quick_complete");
   assert.equal(result.summary.scanned_file_count, 1);
   assert.equal(result.summary.finding_count, 0);
-  assert.ok(result.reports.some((report) => report.file_name.endsWith("-report.html")), "quick scan must create HTML report");
+  assert.equal(result.summary.profile_fallback, null, "quick scan must not silently fall back from dev-quick");
+  assert.equal(result.summary.coverage_truncated, false, "quick scan fixture must stay within the intended file limit");
+  assert.equal(result.summary.dependency_incomplete, false, "quick scan fixture must complete the dependency check");
+  assert.ok(result.reports.some((report) => /_보안점검(?:_\d+)?\.html$/.test(report.file_name)), "quick scan must use the checker HTML report naming rule");
+  assert.ok(result.reports.some((report) => /_보안점검(?:_\d+)?\.md$/.test(report.file_name)), "quick scan must use the checker Markdown report naming rule");
+  assert.ok(result.reports.some((report) => /_보안점검(?:_\d+)?\.json$/.test(report.file_name)), "quick scan must save JSON evidence with the checker naming rule");
   return result;
 }
 
@@ -109,8 +114,11 @@ async function scenarioStandardSubmission() {
   const result = await startScan("submission", "folder", "src");
   assert.equal(result.status, "completed");
   assert.equal(result.decision, "allow");
-  assert.ok(result.reports.some((report) => report.file_name.endsWith("-submission.zip")), "submission scan must create ZIP");
-  assert.ok(result.reports.some((report) => report.file_name.endsWith("-report.md")), "submission scan must create Markdown report");
+  assert.equal(result.summary.profile_fallback, null, "standard scan must not silently fall back from public-default-strict");
+  assert.equal(result.summary.coverage_truncated, false, "standard scan fixture must not silently truncate files");
+  assert.equal(result.summary.dependency_incomplete, false, "standard scan fixture must complete the dependency check");
+  assert.ok(result.reports.some((report) => /_보안점검(?:_\d+)?_제출패키지\.zip$/.test(report.file_name)), "submission scan must create a named ZIP package");
+  assert.ok(result.reports.some((report) => /_보안점검(?:_\d+)?\.md$/.test(report.file_name)), "submission scan must create a checker-named Markdown report");
   return result;
 }
 
@@ -144,6 +152,7 @@ async function scenarioLocalFolderAndZip(fixture) {
   const localFolder = await startScan("quick", "folder", folderPick.path, savedFolder);
   assert.equal(localFolder.status, "completed");
   assert.ok(localFolder.saved_reports.length >= 2, "local folder scan must copy reports to selected PC folder");
+  assert.ok(localFolder.saved_reports.some((report) => /_보안점검(?:_\d+)?\.html$/.test(report.file_name)), "saved report must retain the checker file naming rule");
   assert.equal(localFolder.saved_location_label, "saved-reports", "result must expose only the selected folder label");
   assert.equal("target_ref" in localFolder, false, "local path must not be exposed by the result API");
 
@@ -171,9 +180,11 @@ async function scenarioBrowserSelectedTargets(fixture) {
   }]);
   assert.equal(browserFolder.status, "selected");
   assert.equal(browserFolder.target_type, "browser_folder");
-  const folderResult = await startScan("quick", browserFolder.target_type, browserFolder.path);
+  assert.equal(browserFolder.label, "selected-source", "browser folder selection must preserve the chosen folder name for the user and report name");
+  const folderResult = await startScan("quick", browserFolder.target_type, browserFolder.path, "", browserFolder.label);
   assert.equal(folderResult.status, "completed");
   assert.equal(folderResult.summary.scanned_file_count, 1, "browser-selected folder must reach the local checker");
+  assert.ok(folderResult.reports.some((report) => report.file_name.includes("_selected-source_보안점검")), "browser-selected folder reports must use the selected folder name, never the temporary upload ID");
 
   const browserArchive = await uploadBrowserTarget("archive", [{
     source: fixture.archivePath,
@@ -182,7 +193,7 @@ async function scenarioBrowserSelectedTargets(fixture) {
   }]);
   assert.equal(browserArchive.status, "selected");
   assert.equal(browserArchive.target_type, "browser_archive");
-  const archiveResult = await startScan("quick", browserArchive.target_type, browserArchive.path);
+  const archiveResult = await startScan("quick", browserArchive.target_type, browserArchive.path, "", browserArchive.label);
   assert.equal(archiveResult.status, "completed");
   assert.equal(archiveResult.summary.scanned_file_count, 1, "browser-selected ZIP must reach the local checker");
   return { folderResult, archiveResult };
@@ -223,7 +234,8 @@ async function scenarioHarnessAndMcp() {
 async function scenarioAdmin() {
   const summary = await fetchJson("/api/admin/summary");
   assert.ok(summary.total >= 2, "admin total should include scenario scans");
-  assert.ok(summary.allow >= 2, "admin allow count should include successful scans");
+  assert.ok(summary.allow >= 1, "admin allow count should include successful standard or submission scans");
+  assert.ok(summary.quick_complete >= 1, "admin summary must count completed quick scans separately from submission-ready scans");
 
   const list = await fetchJson("/api/admin/scans");
   assert.ok(Array.isArray(list.scans));

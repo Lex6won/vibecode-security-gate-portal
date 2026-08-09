@@ -612,7 +612,7 @@
 
     <section class="filters" aria-label="점검 이력 필터">
       <div class="field"><label for="keyword">검색</label><input id="keyword" placeholder="GitHub URL, 프로젝트명, 파일명"></div>
-      <div class="field"><label for="status">결과</label><select id="status"><option>전체 결과</option><option>제출 가능</option><option>수정 필요</option><option>사람 검토</option></select></div>
+      <div class="field"><label for="status">결과</label><select id="status"><option>전체 결과</option><option>제출 가능</option><option>고위험 없음</option><option>수정 필요</option><option>사람 검토</option></select></div>
       <div class="field"><label for="period">기간</label><select id="period"><option>최근 30일</option><option>오늘</option><option>이번 달</option></select></div>
       <button class="search" type="button">조회</button>
     </section>
@@ -731,6 +731,7 @@
 
     function statusLabel(decision) {
       if (decision === "allow") return ["제출 가능", "pass"];
+      if (decision === "quick_complete") return ["고위험 없음", "pass"];
       if (decision === "blocked") return ["차단", "fix"];
       if (decision === "needs_review") return ["사람 검토", "review"];
       return ["확인 필요", "review"];

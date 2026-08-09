@@ -304,7 +304,9 @@ async function receiveBrowserTarget(request) {
     return { target_type: "browser_archive", path: archivePath, label: basename(archivePath), file_count: 1, cleanup_root: uploadRoot };
   }
 
-  return { target_type: "browser_folder", path: uploadRoot, label: `${manifest.length}개 파일`, file_count: manifest.length, cleanup_root: uploadRoot };
+  const rootNames = [...new Set(manifest.map((entry) => entry.split("/")[0]).filter(Boolean))];
+  const label = rootNames.length === 1 ? rootNames[0] : `${manifest.length}개 파일`;
+  return { target_type: "browser_folder", path: uploadRoot, label, file_count: manifest.length, cleanup_root: uploadRoot };
 }
 
 async function gitSummary(repoPath) {
@@ -581,13 +583,57 @@ async function applyUpdates(targets = ["harness", "checker"]) {
   };
 }
 
-function createJob(mode, targetType, targetRef, saveDir = "") {
+function safeReportNamePart(value) {
+  return String(value || "")
+    .normalize("NFKC")
+    .replace(/[<>:"/\\|?*\u0000-\u001F]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 48);
+}
+
+function koreaReportTimestamp(date = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Seoul",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23"
+  }).formatToParts(date).reduce((result, part) => ({ ...result, [part.type]: part.value }), {});
+  return `${parts.year}-${parts.month}-${parts.day}_${parts.hour}${parts.minute}`;
+}
+
+function reportStemForJob(job, targetPath) {
+  let targetName = "";
+  if (job.target_type === "github_url") {
+    try {
+      targetName = safeReportNamePart(new URL(String(job.target_ref)).pathname.split("/").filter(Boolean).join("_"));
+    } catch {
+      targetName = "";
+    }
+  }
+  if (!targetName) targetName = safeReportNamePart(job.target_label);
+  if (!targetName) targetName = safeReportNamePart(basename(targetPath));
+  const base = [koreaReportTimestamp(new Date()), targetName, "보안점검"].filter(Boolean).join("_");
+  let candidate = base;
+  let suffix = 2;
+  while ([".json", ".html", ".md", "_제출패키지.zip"].some((extension) => existsSync(join(REPORT_DIR, `${candidate}${extension}`)))) {
+    candidate = `${base}_${suffix}`;
+    suffix += 1;
+  }
+  return candidate;
+}
+
+function createJob(mode, targetType, targetRef, saveDir = "", targetLabel = "") {
   const id = randomUUID();
   const job = {
     id,
     mode,
     target_type: targetType,
     target_ref: targetRef,
+    target_label: safeReportNamePart(targetLabel),
     save_dir: saveDir,
     status: "queued",
     decision: "incomplete",
@@ -842,12 +888,17 @@ async function runScanJob(job) {
 
   mkdirSync(REPORT_DIR, { recursive: true });
   mkdirSync(TMP_DIR, { recursive: true });
-  const outputBase = join(REPORT_DIR, job.id);
-  const args = ["scan", targetPath, "--format", "json", "--output", outputBase, "--max-files", "700", "--fail-on", "never"];
+  const reportStem = reportStemForJob(job, targetPath);
+  const outputBase = join(REPORT_DIR, reportStem);
+  const jsonOutput = `${outputBase}.json`;
+  updateJob(job, { report_stem: reportStem });
+  const maxFiles = job.mode === "quick" ? "700" : "20000";
+  const args = ["scan", targetPath, "--format", "json", "--output", jsonOutput, "--max-files", maxFiles, "--check-deps", "--fail-on", "never"];
   if (job.mode === "quick") {
     args.push("--profile", "dev-quick");
+  } else {
+    args.push("--profile", "public-default-strict");
   }
-  if (job.mode !== "quick") args.push("--check-deps");
 
   updateJob(job, {
     steps: [
@@ -857,7 +908,7 @@ async function runScanJob(job) {
   });
 
   const scan = await runCommand("gvskb", args);
-  const jsonCandidates = [`${outputBase}.json`, outputBase];
+  const jsonCandidates = [jsonOutput];
   let parsed = null;
   let jsonPath = "";
 
@@ -881,21 +932,27 @@ async function runScanJob(job) {
         { name: "render_report", status: "running" }
       ]
     });
-    await runCommand("gvskb", ["report", jsonPath, "--format", "html", "--output", join(REPORT_DIR, `${job.id}-report`)]);
+    await runCommand("gvskb", ["report", jsonPath, "--format", "html", "--output", outputBase]);
   }
 
   const findingCount = parsed?.summary?.finding_count ?? parsed?.findings?.length ?? 0;
   const scannedFileCount = parsed?.summary?.scanned_file_count ?? parsed?.scanned_file_count ?? parsed?.scanned_files?.length ?? 0;
   const dependencyFindingCount = parsed?.summary?.dependency_finding_count ?? parsed?.dependency_audit?.summary?.finding_count ?? 0;
-  const decision = parsed?.decision || (
-    scannedFileCount === 0 ? "needs_review" : parsed?.summary?.blocked ? "blocked" : findingCount > 0 ? "needs_review" : "allow"
-  );
+  const profileFallback = parsed?.profile_fallback || null;
+  const coverageTruncated = (parsed?.skipped_files || []).some((item) => String(item.reason || "").includes("max_files="));
+  const dependencyIncomplete = (parsed?.dependency_audit?.audits || []).some((audit) => Number(audit.unchecked_count || 0) > 0 || Number(audit.truncated_count || 0) > 0);
+  const baseDecision = profileFallback || coverageTruncated || dependencyIncomplete
+    ? "incomplete"
+    : parsed?.decision || (
+      scannedFileCount === 0 ? "needs_review" : parsed?.summary?.blocked ? "blocked" : findingCount > 0 ? "needs_review" : "allow"
+    );
+  const decision = job.mode === "quick" && baseDecision === "allow" ? "quick_complete" : baseDecision;
   let packageFile = null;
 
   if (job.mode === "submission" && parsed && jsonPath) {
     const currentFiles = await readdir(REPORT_DIR).catch(() => []);
     const packageEntries = [];
-    for (const file of currentFiles.filter((name) => name === job.id || name.startsWith(`${job.id}-report`))) {
+    for (const file of currentFiles.filter((name) => name === `${reportStem}.json` || name === `${reportStem}.html` || name === `${reportStem}.md`)) {
       packageEntries.push({ name: `reports/${file}`, data: await readFile(join(REPORT_DIR, file)) });
     }
     packageEntries.push({
@@ -914,14 +971,14 @@ async function runScanJob(job) {
         notice: "이 패키지는 보안 검토 증거이며 공식 보안 승인 자체가 아닙니다."
       }, null, 2)
     });
-    packageFile = `${job.id}-submission.zip`;
+    packageFile = `${reportStem}_제출패키지.zip`;
     await createZip(join(REPORT_DIR, packageFile), packageEntries);
   }
 
   const finalReportFiles = await readdir(REPORT_DIR).catch(() => []);
   const finalReportItems = [];
   for (const file of finalReportFiles) {
-    if (file === job.id || file.startsWith(`${job.id}.`) || file.startsWith(`${job.id}-report`) || file === packageFile) {
+    if (file === `${reportStem}.json` || file === `${reportStem}.html` || file === `${reportStem}.md` || file === packageFile) {
       finalReportItems.push({
         file_name: file,
         path: join(REPORT_DIR, file),
@@ -966,7 +1023,10 @@ async function runScanJob(job) {
     summary: {
       scanned_file_count: scannedFileCount,
       finding_count: findingCount,
-      dependency_finding_count: dependencyFindingCount
+      dependency_finding_count: dependencyFindingCount,
+      profile_fallback: profileFallback,
+      coverage_truncated: coverageTruncated,
+      dependency_incomplete: dependencyIncomplete
     }
   });
   await cleanupJobTargets(job);
@@ -977,12 +1037,14 @@ function adminSummary() {
   const todayPrefix = new Date().toISOString().slice(0, 10);
   const today = scans.filter((job) => String(job.created_at || "").startsWith(todayPrefix));
   const allow = scans.filter((job) => job.decision === "allow").length;
+  const quickComplete = scans.filter((job) => job.decision === "quick_complete").length;
   const needsReview = scans.filter((job) => job.decision === "needs_review").length;
   const blocked = scans.filter((job) => job.decision === "blocked").length;
   return {
     total: scans.length,
     today: today.length,
     allow,
+    quick_complete: quickComplete,
     needs_review: needsReview,
     blocked,
     generated_at: new Date().toISOString()
@@ -1019,7 +1081,7 @@ async function startScan(request, response) {
   const mode = ["quick", "standard", "submission"].includes(body.scan_mode) ? body.scan_mode : "standard";
   const targetType = ["folder", "archive", "github_url", "browser_folder", "browser_archive"].includes(body.target_type) ? body.target_type : "folder";
   const saveDir = body.save_dir ? resolve(String(body.save_dir)) : "";
-  const job = createJob(mode, targetType, body.target_ref, saveDir);
+  const job = createJob(mode, targetType, body.target_ref, saveDir, body.target_label);
 
   runScanJob(job).catch(async (error) => {
     updateJob(job, {

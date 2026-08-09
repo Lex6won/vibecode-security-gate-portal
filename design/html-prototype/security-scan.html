@@ -845,9 +845,9 @@
           </div>
 
           <div class="mode-grid" aria-label="검사 방식">
-            <button class="mode" type="button" data-mode="quick" data-mode-title="빠른 점검"><strong>빠른 점검</strong><span>위험 신호만 빠르게 확인합니다.</span><em>누르면 바로 시작</em></button>
-            <button class="mode active" type="button" data-mode="standard" data-mode-title="표준 점검"><strong>표준 점검</strong><span>코드와 의존성을 검사하고 보고서를 만듭니다.</span><em>누르면 바로 시작</em></button>
-            <button class="mode" type="button" data-mode="submission" data-mode-title="제출 점검"><strong>제출 점검</strong><span>보고서와 제출 패키지 ZIP을 생성합니다.</span><em>누르면 바로 시작</em></button>
+            <button class="mode" type="button" data-mode="quick" data-mode-title="간편 점검"><strong>간편 점검</strong><span>고위험 코드와 의존성을 빠르게 확인합니다.</span><em>개발 중 확인</em></button>
+            <button class="mode active" type="button" data-mode="standard" data-mode-title="표준 점검"><strong>표준 점검</strong><span>전체 파일과 의존성을 점검하고 보고서를 만듭니다.</span><em>개발 완료 후</em></button>
+            <button class="mode" type="button" data-mode="submission" data-mode-title="제출 점검"><strong>제출 점검</strong><span>표준 점검 후 제출 패키지 ZIP을 생성합니다.</span><em>제출 전 확인</em></button>
           </div>
         </div>
 
@@ -867,9 +867,6 @@
             <li><span>JSON 증거 보고서</span><b id="resultJson">생성 대기</b></li>
             <li><span>제출 패키지 ZIP</span><b id="resultZip">제출 점검 시 생성</b></li>
           </ul>
-          <div class="submission-note" id="resultNote">
-            제출 점검을 선택하면 검사 완료 후 제출 파일을 내려받고, 보고서 내용을 확인한 뒤 제출합니다.
-          </div>
         </aside>
       </section>
 
@@ -900,6 +897,9 @@
         <div class="step" data-progress-step="code_scan" data-state="pending"><b>2</b><div><strong id="progressMode">체커 점검</strong><span id="progressScanDetail">코드, 의존성, 룰셋을 점검합니다.</span></div></div>
         <div class="step" data-progress-step="render_report" data-state="pending"><b>3</b><div><strong>보고서 생성</strong><span>HTML과 JSON 증거 보고서를 만듭니다.</span></div></div>
         <div class="step" data-progress-step="save_reports" data-state="pending"><b>4</b><div><strong>PC 저장</strong><span id="progressSaveDetail">선택한 위치에 결과물을 저장합니다.</span></div></div>
+      </div>
+      <div class="modal-actions" id="scanCompleteActions" hidden>
+        <button class="button primary" id="closeCompletedScan" type="button">결과 확인</button>
       </div>
     </div>
   </section>
@@ -976,9 +976,10 @@
     const resultHtml = document.querySelector("#resultHtml");
     const resultJson = document.querySelector("#resultJson");
     const resultZip = document.querySelector("#resultZip");
+    const scanCompleteActions = document.querySelector("#scanCompleteActions");
+    const closeCompletedScan = document.querySelector("#closeCompletedScan");
     let saveLocationSelectionInFlight = false;
     let targetSelectionInFlight = false;
-    const resultNote = document.querySelector("#resultNote");
     let activeTarget = "folder";
     let selectedReady = false;
     let pendingMode = null;
@@ -1168,7 +1169,6 @@
       resultHtml.textContent = "생성 중";
       resultJson.textContent = "생성 중";
       resultZip.textContent = "제출 점검 시 생성";
-      resultNote.textContent = message;
     }
 
     function setResultBlocked(message) {
@@ -1180,32 +1180,6 @@
       resultHtml.textContent = "생성 안 됨";
       resultJson.textContent = "생성 안 됨";
       resultZip.textContent = "생성 안 됨";
-      resultNote.textContent = message;
-    }
-
-    function renderReportLinks(job) {
-      resultNote.replaceChildren();
-      const intro = document.createElement("span");
-      intro.textContent = job.error || `결과 ID ${job.id} · `;
-      resultNote.append(intro);
-
-      const reports = job.reports || [];
-      if (!reports.length) {
-        const empty = document.createElement("span");
-        empty.textContent = "생성된 보고서가 없습니다.";
-        resultNote.append(empty);
-        return;
-      }
-
-      reports.forEach((report, index) => {
-        const link = document.createElement("a");
-        link.href = report.url || `/reports/${encodeURIComponent(report.file_name)}`;
-        link.textContent = report.file_name;
-        link.target = "_blank";
-        link.rel = "noreferrer";
-        link.style.marginLeft = index === 0 ? "0" : "8px";
-        resultNote.append(link);
-      });
     }
 
     function setResultDone(job) {
@@ -1214,8 +1188,18 @@
       const reportNames = (job.reports || []).map((item) => item.file_name);
       const hasJson = reportNames.some((name) => name.endsWith(".json") || !name.includes("."));
       const hasHtml = reportNames.some((name) => name.endsWith(".html"));
-      const hasZip = reportNames.some((name) => name.endsWith("-submission.zip"));
-      const decision = job.status === "failed" ? "점검 실패" : findingCount > 0 ? "검토 필요" : "제출 가능";
+      const hasZip = reportNames.some((name) => name.endsWith("_제출패키지.zip"));
+      const decision = job.status === "failed"
+        ? "점검 실패"
+        : job.decision === "incomplete"
+          ? "재점검 필요"
+          : job.decision === "blocked"
+            ? "수정 필요"
+            : job.decision === "quick_complete"
+              ? "고위험 없음"
+            : job.decision === "needs_review" || findingCount > 0
+              ? "검토 필요"
+              : "제출 가능";
 
       resultDecision.textContent = decision;
       resultFindings.textContent = `${findingCount}건`;
@@ -1224,7 +1208,6 @@
       resultHtml.textContent = hasHtml ? "생성됨" : "생성 대기";
       resultJson.textContent = hasJson ? "생성됨" : "생성됨";
       resultZip.textContent = job.mode === "submission" ? hasZip ? "생성됨" : "생성 안 됨" : "제출 점검 시 생성";
-      renderReportLinks(job);
       const saveStep = (job.steps || []).find((step) => step.name === "save_reports");
       if (browserSavedReports.length) {
         savePath.textContent = `${selectedSaveDir} 폴더에 결과물 ${browserSavedReports.length}개를 저장했습니다.`;
@@ -1248,6 +1231,21 @@
       progressSaveDetail.textContent = `${selectedSaveDir} 폴더에 결과물을 저장했습니다.`;
     }
 
+    function showScanCompleted(job, progress) {
+      const completedSteps = (job.steps || []).map((step) => ({
+        ...step,
+        status: step.name === "save_reports" ? "completed" : step.status
+      }));
+      renderProgress({
+        ...progress,
+        status: "completed",
+        percent: 100,
+        message: "점검과 파일 저장이 완료되었습니다. 아래 결과를 확인하세요.",
+        steps: completedSteps
+      });
+      scanCompleteActions.hidden = false;
+    }
+
     async function pollResult(scanId) {
       let consecutiveFailures = 0;
       while (true) {
@@ -1267,7 +1265,7 @@
             const job = await resultResponse.json();
             if (!resultResponse.ok) throw new Error(job.error || "점검 결과를 불러오지 못했습니다.");
             await saveReportsToSelectedDirectory(job);
-            renderProgress({ ...progress, status: job.status, steps: job.steps });
+            showScanCompleted(job, progress);
             setResultDone(job);
             return;
           }
@@ -1298,6 +1296,7 @@
           scan_mode: scanMode,
           target_type: targetType,
           target_ref: targetRef,
+          target_label: targetInput.value.trim(),
           save_dir: ""
         })
       });
@@ -1329,6 +1328,7 @@
         steps: [{ name: "prepare_target", status: "running" }]
       });
       scanProgress.hidden = false;
+      scanCompleteActions.hidden = true;
       setResultPending(`${mode.dataset.modeTitle}을 시작했습니다.`);
 
       try {
@@ -1450,6 +1450,11 @@
 
     document.querySelector(".modal-close").addEventListener("click", () => {
       scanProgress.hidden = true;
+    });
+
+    closeCompletedScan.addEventListener("click", () => {
+      scanProgress.hidden = true;
+      document.querySelector(".result-card").scrollIntoView({ behavior: "smooth", block: "nearest" });
     });
 
 
