@@ -255,6 +255,24 @@
       font-weight: 750;
     }
 
+    .service-purpose {
+      padding: 10px 12px;
+      display: grid;
+      gap: 3px;
+      border-radius: 14px;
+      background: var(--soft);
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.5;
+      font-weight: 750;
+    }
+
+    .service-purpose strong {
+      color: #244d85;
+      font-size: 13px;
+      font-weight: 900;
+    }
+
     .service-flow {
       min-width: 0;
       display: grid;
@@ -461,8 +479,9 @@
     }
 
     .action-status {
-      min-height: 24px;
-      margin: -4px 0 0;
+      min-height: 26px;
+      margin: 2px 0 0;
+      padding: 0 4px;
       color: var(--muted);
       font-size: 13px;
       line-height: 1.45;
@@ -939,6 +958,81 @@
       flex-wrap: wrap;
     }
 
+    .operation-progress {
+      display: grid;
+      gap: 12px;
+      padding: 14px;
+      border-radius: 16px;
+      background: #f7f9ff;
+      border: 1px solid var(--line);
+    }
+
+    .operation-progress[hidden] { display: none; }
+
+    .operation-progress-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      color: #244d85;
+      font-size: 14px;
+      font-weight: 900;
+    }
+
+    .operation-progress-head strong:last-child {
+      color: var(--green);
+      font-size: 16px;
+    }
+
+    .operation-track {
+      height: 10px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: #dfeafb;
+    }
+
+    .operation-track span {
+      display: block;
+      width: 0;
+      height: 100%;
+      border-radius: inherit;
+      background: linear-gradient(90deg, var(--green), var(--harbor));
+      transition: width .3s ease;
+    }
+
+    .operation-steps {
+      margin: 0;
+      padding: 0;
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+      list-style: none;
+    }
+
+    .operation-steps li {
+      min-height: 42px;
+      padding: 8px 9px;
+      display: flex;
+      align-items: center;
+      border-radius: 12px;
+      background: #ffffff;
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.35;
+      font-weight: 800;
+    }
+
+    .operation-steps li.active {
+      background: #e8f2ff;
+      color: #244d85;
+      outline: 2px solid rgba(55,112,191,.35);
+    }
+
+    .operation-steps li.done {
+      background: #effbd1;
+      color: #174a42;
+    }
+
     .update-preview {
       padding: 22px;
       display: grid;
@@ -1202,6 +1296,14 @@
         font-size: 11px;
       }
 
+      .service-purpose {
+        font-size: 11px;
+      }
+
+      .operation-steps {
+        grid-template-columns: 1fr;
+      }
+
       .flow-list li {
         min-height: 42px;
       }
@@ -1253,7 +1355,8 @@
             <span class="service-number">1</span>
             <div><p class="service-kicker">표준 개발 흐름</p><h1 id="harness-title">코딩 보조 하네스</h1></div>
           </div>
-          <p class="service-copy">설계·구현·테스트·검증과 커밋 전 점검을 같은 순서로 진행하도록 돕습니다. 한 번 설치하면 프로젝트의 개발 기준으로 사용합니다.</p>
+          <p class="service-copy">경기도 기준에 맞는 개발 언어·실행 환경·검증 절차를 적용해 안전한 운영과 유지보수를 돕습니다. 기획·설계·구현·테스트 흐름도 지원합니다.</p>
+          <div class="service-purpose"><strong>왜 설치하나요?</strong><span>AI가 정해진 개발 기준과 점검 절차를 따르도록 프로젝트에 적용합니다.</span></div>
         </div>
         <div class="service-flow">
           <div class="flow-heading"><strong>설치 순서</strong><span>처음 한 번 진행합니다.</span></div>
@@ -1279,7 +1382,8 @@
             <span class="service-number">2</span>
             <div><p class="service-kicker">개발 중 보안 점검</p><h1 id="mcp-title">보안 체커 MCP</h1></div>
           </div>
-          <p class="service-copy">AI 코딩 도구에서 코드 조각과 프로젝트 폴더를 바로 점검합니다. 사용할 도구를 선택하고 MCP를 등록하면 개발 중에도 체커를 호출할 수 있습니다.</p>
+          <p class="service-copy">간편·표준 점검은 개발 완료 소스를 포털에서 검사합니다. MCP를 등록하면 AI 코딩 도구에서 개발 중에도 체커를 호출할 수 있습니다.</p>
+          <div class="service-purpose"><strong>개발 중 연결의 효과</strong><span>보안을 앞당겨 확인할 수 있지만 구현 시간은 약 1.2~1.5배, AI 토큰은 더 소요될 수 있습니다. 규모와 도구에 따라 달라집니다.</span></div>
         </div>
         <div class="service-flow">
           <div class="flow-heading"><strong>연결 순서</strong><span>사용할 AI 도구를 선택하세요.</span></div>
@@ -1289,7 +1393,7 @@
             <button class="target-tool" type="button" role="radio" aria-checked="false" data-mcp-target="claude-desktop">Claude Desktop</button>
             <button class="target-tool" type="button" role="radio" aria-checked="false" data-mcp-target="lovable">Lovable</button>
           </div>
-          <div class="feature-note" id="mcpTargetNote">ChatGPT 데스크톱과 Codex는 <code>.codex/config.toml</code> 설정을 함께 사용합니다.</div>
+          <div class="feature-note" id="mcpTargetNote">등록 위치: 프로젝트 <code>.codex/config.toml</code> · 실행 명령: <code>gvskb-server</code></div>
         </div>
         <div class="service-actions">
           <div class="action-grid" aria-label="체커 MCP 기능">
@@ -1313,7 +1417,13 @@
         </div>
         <button class="modal-close" type="button" data-close-modal aria-label="확인 결과 닫기">×</button>
       </div>
+      <div class="operation-progress" id="operationProgress" hidden>
+        <div class="operation-progress-head"><strong id="operationLabel">준비 중</strong><strong id="operationPercent">0%</strong></div>
+        <div class="operation-track" aria-label="작업 진행률"><span id="operationBar"></span></div>
+        <ol class="operation-steps" id="operationSteps"></ol>
+      </div>
       <div class="modal-actions">
+        <button class="button secondary" id="operationRetry" type="button" hidden>다시 시도</button>
         <button class="button primary" type="button" data-close-modal>확인</button>
       </div>
     </div>
@@ -1322,14 +1432,23 @@
     const actionResult = document.querySelector("#actionResult");
     const resultTitle = document.querySelector("#resultTitle");
     const resultDescription = document.querySelector("#resultDescription");
+    const operationProgress = document.querySelector("#operationProgress");
+    const operationLabel = document.querySelector("#operationLabel");
+    const operationPercent = document.querySelector("#operationPercent");
+    const operationBar = document.querySelector("#operationBar");
+    const operationSteps = document.querySelector("#operationSteps");
+    const operationRetry = document.querySelector("#operationRetry");
     const mcpTargetNote = document.querySelector("#mcpTargetNote");
     let selectedMcpTarget = "codex";
+    let operationTimer = null;
+    let operationState = null;
+    let retryOperation = null;
 
     const mcpNotes = {
-      codex: "ChatGPT 데스크톱과 Codex는 .codex/config.toml 설정을 함께 사용합니다.",
-      "claude-code": "Claude Code는 프로젝트 루트의 .mcp.json을 사용합니다. .claude 폴더는 호환용입니다.",
-      "claude-desktop": "Claude Desktop은 Claude Code 설정을 자동으로 공유하지 않습니다. Desktop Extension 또는 .mcpb가 필요합니다.",
-      lovable: "Lovable은 현재 자동 MCP 등록을 지원하지 않습니다. 결과물은 포털에서 표준 점검으로 확인합니다."
+      codex: "등록 위치: 프로젝트/.codex/config.toml · 실행 명령: gvskb-server",
+      "claude-code": "등록 위치: 프로젝트/.mcp.json · Claude Code에서 MCP 연결을 확인합니다.",
+      "claude-desktop": "등록 위치: Claude Desktop의 MCP 설정 또는 .mcpb 확장 · 자동 공유되지 않습니다.",
+      lovable: "현재 자동 MCP 등록을 지원하지 않습니다. 결과물은 포털에서 표준 점검으로 확인합니다."
     };
 
     document.querySelectorAll("[data-mcp-target]").forEach((button) => {
@@ -1346,9 +1465,116 @@
     });
 
     function showResult(title, description) {
+      if (operationTimer) clearInterval(operationTimer);
+      operationTimer = null;
+      retryOperation = null;
+      operationRetry.hidden = true;
+      operationProgress.hidden = true;
+      setModalBusy(false);
       resultTitle.textContent = title;
       resultDescription.textContent = description;
       actionResult.hidden = false;
+    }
+
+    function setModalBusy(busy) {
+      document.querySelectorAll("[data-close-modal], [data-action]").forEach((button) => {
+        if (busy) {
+          button.dataset.operationDisabled = String(button.disabled);
+          button.disabled = true;
+        } else if (button.dataset.operationDisabled !== undefined) {
+          button.disabled = button.dataset.operationDisabled === "true";
+          delete button.dataset.operationDisabled;
+        }
+      });
+    }
+
+    function renderOperationSteps(steps, activeIndex = 0) {
+      operationSteps.replaceChildren(...steps.map((step, index) => {
+        const item = document.createElement("li");
+        item.textContent = step;
+        item.className = index < activeIndex ? "done" : index === activeIndex ? "active" : "";
+        return item;
+      }));
+    }
+
+    function updateOperationProgress(percent, label, activeIndex = operationState?.activeIndex || 0) {
+      operationPercent.textContent = `${percent}%`;
+      operationLabel.textContent = label;
+      operationBar.style.width = `${percent}%`;
+      if (operationState) operationState.activeIndex = activeIndex;
+      if (operationState?.steps) renderOperationSteps(operationState.steps, activeIndex);
+    }
+
+    function beginOperation(title, description, steps) {
+      if (operationTimer) clearInterval(operationTimer);
+      operationState = { percent: 5, activeIndex: 0, steps };
+      resultTitle.textContent = title;
+      resultDescription.textContent = description;
+      operationProgress.hidden = false;
+      operationRetry.hidden = true;
+      retryOperation = null;
+      actionResult.hidden = false;
+      setModalBusy(true);
+      updateOperationProgress(5, "준비 중", 0);
+      operationTimer = setInterval(() => {
+        operationState.percent = Math.min(92, operationState.percent + 4);
+        const nextIndex = Math.min(steps.length - 1, Math.floor(operationState.percent / 34));
+        const labels = ["확인 중", "진행 중", "검증 중"];
+        updateOperationProgress(operationState.percent, labels[nextIndex] || "진행 중", nextIndex);
+      }, 500);
+    }
+
+    function finishOperation(title, description, { failed = false, retry = null } = {}) {
+      if (operationTimer) clearInterval(operationTimer);
+      operationTimer = null;
+      updateOperationProgress(100, failed ? "확인 필요" : "완료", operationState?.steps.length || 1);
+      resultTitle.textContent = title;
+      resultDescription.textContent = description;
+      retryOperation = retry;
+      operationRetry.hidden = !retry;
+      setModalBusy(false);
+    }
+
+    function operationErrorMessage(error) {
+      const message = String(error?.message || error || "");
+      if (/failed to fetch|networkerror|network request failed/i.test(message)) {
+        return "포털 서비스에 연결하지 못했습니다. 포털이 실행 중인지와 네트워크 연결을 확인한 뒤 다시 시도하세요.";
+      }
+      if (/dirty_worktree/i.test(message)) {
+        return "설치 폴더에 아직 커밋하지 않은 변경이 있어 자동 업데이트를 중단했습니다. 변경 내용을 먼저 정리하세요.";
+      }
+      if (/non_main_branch/i.test(message)) {
+        return "공식 main 브랜치가 아닌 상태라 자동 업데이트를 중단했습니다. main 브랜치인지 확인하세요.";
+      }
+      return "작업을 완료하지 못했습니다. 잠시 후 다시 시도하세요.";
+    }
+
+    function updateBlockedMessage(updateResult, target) {
+      const reason = updateResult.blocked_reasons?.[target] || updateResult.reason;
+      if (reason === "dirty_worktree") return "설치 폴더에 아직 커밋하지 않은 변경이 있어 자동 업데이트를 중단했습니다. 변경 내용을 먼저 정리하세요.";
+      if (reason === "non_main_branch") return "공식 main 브랜치가 아닌 상태라 자동 업데이트를 중단했습니다. main 브랜치인지 확인하세요.";
+      if (reason === "update_not_eligible") return "현재 설치 상태에서는 자동 업데이트를 진행할 수 없습니다. 설치 상태를 다시 확인하세요.";
+      if (updateResult.status === "needs_review") return "업데이트 후 검증에서 확인할 항목이 있습니다. 설치 상태를 다시 확인한 뒤 필요하면 다시 시도하세요.";
+      return "자동 업데이트를 진행하지 않았습니다. 설치 상태를 확인한 뒤 다시 시도하세요.";
+    }
+
+    async function runProgressTask({ title, description, steps, task, complete, retry }) {
+      beginOperation(title, description, steps);
+      try {
+        const result = await task();
+        const outcome = complete(result);
+        finishOperation(outcome.title, outcome.description, {
+          failed: Boolean(outcome.failed),
+          retry: outcome.failed ? (outcome.retry || retry || (() => runProgressTask({ title, description, steps, task, complete, retry }))) : null
+        });
+        return result;
+      } catch (error) {
+        finishOperation(`${title} 중단`, operationErrorMessage(error), {
+          failed: true,
+          retry: retry || (() => runProgressTask({ title, description, steps, task, complete, retry }))
+        });
+        return null;
+      }
     }
 
     function buttonFor(action) {
@@ -1391,7 +1617,7 @@
           updateButton.querySelector("strong").textContent = "업데이트 불필요";
           updateButton.querySelector("span").textContent = "최신 상태입니다.";
           setStatus(target, "최신 버전입니다.", "current");
-          showResult(`${result.component} 버전 확인`, "최신 버전입니다.");
+          showResult(`${result.component} 버전 확인 완료`, "최신 버전입니다. 별도의 업데이트가 필요하지 않습니다.");
           return;
         }
         if (result.status === "update_available") {
@@ -1402,7 +1628,7 @@
           updateButton.querySelector("strong").textContent = "업데이트";
           updateButton.querySelector("span").textContent = "승인 후 적용합니다.";
           setStatus(target, "업데이트가 필요합니다.", "update");
-          showResult(`${result.component} 버전 확인`, "업데이트가 필요합니다.");
+          showResult(`${result.component} 버전 확인 완료`, "업데이트가 필요합니다. 아래 업데이트 버튼을 눌러 진행하세요.");
           return;
         }
         resetVersionButton(button);
@@ -1416,27 +1642,76 @@
     }
 
     function showHarnessInstallGuide() {
-      showResult("하네스 설치 안내", "1. 설치 버전을 확인합니다. 2. 프로젝트에 하네스 기준 파일을 적용합니다. 3. 테스트와 보안 점검을 마친 뒤 커밋합니다.");
+      return runProgressTask({
+        title: "하네스 설치 안내를 준비하고 있습니다.",
+        description: "프로젝트 적용 위치와 순서를 확인합니다.",
+        steps: ["프로젝트 상태 확인", "적용 위치 안내", "설치 순서 정리"],
+        task: async () => {
+          const response = await fetch("/api/local/status", { cache: "no-store" });
+          const status = await response.json();
+          if (!response.ok) throw new Error(status.error || "하네스 상태를 확인하지 못했습니다.");
+          return status;
+        },
+        complete: (status) => ({
+          title: "하네스 설치 안내 준비 완료",
+          description: `적용 위치: ${status.project_harness?.path || "프로젝트 폴더"}/shared/harness.yaml. 이 화면은 설치 위치와 절차를 확인한 것입니다. 설치 후 기획·설계·구현·테스트와 보안 점검을 같은 기준으로 진행합니다.`
+        })
+      });
     }
 
     function showMcpInstallGuide() {
-      showResult("체커 MCP 등록 안내", mcpNotes[selectedMcpTarget]);
+      return runProgressTask({
+        title: "보안 체커 MCP 등록 상태를 확인하고 있습니다.",
+        description: "선택한 AI 도구의 설정 위치와 현재 연결 상태를 확인합니다.",
+        steps: ["설정 위치 확인", "현재 연결 확인", "등록 방법 안내"],
+        task: async () => {
+          const response = await fetch("/api/local/mcp/register", { method: "POST" });
+          const result = await response.json();
+          if (!response.ok) throw new Error(result.error || "MCP 상태를 확인하지 못했습니다.");
+          return result;
+        },
+        complete: (result) => ({
+          title: "MCP 등록 안내 준비 완료",
+          description: `${mcpNotes[selectedMcpTarget]} 이 화면은 설정 위치와 연결 상태를 확인한 것입니다. ${result.next_action || "설정 파일을 백업한 뒤 사용자 승인으로 등록합니다."}`
+        })
+      });
     }
 
     async function applyApprovedUpdate(target) {
       const label = target === "harness" ? "하네스" : "체커";
-      if (!window.confirm(`${label}를 GitHub 공식 main 기준으로 업데이트하고 다시 확인할까요?`)) return;
-      const response = await fetch("/api/local/update/apply", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ approval_token: "user-confirmed", targets: [target] })
-      });
-      const result = await response.json();
-      if (!response.ok || result.status === "blocked" || result.status === "needs_review") {
-        showResult(`${label} 업데이트`, "업데이트하지 않았습니다. 수정 중인 설치 폴더 또는 연결 상태를 확인하세요.");
+      if (!window.confirm(`${label}를 GitHub 공식 main 기준으로 업데이트하고 다시 확인할까요?`)) {
+        showResult("업데이트를 시작하지 않았습니다.", "업데이트를 취소했습니다. 필요할 때 업데이트 버튼을 다시 누르세요.");
         return;
       }
-      showResult(`${label} 업데이트`, "업데이트가 완료되었습니다. 최신 버전을 다시 확인하세요.");
+      const result = await runProgressTask({
+        title: `${label} 업데이트를 진행하고 있습니다.`,
+        description: "변경 내용을 확인한 뒤 GitHub main 동기화와 검증을 진행합니다.",
+        steps: ["승인 확인", "GitHub 동기화", "설치 검증"],
+        task: async () => {
+          const response = await fetch("/api/local/update/apply", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ approval_token: "user-confirmed", targets: [target] })
+          });
+          const updateResult = await response.json();
+          if (!response.ok) throw new Error(updateResult.error || "업데이트 요청을 완료하지 못했습니다.");
+          return updateResult;
+        },
+        complete: (updateResult) => {
+          const failed = ["blocked", "needs_review"].includes(updateResult.status);
+          return {
+            failed,
+            title: failed ? `${label} 업데이트 확인 필요` : `${label} 업데이트 완료`,
+            description: failed
+              ? updateBlockedMessage(updateResult, target)
+              : "업데이트와 검증이 완료되었습니다. 최신 버전 여부를 다시 확인하세요.",
+            retry: failed ? () => applyApprovedUpdate(target) : null
+          };
+        }
+      });
+      if (!result || ["blocked", "needs_review"].includes(result.status)) {
+        return;
+      }
       const versionButton = buttonFor(target === "harness" ? "harness-version" : "mcp-version");
       resetVersionButton(versionButton);
       buttonFor(target === "harness" ? "harness-update" : "mcp-update").disabled = true;
@@ -1464,8 +1739,12 @@
       });
     });
 
+    operationRetry.addEventListener("click", () => {
+      if (retryOperation) retryOperation();
+    });
+
     window.addEventListener("keydown", (event) => {
-      if (event.key === "Escape") {
+      if (event.key === "Escape" && !operationTimer) {
         actionResult.hidden = true;
       }
     });

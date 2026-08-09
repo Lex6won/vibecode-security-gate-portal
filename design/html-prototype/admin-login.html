@@ -358,6 +358,22 @@
     const adminLoginButton = document.querySelector("#adminLoginButton");
     const loginError = document.querySelector("#loginError");
 
+    async function responseBody(response) {
+      const body = await response.text();
+      try {
+        return body ? JSON.parse(body) : {};
+      } catch {
+        return {};
+      }
+    }
+
+    function loginErrorMessage(response, result) {
+      if (response.status === 401) return "아이디 또는 비밀번호가 일치하지 않습니다.";
+      if (response.status === 404) return "로그인 기능이 현재 실행 중인 포털에 아직 반영되지 않았습니다. 포털을 다시 시작한 뒤 다시 시도하세요.";
+      if (response.status >= 500) return "로그인 서비스를 준비하지 못했습니다. 포털을 다시 시작한 뒤 다시 시도하세요.";
+      return result.message || "로그인 정보를 확인하지 못했습니다. 잠시 후 다시 시도하세요.";
+    }
+
     adminLoginForm.addEventListener("submit", async (event) => {
       event.preventDefault();
       adminLoginButton.disabled = true;
@@ -372,11 +388,13 @@
             password: document.querySelector("#adminPassword").value
           })
         });
-        const result = await response.json();
-        if (!response.ok) throw new Error(result.message || "로그인할 수 없습니다.");
+        const result = await responseBody(response);
+        if (!response.ok) throw new Error(loginErrorMessage(response, result));
         window.location.assign(result.next || "/admin");
       } catch (error) {
-        loginError.textContent = error.message || "로그인할 수 없습니다.";
+        loginError.textContent = /failed to fetch|networkerror/i.test(String(error.message || ""))
+          ? "포털에 연결하지 못했습니다. 포털이 실행 중인지 확인한 뒤 다시 시도하세요."
+          : (error.message || "로그인 정보를 확인하지 못했습니다. 잠시 후 다시 시도하세요.");
         adminLoginButton.disabled = false;
         adminLoginButton.textContent = "로그인";
       }

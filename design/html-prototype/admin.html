@@ -611,6 +611,8 @@
       font-weight: 900;
     }
 
+    .password-message[data-tone="success"] { color: var(--green); }
+
     @media (max-width: 960px) {
       main {
         width: calc(100% - 28px);
@@ -785,15 +787,19 @@
     const passwordForm = document.querySelector("#passwordForm");
     const passwordMessage = document.querySelector("#passwordMessage");
     const passwordSaveButton = document.querySelector("#passwordSaveButton");
+    const passwordCloseButton = document.querySelector("#passwordCloseButton");
 
     document.querySelector("#passwordChangeButton").addEventListener("click", () => {
       passwordMessage.textContent = "";
+      passwordMessage.dataset.tone = "";
       passwordForm.reset();
+      passwordSaveButton.hidden = false;
+      passwordCloseButton.textContent = "취소";
       passwordModal.hidden = false;
       document.querySelector("#currentPassword").focus();
     });
 
-    document.querySelector("#passwordCloseButton").addEventListener("click", () => {
+    passwordCloseButton.addEventListener("click", () => {
       passwordModal.hidden = true;
     });
 
@@ -806,6 +812,7 @@
       event.preventDefault();
       passwordSaveButton.disabled = true;
       passwordMessage.textContent = "변경 중입니다.";
+      passwordMessage.dataset.tone = "";
       try {
         const response = await fetch("/api/admin/password", {
           method: "POST",
@@ -819,9 +826,13 @@
         const result = await response.json();
         if (!response.ok) throw new Error(result.message || "비밀번호를 변경하지 못했습니다.");
         passwordMessage.textContent = "비밀번호가 변경되었습니다.";
+        passwordMessage.dataset.tone = "success";
         passwordForm.reset();
+        passwordSaveButton.hidden = true;
+        passwordCloseButton.textContent = "확인";
       } catch (error) {
         passwordMessage.textContent = error.message || "비밀번호를 변경하지 못했습니다.";
+        passwordMessage.dataset.tone = "";
       } finally {
         passwordSaveButton.disabled = false;
       }
