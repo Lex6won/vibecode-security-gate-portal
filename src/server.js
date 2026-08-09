@@ -113,6 +113,7 @@ function runCommand(command, args, options = {}) {
     const child = spawn(command, args, {
       cwd: options.cwd || ROOT,
       shell: false,
+      windowsHide: options.windowsHide ?? true,
       env: {
         ...process.env,
         PYTHONUTF8: "1",
@@ -162,10 +163,14 @@ async function pickLocalPath(kind) {
   if (testPath) return resolve(testPath);
 
   const isFolder = kind === "folder" || kind === "save_dir";
+  const folderTitle = kind === "save_dir" ? "결과 저장 폴더 선택" : "검사할 프로젝트 폴더 선택";
   const script = isFolder
-    ? "Add-Type -AssemblyName System.Windows.Forms; $owner = New-Object System.Windows.Forms.Form; $owner.TopMost = $true; $owner.ShowInTaskbar = $false; $owner.Opacity = 0; $owner.Show(); $dialog = New-Object System.Windows.Forms.FolderBrowserDialog; $dialog.Description = 'Select a local folder'; $dialog.ShowNewFolderButton = $true; if ($dialog.ShowDialog($owner) -eq [System.Windows.Forms.DialogResult]::OK) { [Console]::Out.Write($dialog.SelectedPath) }; $owner.Close(); $owner.Dispose()"
-    : "Add-Type -AssemblyName System.Windows.Forms; $dialog = New-Object System.Windows.Forms.OpenFileDialog; $dialog.Filter = 'ZIP archive (*.zip)|*.zip'; $dialog.Multiselect = $false; if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { [Console]::Out.Write($dialog.FileName) }";
-  const picked = await runCommand(POWERSHELL, ["-NoProfile", "-STA", "-Command", script], { timeout_ms: 300000 });
+    ? `$ErrorActionPreference = 'Stop'; $shell = New-Object -ComObject Shell.Application; $folder = $shell.BrowseForFolder(0, '${folderTitle}', 0x51, 0); if ($null -ne $folder) { [Console]::Out.Write($folder.Self.Path) }`
+    : "Add-Type -AssemblyName System.Windows.Forms; $dialog = New-Object System.Windows.Forms.OpenFileDialog; $dialog.Title = '검사할 ZIP 파일 선택'; $dialog.Filter = 'ZIP archive (*.zip)|*.zip'; $dialog.Multiselect = $false; if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { [Console]::Out.Write($dialog.FileName) }; $dialog.Dispose()";
+  const picked = await runCommand(POWERSHELL, ["-NoProfile", "-STA", "-Command", script], {
+    timeout_ms: 300000,
+    windowsHide: false
+  });
   const selectedPath = picked.stdout.trim();
   if (!selectedPath) {
     throw new Error(picked.stderr.trim() || "선택이 취소되었습니다.");

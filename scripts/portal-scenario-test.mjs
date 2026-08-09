@@ -123,6 +123,14 @@ async function scenarioLocalFolderAndZip(fixture) {
   assert.equal(folderPick.status, "selected");
   assert.ok(folderPick.path.endsWith("src"), "folder picker must return the local source folder in test mode");
 
+  const saveDirectoryPick = await fetchJson("/api/local/pick-target", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ kind: "save_dir" })
+  });
+  assert.equal(saveDirectoryPick.status, "selected");
+  assert.equal(saveDirectoryPick.path, folderPick.path);
+
   const archivePick = await fetchJson("/api/local/pick-target", {
     method: "POST",
     headers: { "Content-Type": "application/json" },

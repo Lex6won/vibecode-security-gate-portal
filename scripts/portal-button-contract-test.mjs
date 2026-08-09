@@ -159,6 +159,16 @@ async function assertApiBackedButtons() {
   await fetchText("/api/local/mcp/register", { method: "POST" });
 }
 
+async function assertLocalPickerContract() {
+  const html = await fetchText("/scan");
+  assert.ok(!html.includes('id="saveLocationPrompt"'), "scan page must not show an intermediate save-location modal");
+  assert.ok(!html.includes('id="selectSaveLocation"'), "scan page must use the direct save-location button");
+  assert.ok(html.includes('saveButton.addEventListener("click", chooseSaveLocation)'), "save-location button must open the picker directly");
+  assert.ok(html.includes('await chooseSaveLocation();'), "scan start must request a save location directly when missing");
+  assert.ok(html.includes('fetch("/api/local/pick-target"'), "local source buttons must call the native picker API");
+  assert.ok(html.includes('targetSelectionInFlight'), "native target picker must prevent duplicate picker windows");
+}
+
 const child = spawn(process.execPath, ["src/server.js"], {
   cwd: process.cwd(),
   env: { ...process.env, PORT: String(port), PYTHONUTF8: "1", PYTHONIOENCODING: "utf-8" },
@@ -183,6 +193,7 @@ try {
   }
   await fetchText("/first-screen-gg-v2-1.html");
   await assertApiBackedButtons();
+  await assertLocalPickerContract();
   console.log(JSON.stringify({ status: "passed", base_url: baseUrl, pages: results }, null, 2));
 } catch (error) {
   console.error(stdout);
