@@ -5,6 +5,7 @@ import { once } from "node:events";
 
 const port = Number(process.env.PORTAL_BUTTON_TEST_PORT || 8793);
 const baseUrl = `http://127.0.0.1:${port}`;
+const localApiToken = "portal-button-contract-token";
 
 const pages = [
   "/",
@@ -22,7 +23,9 @@ function wait(ms) {
 }
 
 async function fetchText(path, options) {
-  const response = await fetch(`${baseUrl}${path}`, options);
+  const headers = new Headers(options?.headers || {});
+  if (path.startsWith("/api/")) headers.set("X-VibeCode-Local-Token", localApiToken);
+  const response = await fetch(`${baseUrl}${path}`, { ...options, headers });
   const text = await response.text();
   assert.ok(response.ok, `${path} expected ok, got ${response.status}: ${text.slice(0, 200)}`);
   return text;
@@ -159,6 +162,8 @@ async function assertApiBackedButtons() {
   await fetchText("/api/local/version-status?target=checker");
   await fetchText("/api/local/update/preview", { method: "POST" });
   await fetchText("/api/local/mcp/register", { method: "POST" });
+  const html = await fetchText("/");
+  assert.ok(html.includes("X-VibeCode-Local-Token"), "HTML pages must attach the local request token to same-origin API calls");
 }
 
 async function assertLocalPickerContract() {
@@ -209,7 +214,7 @@ async function assertInstallActionsPerComponent() {
 
 const child = spawn(process.execPath, ["src/server.js"], {
   cwd: process.cwd(),
-  env: { ...process.env, PORT: String(port), PYTHONUTF8: "1", PYTHONIOENCODING: "utf-8" },
+  env: { ...process.env, PORT: String(port), PORTAL_LOCAL_API_TOKEN: localApiToken, PYTHONUTF8: "1", PYTHONIOENCODING: "utf-8" },
   stdio: ["ignore", "pipe", "pipe"],
   windowsHide: true
 });

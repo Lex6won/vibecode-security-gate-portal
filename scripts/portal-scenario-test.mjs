@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
 import { once } from "node:events";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { request as httpRequest } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -11,14 +12,32 @@ const baseUrl = `http://127.0.0.1:${port}`;
 const powershell = join(process.env.SystemRoot || "C:\\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
 const adminId = "gg0018@gg.go.kr";
 const adminPassword = "ScenarioAdmin!2026";
+const localApiToken = "portal-scenario-local-token";
 let adminCookie = "";
 
 function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function localHeaders(headers) {
+  const merged = new Headers(headers || {});
+  merged.set("X-VibeCode-Local-Token", localApiToken);
+  return merged;
+}
+
+function rawRequest(path, headers = {}) {
+  return new Promise((resolveRequest, rejectRequest) => {
+    const request = httpRequest({ host: "127.0.0.1", port, path, headers }, (response) => {
+      response.resume();
+      response.on("end", () => resolveRequest(response));
+    });
+    request.once("error", rejectRequest);
+    request.end();
+  });
+}
+
 async function fetchJson(path, options) {
-  const headers = new Headers(options?.headers || {});
+  const headers = localHeaders(options?.headers);
   if (adminCookie) headers.set("cookie", adminCookie);
   const response = await fetch(`${baseUrl}${path}`, { ...options, headers });
   const text = await response.text();
@@ -114,6 +133,36 @@ async function scenarioQuickScan() {
   assert.ok(result.reports.some((report) => /_보안점검(?:_\d+)?\.md$/.test(report.file_name)), "quick scan must use the checker Markdown report naming rule");
   assert.ok(result.reports.some((report) => /_보안점검(?:_\d+)?\.json$/.test(report.file_name)), "quick scan must save JSON evidence with the checker naming rule");
   return result;
+}
+
+async function scenarioLocalRequestBoundary(result) {
+  const hostileHost = await rawRequest("/api/local/status", { Host: "evil.example.com" });
+  assert.equal(hostileHost.statusCode, 421, "local APIs must reject an untrusted Host header");
+
+  const missingToken = await fetch(`${baseUrl}/api/local/update/preview`, { method: "POST" });
+  assert.equal(missingToken.status, 403, "state-changing local APIs must require the portal request token");
+
+  const hostileOrigin = await fetch(`${baseUrl}/api/local/update/preview`, {
+    method: "POST",
+    headers: localHeaders({ Origin: "https://evil.example.com" })
+  });
+  assert.equal(hostileOrigin.status, 403, "state-changing local APIs must reject cross-origin requests");
+
+  const trustedOrigin = await fetch(`${baseUrl}/api/local/update/preview`, {
+    method: "POST",
+    headers: localHeaders({ Origin: baseUrl })
+  });
+  assert.equal(trustedOrigin.status, 200, "same-origin portal requests with the token must remain available");
+
+  const directAdmin = await fetch(`${baseUrl}/admin.html`, { redirect: "manual" });
+  assert.equal(directAdmin.status, 302, "direct administrator HTML must redirect to login without a session");
+  assert.equal(directAdmin.headers.get("location"), "/admin/login");
+
+  const koreanReport = result.reports.find((report) => /\p{L}/u.test(report.file_name));
+  assert.ok(koreanReport, "checker report output must retain the Korean naming rule");
+  const download = await fetch(`${baseUrl}${koreanReport.url}`);
+  assert.equal(download.status, 200, "Korean-named reports must be downloadable");
+  assert.match(String(download.headers.get("content-disposition")), /filename\*=UTF-8''/, "report download must expose a UTF-8 filename");
 }
 
 async function scenarioStandardScan() {
@@ -221,7 +270,7 @@ async function scenarioHarnessAndMcp(mcpConfigPath, operationLogPath) {
 
   const installWithoutApproval = await fetch(`${baseUrl}/api/local/component/install`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: localHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify({ target: "checker" })
   });
   assert.equal(installWithoutApproval.status, 409, "component install must require explicit user approval");
@@ -273,7 +322,7 @@ async function scenarioAdmin(exportDirectory) {
 
   const loginResponse = await fetch(`${baseUrl}/api/admin/login`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: localHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify({ id: adminId, password: adminPassword })
   });
   assert.equal(loginResponse.status, 200, "admin login must accept the configured test account");
@@ -340,6 +389,7 @@ async function startStateFixtureServer(fixtureDir) {
       PORTAL_TEST_CHECKER_STATUS_FILE: checkerStatusPath,
       ADMIN_INITIAL_PASSWORD: adminPassword,
       ADMIN_AUTH_FILE: join(fixtureDir, "state-admin.json"),
+      PORTAL_LOCAL_API_TOKEN: localApiToken,
       PYTHONUTF8: "1",
       PYTHONIOENCODING: "utf-8"
     },
@@ -410,6 +460,7 @@ const child = spawn(process.execPath, ["src/server.js"], {
     PORTAL_TEST_ARCHIVE_PATH: fixture.archivePath,
     PORTAL_TEST_CLAUDE_DESKTOP_CONFIG: mcpConfigPath,
     PORTAL_OPERATION_LOG_FILE: operationLogPath,
+    PORTAL_LOCAL_API_TOKEN: localApiToken,
     PYTHONUTF8: "1",
     PYTHONIOENCODING: "utf-8"
   },
@@ -430,6 +481,7 @@ try {
   await waitForServer(child);
   await assertPagesLoad();
   const quick = await scenarioQuickScan();
+  await scenarioLocalRequestBoundary(quick);
   const standard = await scenarioStandardScan();
   const localTargets = await scenarioLocalFolderAndZip(fixture);
   const browserTargets = await scenarioBrowserSelectedTargets(fixture);

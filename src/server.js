@@ -74,6 +74,11 @@ const ADMIN_AUTH_FILE = isAbsolute(runtimeEnv.ADMIN_AUTH_FILE || "")
   : join(ROOT, runtimeEnv.ADMIN_AUTH_FILE || ".local/admin-auth.json");
 const ADMIN_SESSION_TTL_MS = 8 * 60 * 60 * 1000;
 const adminSessions = new Map();
+const LOCAL_API_TOKEN = runtimeEnv.PORTAL_LOCAL_API_TOKEN || randomBytes(32).toString("hex");
+const LOCAL_HOSTS = new Set([
+  `127.0.0.1:${PORT}`,
+  `localhost:${PORT}`
+]);
 
 function passwordRecord(password) {
   const salt = randomBytes(16).toString("hex");
@@ -193,6 +198,53 @@ function text(response, status, body) {
   response.end(body);
 }
 
+function isAllowedLocalHost(request) {
+  return LOCAL_HOSTS.has(String(request.headers.host || "").toLowerCase());
+}
+
+function hasAllowedOrigin(request) {
+  const origin = String(request.headers.origin || "");
+  if (!origin) return true;
+  try {
+    const url = new URL(origin);
+    return url.protocol === "http:" && LOCAL_HOSTS.has(url.host.toLowerCase());
+  } catch {
+    return false;
+  }
+}
+
+function hasLocalApiToken(request) {
+  const received = String(request.headers["x-vibecode-local-token"] || "");
+  const expected = Buffer.from(LOCAL_API_TOKEN, "utf8");
+  const actual = Buffer.from(received, "utf8");
+  return actual.length === expected.length && timingSafeEqual(actual, expected);
+}
+
+function isStateChangingRequest(request) {
+  return ["POST", "PUT", "PATCH", "DELETE"].includes(request.method || "");
+}
+
+function requireTrustedLocalRequest(request, response) {
+  if (!isAllowedLocalHost(request)) {
+    json(response, 421, { error: "local_host_required", message: "로컬 포털 주소에서만 요청할 수 있습니다." });
+    return false;
+  }
+  if (!hasAllowedOrigin(request)) {
+    json(response, 403, { error: "untrusted_origin", message: "현재 포털 화면에서만 요청할 수 있습니다." });
+    return false;
+  }
+  if (isStateChangingRequest(request) && !hasLocalApiToken(request)) {
+    json(response, 403, { error: "local_request_token_required", message: "포털 화면을 새로고침한 뒤 다시 시도하세요." });
+    return false;
+  }
+  return true;
+}
+
+function localApiBootstrap() {
+  const token = JSON.stringify(LOCAL_API_TOKEN).replace(/[<>&\u2028\u2029]/g, (character) => `\\u${character.charCodeAt(0).toString(16).padStart(4, "0")}`);
+  return `<script>(function(){const token=${token};const nativeFetch=window.fetch.bind(window);window.fetch=function(input,init){const url=new URL(input instanceof Request?input.url:input,window.location.href);if(url.origin===window.location.origin&&url.pathname.startsWith("/api/")){const next=Object.assign({},init||{});const headers=new Headers(next.headers||(input instanceof Request?input.headers:void 0));headers.set("X-VibeCode-Local-Token",token);next.headers=headers;return nativeFetch(input,next)}return nativeFetch(input,init)}})();</script>`;
+}
+
 function notFound(response) {
   json(response, 404, { error: "not_found" });
 }
@@ -219,12 +271,23 @@ function serveStatic(request, response, pathname) {
     "Referrer-Policy": "same-origin",
     "Cache-Control": "no-store"
   });
+  if (extname(target).toLowerCase() === ".html") {
+    const document = readFileSync(target, "utf8");
+    response.end(document.replace("</head>", `${localApiBootstrap()}</head>`));
+    return;
+  }
   createReadStream(target).pipe(response);
 }
 
 function serveReport(response, filename) {
-  const decoded = decodeURIComponent(filename || "");
-  if (!/^[A-Za-z0-9._-]+$/.test(decoded)) {
+  let decoded = "";
+  try {
+    decoded = decodeURIComponent(filename || "");
+  } catch {
+    notFound(response);
+    return;
+  }
+  if (!/^[\p{L}\p{N}._-]+$/u.test(decoded) || decoded.includes("..")) {
     notFound(response);
     return;
   }
@@ -234,10 +297,11 @@ function serveReport(response, filename) {
     return;
   }
   const type = contentTypes[extname(target).toLowerCase()] || "application/octet-stream";
+  const asciiFilename = decoded.replace(/[^\x20-\x7e]/g, "_").replace(/["\\]/g, "_");
   response.writeHead(200, {
     "Content-Type": type,
     "X-Content-Type-Options": "nosniff",
-    "Content-Disposition": `attachment; filename="${decoded.replace(/"/g, "")}"`
+    "Content-Disposition": `attachment; filename="${asciiFilename}"; filename*=UTF-8''${encodeURIComponent(decoded)}`
   });
   createReadStream(target).pipe(response);
 }
@@ -1682,7 +1746,8 @@ async function handleApi(request, response, pathname) {
 
 createServer(async (request, response) => {
   try {
-    const url = new URL(request.url || "/", `http://${request.headers.host || "localhost"}`);
+    if (!requireTrustedLocalRequest(request, response)) return;
+    const url = new URL(request.url || "/", `http://127.0.0.1:${PORT}`);
     if (url.pathname === "/health" || url.pathname.startsWith("/api/")) {
       await handleApi(request, response, url.pathname);
       return;
@@ -1694,7 +1759,7 @@ createServer(async (request, response) => {
       return;
     }
 
-    if (url.pathname === "/admin" && !isAdminAuthenticated(request)) {
+    if ((url.pathname === "/admin" || url.pathname === "/admin.html") && !isAdminAuthenticated(request)) {
       redirect(response, "/admin/login");
       return;
     }
