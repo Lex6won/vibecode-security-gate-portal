@@ -881,6 +881,121 @@
       }
     }
 
+    /* A short browser window must never hide the source or scan-mode controls. */
+    @media (max-height: 720px) {
+      .screen {
+        height: auto;
+        min-height: 100vh;
+        overflow-x: hidden;
+        overflow-y: auto;
+        scrollbar-gutter: stable;
+      }
+
+      .workspace {
+        min-height: 0;
+        grid-template-rows: auto 112px auto;
+        align-content: start;
+      }
+
+      .topbar {
+        min-height: 60px;
+        padding: 6px 16px;
+      }
+
+      .gg-mark {
+        width: 62px;
+        height: 46px;
+      }
+
+      .brand-home strong {
+        font-size: 21px;
+        line-height: 27px;
+      }
+
+      .hero {
+        min-height: 112px;
+        padding: 14px 20px;
+        gap: 6px;
+      }
+
+      .eyebrow {
+        min-height: 26px;
+      }
+
+      h1 {
+        font-size: 26px;
+      }
+
+      .hero p {
+        font-size: 14px;
+        line-height: 1.45;
+      }
+
+      .panel,
+      .result-card {
+        padding: 16px;
+      }
+
+      .source-tabs {
+        margin-top: 12px;
+      }
+
+      .tab {
+        min-height: 40px;
+      }
+
+      .target-help {
+        margin-top: 8px;
+      }
+
+      .input-row {
+        min-height: 48px;
+        margin-top: 10px;
+      }
+
+      .mode-section {
+        margin-top: 16px;
+      }
+
+      .mode-grid {
+        margin-top: 10px;
+        gap: 12px;
+      }
+
+      .mode {
+        min-height: 114px;
+        padding: 14px;
+      }
+
+      .mode span {
+        margin-top: 5px;
+        line-height: 18px;
+      }
+
+      .result-card > .save-row:first-child {
+        margin-bottom: 12px;
+      }
+
+      .save-row {
+        padding: 14px;
+        gap: 8px;
+      }
+
+      .result-card > h2 {
+        margin-top: 16px;
+      }
+
+      .result-list {
+        gap: 5px;
+        margin-top: 10px;
+      }
+
+      .result-list li {
+        min-height: 34px;
+        padding: 7px 10px;
+      }
+    }
+
     @media (prefers-reduced-motion: reduce) {
       .pill,
       .tab,
