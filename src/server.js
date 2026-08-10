@@ -1,7 +1,7 @@
 import { createServer } from "node:http";
 import { spawn } from "node:child_process";
 import { createReadStream, createWriteStream, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
-import { copyFile, rm, readdir, readFile, writeFile } from "node:fs/promises";
+import { appendFile, copyFile, rename, rm, readdir, readFile, writeFile } from "node:fs/promises";
 import { pipeline } from "node:stream/promises";
 import { basename, dirname, extname, isAbsolute, join, normalize, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -14,10 +14,41 @@ const DESIGN_DIR = join(ROOT, "design", "html-prototype");
 const REPORT_DIR = join(ROOT, "reports");
 const TMP_DIR = join(ROOT, "tmp", "scan-targets");
 const HARNESS_SOURCE_DIR = resolve(ROOT, "..", "vibe_harness_codex");
+const LOCAL_TOOLS_DIR = join(ROOT, "tools");
+const LOCAL_HARNESS_DIR = join(LOCAL_TOOLS_DIR, "vibe_harness_codex");
+const LOCAL_CHECKER_DIR = join(LOCAL_TOOLS_DIR, "vibecode-checker");
+const HARNESS_REPOSITORY = "https://github.com/Lex6won/vibe_harness_codex.git";
+const CHECKER_REPOSITORY = "https://github.com/Lex6won/vibecode-checker.git";
 const PORT = Number(process.env.PORT || 8787);
 const POWERSHELL = join(process.env.SystemRoot || "C:\\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
 const MAX_BROWSER_UPLOAD_BYTES = 500 * 1024 * 1024;
 const MAX_BROWSER_UPLOAD_FILES = 10000;
+const OPERATION_LOG_FILE = runtimePath("PORTAL_OPERATION_LOG_FILE", join(ROOT, ".local", "gate-operation-log.jsonl"));
+
+function harnessSourceDir() {
+  return existsSync(HARNESS_SOURCE_DIR) ? HARNESS_SOURCE_DIR : LOCAL_HARNESS_DIR;
+}
+
+function runtimePath(name, fallback) {
+  const value = process.env[name];
+  return value && isAbsolute(value) ? value : fallback;
+}
+
+async function writeGateOperation(action, target, result) {
+  const entry = {
+    at: new Date().toISOString(),
+    action,
+    target,
+    status: result?.status || "unknown",
+    reason: result?.reason || null
+  };
+  try {
+    mkdirSync(dirname(OPERATION_LOG_FILE), { recursive: true });
+    await appendFile(OPERATION_LOG_FILE, `${JSON.stringify(entry)}\n`, "utf8");
+  } catch {
+    // Audit logging must never turn a completed local operation into a failure.
+  }
+}
 
 function loadDotEnv(filePath) {
   if (!existsSync(filePath)) return {};
@@ -466,24 +497,50 @@ async function checkerSummary() {
   };
 }
 
-async function mcpSummary() {
-  const codexPath = join(ROOT, ".codex", "config.toml");
-  const claudeCodePath = join(ROOT, ".mcp.json");
-  const claudeDesktopPaths = [
-    process.env.APPDATA ? join(process.env.APPDATA, "Claude", "claude_desktop_config.json") : "",
-    process.env.HOME ? join(process.env.HOME, "Library", "Application Support", "Claude", "claude_desktop_config.json") : ""
-  ].filter(Boolean);
+async function checkerCommandSummary() {
+  const command = await runCommand("where.exe", ["gvskb-server"], { timeout_ms: 8000 });
+  return {
+    available: command.ok,
+    path: command.ok ? command.stdout.split(/\r?\n/).find(Boolean)?.trim() || null : null
+  };
+}
 
-  const tomlSource = existsSync(codexPath) ? await readFile(codexPath, "utf8") : "";
+function checkerMcpEntry() {
+  return {
+    command: "gvskb-server",
+    args: [],
+    env: {
+      PYTHONUTF8: "1",
+      PYTHONIOENCODING: "utf-8"
+    }
+  };
+}
+
+function hasRegisteredChecker(config) {
+  const server = config?.mcpServers?.["vibecode-checker"];
+  return Boolean(server && server.command === "gvskb-server");
+}
+
+async function mcpSummary() {
+  const codexPath = mcpConfigPath("codex");
+  const claudeCodePath = mcpConfigPath("claude-code");
+  const claudeDesktopPaths = [mcpConfigPath("claude-desktop")].filter(Boolean);
+
+  const [tomlSource, checkerCommand] = await Promise.all([
+    existsSync(codexPath) ? readFile(codexPath, "utf8") : Promise.resolve(""),
+    checkerCommandSummary()
+  ]);
   let claudeCodeSource = "";
   let claudeDesktopSource = "";
   let claudeCodeValid = false;
   let claudeDesktopValid = false;
+  let claudeCodeConfig = null;
+  let claudeDesktopConfig = null;
 
   if (existsSync(claudeCodePath)) {
     try {
       claudeCodeSource = await readFile(claudeCodePath, "utf8");
-      JSON.parse(claudeCodeSource);
+      claudeCodeConfig = JSON.parse(claudeCodeSource);
       claudeCodeValid = true;
     } catch {
       claudeCodeValid = false;
@@ -494,7 +551,7 @@ async function mcpSummary() {
     if (!existsSync(path)) continue;
     try {
       claudeDesktopSource = await readFile(path, "utf8");
-      JSON.parse(claudeDesktopSource);
+      claudeDesktopConfig = JSON.parse(claudeDesktopSource);
       claudeDesktopValid = true;
       break;
     } catch {
@@ -503,20 +560,19 @@ async function mcpSummary() {
     }
   }
 
-  const hasCheckerCommand = (source) => /gvskb-server/.test(source);
   const tools = {
     codex: {
-      status: hasCheckerCommand(tomlSource) ? "registered" : "missing",
+      status: /\[mcp_servers\.vibecode-checker\][\s\S]*?command\s*=\s*["']gvskb-server["']/.test(tomlSource) ? "registered" : "missing",
       setting_location: "프로젝트/.codex/config.toml"
     },
     "claude-code": {
-      status: claudeCodeValid && hasCheckerCommand(claudeCodeSource)
+      status: claudeCodeValid && hasRegisteredChecker(claudeCodeConfig)
         ? "registered"
         : existsSync(claudeCodePath) && !claudeCodeValid ? "configuration_incomplete" : "missing",
       setting_location: "프로젝트/.mcp.json"
     },
     "claude-desktop": {
-      status: claudeDesktopValid && hasCheckerCommand(claudeDesktopSource)
+      status: claudeDesktopValid && hasRegisteredChecker(claudeDesktopConfig)
         ? "registered"
         : claudeDesktopSource && !claudeDesktopValid ? "configuration_incomplete" : "missing",
       setting_location: "Claude Desktop MCP 설정"
@@ -531,7 +587,7 @@ async function mcpSummary() {
     tools,
     codex_project: tools.codex.status,
     common_mcp: tools["claude-code"].status,
-    checker_command: "gvskb-server"
+    checker_command: checkerCommand
   };
 }
 
@@ -560,23 +616,26 @@ async function executionGateSummary() {
 }
 
 async function localStatus() {
+  const sourceDir = harnessSourceDir();
   const [projectHarness, sourceHarness, checker, mcp, executionGate] = await Promise.all([
     Promise.resolve({
       installed: existsSync(join(ROOT, "shared", "harness.yaml")),
       status: existsSync(join(ROOT, "shared", "harness.yaml")) ? "applied" : "missing",
       path: ROOT
     }),
-    gitSummary(HARNESS_SOURCE_DIR),
+    gitSummary(sourceDir),
     checkerSummary(),
     mcpSummary(),
     executionGateSummary()
   ]);
 
-  const harnessRemote = await remoteMainSummary(HARNESS_SOURCE_DIR, sourceHarness);
+  const harnessRemote = sourceHarness.installed
+    ? await remoteMainSummary(sourceDir, sourceHarness)
+    : await officialRemoteSummary(HARNESS_REPOSITORY);
   return {
     checked_at: new Date().toISOString(),
     project_harness: projectHarness,
-    source_harness: { ...sourceHarness, remote: harnessRemote },
+    source_harness: { ...sourceHarness, path: sourceDir, remote: harnessRemote },
     checker,
     mcp,
     execution_gate: executionGate,
@@ -588,14 +647,35 @@ async function localStatus() {
   };
 }
 
+async function officialRemoteSummary(repository) {
+  const remote = await runCommand("git", ["ls-remote", repository, "refs/heads/main"], { timeout_ms: 20000 });
+  const commit = remote.stdout.trim().split(/\s+/)[0] || "";
+  return remote.ok && commit
+    ? { available: true, status: "available", remote_commit: commit.slice(0, 7) }
+    : { available: false, status: "unreachable" };
+}
+
 function simpleVersionResult(component, local, remote) {
   if (!local?.installed) {
-    return { component, status: "not_installed", message: "설치되어 있지 않습니다.", github_checked: false };
+    if (!remote?.available) {
+      return { component, status: "check_unavailable", message: "GitHub에서 최신 설치 기준을 확인하지 못했습니다. 다시 확인하세요.", github_checked: false };
+    }
+    return { component, status: "not_installed", message: "설치되어 있지 않습니다. 설치할 수 있습니다.", github_checked: true, available_version: remote.remote_commit || null };
   }
   if (remote?.status === "current") {
     return { component, status: "current", message: "최신 버전입니다.", github_checked: true };
   }
   if (remote?.status === "update_available") {
+    if (local?.dirty || (local?.branch && local.branch !== "main")) {
+      return {
+        component,
+        status: "update_blocked",
+        message: local.dirty
+          ? "설치 폴더에 미커밋 변경이 있어 자동 업데이트를 진행할 수 없습니다."
+          : "공식 main 브랜치가 아닌 설치본이라 자동 업데이트를 진행할 수 없습니다.",
+        github_checked: true
+      };
+    }
     return { component, status: "update_available", message: "업데이트가 필요합니다.", github_checked: true };
   }
   return { component, status: "check_unavailable", message: "GitHub에서 최신 버전을 확인할 수 없습니다. 잠시 후 다시 확인하세요.", github_checked: false };
@@ -603,8 +683,11 @@ function simpleVersionResult(component, local, remote) {
 
 async function simpleVersionStatus(target) {
   if (target === "harness") {
-    const local = await gitSummary(HARNESS_SOURCE_DIR);
-    const remote = await remoteMainSummary(HARNESS_SOURCE_DIR, local);
+    const sourceDir = harnessSourceDir();
+    const local = await gitSummary(sourceDir);
+    const remote = local.installed
+      ? await remoteMainSummary(sourceDir, local)
+      : await officialRemoteSummary(HARNESS_REPOSITORY);
     return simpleVersionResult("하네스", local, remote);
   }
 
@@ -616,7 +699,7 @@ async function simpleVersionStatus(target) {
       const version = await runCommand("gvskb", ["version"], { timeout_ms: 10000 });
       return version.ok
         ? { component: "체커", status: "check_unavailable", message: "설치 방식 때문에 GitHub 기준 최신 여부를 확인할 수 없습니다.", github_checked: false }
-        : { component: "체커", status: "not_installed", message: "설치되어 있지 않습니다.", github_checked: false };
+        : simpleVersionResult("체커", { installed: false }, await officialRemoteSummary(CHECKER_REPOSITORY));
     }
     const local = await gitSummary(editablePath);
     const remote = await remoteMainSummary(editablePath, local);
@@ -624,6 +707,125 @@ async function simpleVersionStatus(target) {
   }
 
   return { component: "", status: "invalid_target", message: "확인할 대상을 찾을 수 없습니다.", github_checked: false };
+}
+
+async function installComponent(target) {
+  const version = await simpleVersionStatus(target);
+  if (version.status === "check_unavailable") {
+    return { status: "blocked", reason: "github_check_required", message: "GitHub 기준을 확인하지 못해 설치를 시작하지 않았습니다. 다시 확인하세요." };
+  }
+  if (version.status !== "not_installed") {
+    return { status: "already_installed", message: "이미 설치되어 있습니다. 설치 버전을 확인하세요." };
+  }
+
+  if (target === "harness") {
+    mkdirSync(LOCAL_TOOLS_DIR, { recursive: true });
+    const cloned = await runCommand("git", ["clone", "--depth", "1", HARNESS_REPOSITORY, LOCAL_HARNESS_DIR], { timeout_ms: 120000 });
+    if (!cloned.ok) {
+      return { status: "failed", reason: "clone_failed", message: "하네스 공식 저장소를 가져오지 못했습니다.", detail: (cloned.stderr || cloned.stdout).trim().slice(-500) };
+    }
+    const validated = await runCommand(
+      POWERSHELL,
+      ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", join(LOCAL_HARNESS_DIR, "shared", "scripts", "gg-validate.ps1")],
+      { cwd: LOCAL_HARNESS_DIR, timeout_ms: 120000 }
+    );
+    return validated.ok
+      ? { status: "installed", message: "하네스 설치와 기본 검증이 완료되었습니다.", location: LOCAL_HARNESS_DIR }
+      : { status: "needs_review", reason: "validation_failed", message: "하네스는 설치했지만 기본 검증을 통과하지 못했습니다.", detail: (validated.stderr || validated.stdout).trim().slice(-500) };
+  }
+
+  const sourceDir = harnessSourceDir();
+  const bootstrap = join(sourceDir, "shared", "scripts", "checker-bootstrap.mjs");
+  if (!existsSync(bootstrap)) {
+    return { status: "blocked", reason: "harness_bootstrap_missing", message: "체커 설치에 필요한 하네스 설치 파일을 찾지 못했습니다. 하네스를 먼저 설치하세요." };
+  }
+  mkdirSync(LOCAL_TOOLS_DIR, { recursive: true });
+  const installed = await runCommand("node", [bootstrap, "--target", LOCAL_CHECKER_DIR, "--yes", "--install-python"], { timeout_ms: 300000 });
+  if (!installed.ok) {
+    return { status: "failed", reason: "checker_install_failed", message: "체커 설치를 완료하지 못했습니다. Python 3.11 이상과 pip 설치 상태를 확인하세요.", detail: (installed.stderr || installed.stdout).trim().slice(-500) };
+  }
+  const doctor = await runCommand("gvskb", ["doctor"], { timeout_ms: 120000 });
+  return doctor.ok
+    ? { status: "installed", message: "체커 설치와 상태 점검이 완료되었습니다.", location: LOCAL_CHECKER_DIR }
+    : { status: "needs_review", reason: "doctor_failed", message: "체커는 설치했지만 상태 점검을 통과하지 못했습니다.", detail: (doctor.stderr || doctor.stdout).trim().slice(-500) };
+}
+
+function mcpConfigPath(target) {
+  if (target === "codex") return process.env.PORTAL_TEST_CODEX_CONFIG || join(ROOT, ".codex", "config.toml");
+  if (target === "claude-code") return process.env.PORTAL_TEST_CLAUDE_CODE_CONFIG || join(ROOT, ".mcp.json");
+  if (target === "claude-desktop") {
+    if (process.env.PORTAL_TEST_CLAUDE_DESKTOP_CONFIG) return process.env.PORTAL_TEST_CLAUDE_DESKTOP_CONFIG;
+    if (process.env.APPDATA) return join(process.env.APPDATA, "Claude", "claude_desktop_config.json");
+    if (process.env.HOME) return join(process.env.HOME, "Library", "Application Support", "Claude", "claude_desktop_config.json");
+  }
+  return "";
+}
+
+function configBackupPath(path) {
+  return `${path}.portal-backup-${koreaReportTimestamp(new Date()).replace(/[:]/g, "")}`;
+}
+
+async function writeTextWithBackup(path, content) {
+  let backup = null;
+  if (existsSync(path)) {
+    backup = configBackupPath(path);
+    await copyFile(path, backup);
+  }
+  mkdirSync(dirname(path), { recursive: true });
+  const temporary = `${path}.portal-writing`;
+  await writeFile(temporary, content, "utf8");
+  await rename(temporary, path);
+  return backup ? basename(backup) : null;
+}
+
+async function registerMcp(target) {
+  if (!["codex", "claude-code", "claude-desktop"].includes(target)) {
+    return { status: "blocked", reason: "unsupported_tool", message: "이 도구는 자동 MCP 등록을 지원하지 않습니다." };
+  }
+  const command = await checkerCommandSummary();
+  if (!command.available) {
+    return { status: "blocked", reason: "checker_not_installed", message: "체커가 설치되어 있지 않아 MCP를 등록하지 않았습니다. 체커를 먼저 설치하고 버전을 확인하세요." };
+  }
+  const path = mcpConfigPath(target);
+  if (!path) return { status: "blocked", reason: "config_location_missing", message: "이 PC에서 MCP 설정 위치를 찾지 못했습니다." };
+
+  if (target === "codex") {
+    const current = existsSync(path) ? await readFile(path, "utf8") : "";
+    const hasSection = /^\[mcp_servers\.vibecode-checker\]\s*$/m.test(current);
+    if (hasSection) {
+      if (/\[mcp_servers\.vibecode-checker\][\s\S]*?command\s*=\s*["']gvskb-server["']/m.test(current)) {
+        return { status: "already_registered", message: "Codex 설정에 보안 체커 MCP가 이미 등록되어 있습니다.", location: path };
+      }
+      return { status: "blocked", reason: "existing_mcp_configuration", message: "기존 보안 체커 MCP 설정이 달라 자동으로 바꾸지 않았습니다. 설정을 확인하세요." };
+    }
+    const block = `\n[mcp_servers.vibecode-checker]\ncommand = "gvskb-server"\nargs = []\nenv = { PYTHONUTF8 = "1", PYTHONIOENCODING = "utf-8" }\n`;
+    const backup = await writeTextWithBackup(path, `${current.trimEnd()}${block}`);
+    return { status: "registered", message: "Codex용 보안 체커 MCP를 등록했습니다. Codex를 다시 시작하세요.", location: path, backup };
+  }
+
+  let config = {};
+  if (existsSync(path)) {
+    try {
+      config = JSON.parse(await readFile(path, "utf8"));
+    } catch {
+      return { status: "blocked", reason: "invalid_configuration", message: "기존 MCP 설정 파일 형식이 올바르지 않아 자동으로 바꾸지 않았습니다." };
+    }
+  }
+  if (!config || Array.isArray(config) || typeof config !== "object") {
+    return { status: "blocked", reason: "invalid_configuration", message: "기존 MCP 설정 구조가 올바르지 않아 자동으로 바꾸지 않았습니다." };
+  }
+  config.mcpServers = config.mcpServers && typeof config.mcpServers === "object" && !Array.isArray(config.mcpServers) ? config.mcpServers : {};
+  const existing = config.mcpServers["vibecode-checker"];
+  if (existing) {
+    if (existing.command === "gvskb-server") {
+      return { status: "already_registered", message: "보안 체커 MCP가 이미 등록되어 있습니다.", location: path };
+    }
+    return { status: "blocked", reason: "existing_mcp_configuration", message: "기존 보안 체커 MCP 설정이 달라 자동으로 바꾸지 않았습니다. 설정을 확인하세요." };
+  }
+  config.mcpServers["vibecode-checker"] = checkerMcpEntry();
+  const backup = await writeTextWithBackup(path, `${JSON.stringify(config, null, 2)}\n`);
+  const toolLabel = target === "claude-code" ? "Claude Code" : "Claude Desktop";
+  return { status: "registered", message: `${toolLabel}용 보안 체커 MCP를 등록했습니다. ${toolLabel}을 다시 시작하세요.`, location: path, backup };
 }
 
 async function updatePreview() {
@@ -692,7 +894,7 @@ async function applyUpdates(targets = ["harness", "checker"]) {
 
   const results = [];
   for (const item of preview.items.filter((candidate) => eligibleTargets.includes(candidate.target))) {
-    const repoPath = item.target === "harness" ? HARNESS_SOURCE_DIR : (await checkerSummary()).source?.path;
+    const repoPath = item.target === "harness" ? harnessSourceDir() : (await checkerSummary()).source?.path;
     if (!repoPath || !existsSync(repoPath)) {
       results.push({ target: item.target, status: "manual_update_required", reason: "editable_git_checkout_missing" });
       continue;
@@ -704,8 +906,8 @@ async function applyUpdates(targets = ["harness", "checker"]) {
   const harnessValidation = eligibleTargets.includes("harness")
     ? await runCommand(
       POWERSHELL,
-      ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", join(HARNESS_SOURCE_DIR, "shared", "scripts", "gg-validate.ps1")],
-      { cwd: HARNESS_SOURCE_DIR, timeout_ms: 120000 }
+      ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", join(harnessSourceDir(), "shared", "scripts", "gg-validate.ps1")],
+      { cwd: harnessSourceDir(), timeout_ms: 120000 }
     )
     : { ok: true };
   const checkerValidation = eligibleTargets.includes("checker")
@@ -1246,7 +1448,26 @@ async function handleApi(request, response, pathname) {
       json(response, 409, { status: "blocked", reason: "approval_required" });
       return;
     }
-    json(response, 200, await applyUpdates(Array.isArray(body.targets) ? body.targets : undefined));
+    const result = await applyUpdates(Array.isArray(body.targets) ? body.targets : undefined);
+    await writeGateOperation("update", Array.isArray(body.targets) ? body.targets.join(",") : "all", result);
+    json(response, 200, result);
+    return;
+  }
+
+  if (request.method === "POST" && pathname === "/api/local/component/install") {
+    const body = await readJson(request);
+    const target = body.target === "harness" || body.target === "checker" ? body.target : "";
+    if (!target) {
+      json(response, 400, { error: "invalid_install_target", message: "설치할 대상을 찾지 못했습니다." });
+      return;
+    }
+    if (body.approval_token !== "user-confirmed") {
+      json(response, 409, { status: "blocked", reason: "approval_required", message: "설치 전 사용자 확인이 필요합니다." });
+      return;
+    }
+    const result = await installComponent(target);
+    await writeGateOperation("install", target, result);
+    json(response, 200, result);
     return;
   }
 
@@ -1282,24 +1503,22 @@ async function handleApi(request, response, pathname) {
 
   if (request.method === "POST" && pathname === "/api/local/mcp/register") {
     const body = await readJson(request);
-    const target = ["codex", "claude-code", "claude-desktop", "lovable"].includes(body.target) ? body.target : "codex";
+    const target = ["codex", "claude-code", "claude-desktop"].includes(body.target) ? body.target : "codex";
+    if (body.approval_token !== "user-confirmed") {
+      const mcp = await mcpSummary();
+      json(response, 200, {
+        status: mcp.tools[target]?.status === "registered" ? "already_registered" : "needs_user_approval",
+        target,
+        connection: mcp.tools[target],
+        applies_without_approval: false,
+        next_action: "체커 실행 명령과 설정 파일을 확인한 뒤 사용자 승인으로 등록합니다."
+      });
+      return;
+    }
+    const result = await registerMcp(target);
+    await writeGateOperation("mcp_register", target, result);
     const mcp = await mcpSummary();
-    const executionGate = await executionGateSummary();
-    const connection = mcp.tools[target];
-    const alreadyRegistered = connection.status === "registered";
-    json(response, 200, {
-      status: alreadyRegistered ? "already_registered" : "needs_user_approval",
-      target,
-      connection,
-      applies_without_approval: false,
-      mcp,
-      execution_gate: executionGate,
-      next_action: alreadyRegistered
-        ? "선택한 AI 도구에 체커 MCP가 등록되어 있습니다. 연결 검증을 진행하세요."
-        : connection.status === "not_supported"
-          ? "선택한 AI 도구는 자동 MCP 등록을 지원하지 않습니다. 포털에서 표준 점검을 사용하세요."
-          : "선택한 AI 도구의 설정 파일을 백업한 뒤 MCP 등록을 진행해야 합니다."
-    });
+    json(response, 200, { target, ...result, connection: mcp.tools[target] });
     return;
   }
 

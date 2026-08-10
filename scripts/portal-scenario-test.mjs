@@ -91,7 +91,7 @@ async function assertPagesLoad() {
   const pages = [
     ["/", "오늘 할 일을 선택하세요"],
     ["/scan", "대상을 선택하고 점검하세요"],
-    ["/harness", "하네스 설치"],
+    ["/harness", "코딩 보조 하네스"],
     ["/admin/login", "관리자 로그인"],
     ["/help", "도움말"]
   ];
@@ -206,18 +206,25 @@ async function scenarioBrowserSelectedTargets(fixture) {
   return { folderResult, archiveResult };
 }
 
-async function scenarioHarnessAndMcp() {
+async function scenarioHarnessAndMcp(mcpConfigPath, operationLogPath) {
   const harnessVersion = await fetchJson("/api/local/version-status?target=harness");
-  assert.ok(["current", "update_available", "check_unavailable", "not_installed"].includes(harnessVersion.status));
+  assert.ok(["current", "update_available", "update_blocked", "check_unavailable", "not_installed"].includes(harnessVersion.status));
   assert.ok(["최신 버전입니다.", "업데이트가 필요합니다.", "설치되어 있지 않습니다."].includes(harnessVersion.message) || harnessVersion.status === "check_unavailable");
 
   const checkerVersion = await fetchJson("/api/local/version-status?target=checker");
-  assert.ok(["current", "update_available", "check_unavailable", "not_installed"].includes(checkerVersion.status));
+  assert.ok(["current", "update_available", "update_blocked", "check_unavailable", "not_installed"].includes(checkerVersion.status));
 
   const status = await fetchJson("/api/local/status");
   assert.equal(status.project_harness.status, "applied");
   assert.equal(status.execution_gate.guard_script, "configured");
   assert.equal(status.execution_gate.pre_commit_hook, "active");
+
+  const installWithoutApproval = await fetch(`${baseUrl}/api/local/component/install`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ target: "checker" })
+  });
+  assert.equal(installWithoutApproval.status, 409, "component install must require explicit user approval");
 
   const preview = await fetchJson("/api/local/update/preview", { method: "POST" });
   assert.equal(preview.applies_without_approval, false);
@@ -244,6 +251,19 @@ async function scenarioHarnessAndMcp() {
     assert.equal(targetStatus.connection.status, mcpStatuses.tools[target].status);
   }
   assert.equal(mcpStatuses.tools.lovable.status, "not_supported", "Lovable must be shown as separately unsupported, not registered");
+
+  const mcpRegistration = await fetchJson("/api/local/mcp/register", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ target: "claude-desktop", approval_token: "user-confirmed" })
+  });
+  assert.equal(mcpRegistration.status, "registered", "MCP registration must update only the selected test configuration");
+  assert.equal(mcpRegistration.connection.status, "registered");
+  assert.ok(mcpRegistration.backup, "MCP registration must back up an existing configuration");
+  const registeredConfig = JSON.parse(await readFile(mcpConfigPath, "utf8"));
+  assert.equal(registeredConfig.mcpServers?.["vibecode-checker"]?.command, "gvskb-server");
+  const operations = (await readFile(operationLogPath, "utf8")).trim().split(/\r?\n/).map(JSON.parse);
+  assert.ok(operations.some((entry) => entry.action === "mcp_register" && entry.target === "claude-desktop" && entry.status === "registered"), "MCP registration must leave a minimal gate operation log");
   return { status, preview, apply, mcp, mcpStatuses };
 }
 
@@ -285,7 +305,10 @@ async function scenarioAdmin(exportDirectory) {
 
 const fixture = await createZipFixture();
 const adminExportDirectory = join(fixture.fixtureDir, "admin-export");
+const mcpConfigPath = join(fixture.fixtureDir, "claude_desktop_config.json");
+const operationLogPath = join(fixture.fixtureDir, "gate-operation-log.jsonl");
 await mkdir(adminExportDirectory);
+await writeFile(mcpConfigPath, `${JSON.stringify({ mcpServers: { fixture: { command: "fixture-command" } } }, null, 2)}\n`, "utf8");
 const child = spawn(process.execPath, ["src/server.js"], {
   cwd: process.cwd(),
   env: {
@@ -296,6 +319,8 @@ const child = spawn(process.execPath, ["src/server.js"], {
     ADMIN_AUTH_FILE: join(process.env.TEMP || process.env.TMP || ".", "vibecode-portal-scenario-admin-auth.json"),
     PORTAL_TEST_PICK_PATH: join(process.cwd(), "src"),
     PORTAL_TEST_ARCHIVE_PATH: fixture.archivePath,
+    PORTAL_TEST_CLAUDE_DESKTOP_CONFIG: mcpConfigPath,
+    PORTAL_OPERATION_LOG_FILE: operationLogPath,
     PYTHONUTF8: "1",
     PYTHONIOENCODING: "utf-8"
   },
@@ -319,7 +344,7 @@ try {
   const standard = await scenarioStandardScan();
   const localTargets = await scenarioLocalFolderAndZip(fixture);
   const browserTargets = await scenarioBrowserSelectedTargets(fixture);
-  await scenarioHarnessAndMcp();
+  await scenarioHarnessAndMcp(mcpConfigPath, operationLogPath);
   await scenarioAdmin(adminExportDirectory);
   console.log(JSON.stringify({
     status: "passed",
