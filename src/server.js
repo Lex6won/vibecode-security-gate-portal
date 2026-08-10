@@ -13,8 +13,8 @@ const ROOT = resolve(__dirname, "..");
 const DESIGN_DIR = join(ROOT, "design", "html-prototype");
 const REPORT_DIR = join(ROOT, "reports");
 const TMP_DIR = join(ROOT, "tmp", "scan-targets");
-const HARNESS_SOURCE_DIR = resolve(ROOT, "..", "vibe_harness_codex");
-const LOCAL_TOOLS_DIR = join(ROOT, "tools");
+const HARNESS_SOURCE_DIR = runtimePath("PORTAL_HARNESS_SOURCE_DIR", resolve(ROOT, "..", "vibe_harness_codex"));
+const LOCAL_TOOLS_DIR = runtimePath("PORTAL_TOOLS_DIR", join(ROOT, "tools"));
 const LOCAL_HARNESS_DIR = join(LOCAL_TOOLS_DIR, "vibe_harness_codex");
 const LOCAL_CHECKER_DIR = join(LOCAL_TOOLS_DIR, "vibecode-checker");
 const HARNESS_REPOSITORY = "https://github.com/Lex6won/vibe_harness_codex.git";
@@ -26,7 +26,15 @@ const MAX_BROWSER_UPLOAD_FILES = 10000;
 const OPERATION_LOG_FILE = runtimePath("PORTAL_OPERATION_LOG_FILE", join(ROOT, ".local", "gate-operation-log.jsonl"));
 
 function harnessSourceDir() {
-  return existsSync(HARNESS_SOURCE_DIR) ? HARNESS_SOURCE_DIR : LOCAL_HARNESS_DIR;
+  return existsSync(LOCAL_HARNESS_DIR) ? LOCAL_HARNESS_DIR : HARNESS_SOURCE_DIR;
+}
+
+function installBackupPath(path) {
+  return `${path}.portal-backup-${koreaReportTimestamp(new Date()).replace(/[:]/g, "")}`;
+}
+
+function installStagingPath(path) {
+  return `${path}.portal-staging-${randomUUID()}`;
 }
 
 function runtimePath(name, fallback) {
@@ -470,6 +478,55 @@ async function remoteMainSummary(repoPath, local = null) {
   };
 }
 
+function normalizedRepository(value = "") {
+  return String(value).trim().toLowerCase().replace(/\.git$/, "").replace(/\/$/, "");
+}
+
+async function isOfficialCheckout(repoPath, repository) {
+  if (!repoPath || !existsSync(repoPath)) return false;
+  const origin = await runCommand("git", ["-C", repoPath, "remote", "get-url", "origin"], { timeout_ms: 8000 });
+  return origin.ok && normalizedRepository(origin.stdout) === normalizedRepository(repository);
+}
+
+function fileUrlMatchesPath(url, path) {
+  if (!url || !path) return false;
+  const normalizedUrl = decodeURIComponent(String(url)).replaceAll("\\", "/").toLowerCase();
+  const normalizedPath = resolve(path).replaceAll("\\", "/").toLowerCase();
+  return normalizedUrl.endsWith(normalizedPath) || normalizedUrl.endsWith(`/${normalizedPath}`);
+}
+
+async function checkerInstallationStatus() {
+  const fixturePath = process.env.PORTAL_TEST_CHECKER_STATUS_FILE;
+  if (fixturePath && existsSync(fixturePath)) {
+    try {
+      const payload = JSON.parse(readFileSync(fixturePath, "utf8"));
+      if (payload?.status === "invalid_contract") return { installed: false, status: "invalid_contract" };
+      return payload?.installed ? { installed: true, ...payload } : { installed: false, status: "missing" };
+    } catch {
+      return { installed: false, status: "invalid_contract" };
+    }
+  }
+  const result = await runCommand("gvskb", ["status", "--json"], { timeout_ms: 15000 });
+  if (!result.ok) return { installed: false, status: result.code === -1 ? "missing" : "invalid_contract" };
+  try {
+    const payload = JSON.parse(result.stdout);
+    return payload?.schema_version === 1 && payload?.installed
+      ? { installed: true, ...payload }
+      : { installed: false, status: "invalid_contract" };
+  } catch {
+    return { installed: false, status: "invalid_contract" };
+  }
+}
+
+function reinstallRequired(component, message) {
+  return {
+    component,
+    status: "reinstall_required",
+    message,
+    github_checked: true
+  };
+}
+
 async function checkerSummary() {
   const [version, doctor, pipShow] = await Promise.all([
     runCommand("gvskb", ["version"]),
@@ -662,20 +719,18 @@ function simpleVersionResult(component, local, remote) {
     }
     return { component, status: "not_installed", message: "설치되어 있지 않습니다. 설치할 수 있습니다.", github_checked: true, available_version: remote.remote_commit || null };
   }
+  if (remote?.available && (local?.dirty || (local?.branch && local.branch !== "main"))) {
+    return reinstallRequired(
+      component,
+      local.dirty
+        ? "설치 폴더에 변경이 있어 자동 업데이트를 하지 않습니다. 공식 재설치로 새 설치본을 만들 수 있습니다."
+        : "공식 main 브랜치가 아닌 설치본입니다. 공식 재설치를 진행할 수 있습니다."
+    );
+  }
   if (remote?.status === "current") {
     return { component, status: "current", message: "최신 버전입니다.", github_checked: true };
   }
   if (remote?.status === "update_available") {
-    if (local?.dirty || (local?.branch && local.branch !== "main")) {
-      return {
-        component,
-        status: "update_blocked",
-        message: local.dirty
-          ? "설치 폴더에 미커밋 변경이 있어 자동 업데이트를 진행할 수 없습니다."
-          : "공식 main 브랜치가 아닌 설치본이라 자동 업데이트를 진행할 수 없습니다.",
-        github_checked: true
-      };
-    }
     return { component, status: "update_available", message: "업데이트가 필요합니다.", github_checked: true };
   }
   return { component, status: "check_unavailable", message: "GitHub에서 최신 버전을 확인할 수 없습니다. 잠시 후 다시 확인하세요.", github_checked: false };
@@ -683,27 +738,39 @@ function simpleVersionResult(component, local, remote) {
 
 async function simpleVersionStatus(target) {
   if (target === "harness") {
-    const sourceDir = harnessSourceDir();
+    const managed = existsSync(LOCAL_HARNESS_DIR);
+    const sourceDir = managed ? LOCAL_HARNESS_DIR : HARNESS_SOURCE_DIR;
     const local = await gitSummary(sourceDir);
-    const remote = local.installed
+    const remote = local.installed && managed
       ? await remoteMainSummary(sourceDir, local)
       : await officialRemoteSummary(HARNESS_REPOSITORY);
+    if (!local.installed) return simpleVersionResult("하네스", local, remote);
+    if (!remote.available) return simpleVersionResult("하네스", local, remote);
+    if (!managed || !(await isOfficialCheckout(sourceDir, HARNESS_REPOSITORY))) {
+      return reinstallRequired("하네스", "공식 설치본이 아닙니다. 기존 개발 폴더는 유지하고 공식 재설치를 진행할 수 있습니다.");
+    }
     return simpleVersionResult("하네스", local, remote);
   }
 
   if (target === "checker") {
-    const pipShow = await runCommand("pip.exe", ["show", "vibecode-checker"], { timeout_ms: 10000 });
-    const editableMatch = pipShow.stdout.match(/^Editable project location:\s*(.+)$/mi);
-    const editablePath = editableMatch?.[1]?.trim() || "";
-    if (!editablePath) {
-      const version = await runCommand("gvskb", ["version"], { timeout_ms: 10000 });
-      return version.ok
-        ? { component: "체커", status: "check_unavailable", message: "설치 방식 때문에 GitHub 기준 최신 여부를 확인할 수 없습니다.", github_checked: false }
-        : simpleVersionResult("체커", { installed: false }, await officialRemoteSummary(CHECKER_REPOSITORY));
+    const installed = await checkerInstallationStatus();
+    const remote = await officialRemoteSummary(CHECKER_REPOSITORY);
+    if (!installed.installed) {
+      if (installed.status === "missing") return simpleVersionResult("체커", { installed: false }, remote);
+      return { component: "체커", status: "check_unavailable", message: "설치 정보를 확인하지 못했습니다. 설치 버전 확인을 다시 실행하세요.", github_checked: false };
     }
-    const local = await gitSummary(editablePath);
-    const remote = await remoteMainSummary(editablePath, local);
-    return simpleVersionResult("체커", local, remote);
+    if (!remote.available) return simpleVersionResult("체커", { installed: true }, remote);
+    const identity = installed.install_identity || {};
+    const local = await gitSummary(LOCAL_CHECKER_DIR);
+    const managed = local.installed
+      && Boolean(identity.editable)
+      && fileUrlMatchesPath(identity.install_url, LOCAL_CHECKER_DIR)
+      && await isOfficialCheckout(LOCAL_CHECKER_DIR, CHECKER_REPOSITORY);
+    if (!managed) {
+      return reinstallRequired("체커", "공식 설치본이 아닙니다. 현재 설치는 그대로 두고 공식 재설치를 진행할 수 있습니다.");
+    }
+    const checkoutRemote = await remoteMainSummary(LOCAL_CHECKER_DIR, local);
+    return simpleVersionResult("체커", local, checkoutRemote);
   }
 
   return { component: "", status: "invalid_target", message: "확인할 대상을 찾을 수 없습니다.", github_checked: false };
@@ -714,24 +781,33 @@ async function installComponent(target) {
   if (version.status === "check_unavailable") {
     return { status: "blocked", reason: "github_check_required", message: "GitHub 기준을 확인하지 못해 설치를 시작하지 않았습니다. 다시 확인하세요." };
   }
-  if (version.status !== "not_installed") {
+  if (!["not_installed", "reinstall_required"].includes(version.status)) {
     return { status: "already_installed", message: "이미 설치되어 있습니다. 설치 버전을 확인하세요." };
   }
 
   if (target === "harness") {
     mkdirSync(LOCAL_TOOLS_DIR, { recursive: true });
-    const cloned = await runCommand("git", ["clone", "--depth", "1", HARNESS_REPOSITORY, LOCAL_HARNESS_DIR], { timeout_ms: 120000 });
+    const staging = installStagingPath(LOCAL_HARNESS_DIR);
+    const cloned = await runCommand("git", ["clone", "--depth", "1", HARNESS_REPOSITORY, staging], { timeout_ms: 120000 });
     if (!cloned.ok) {
       return { status: "failed", reason: "clone_failed", message: "하네스 공식 저장소를 가져오지 못했습니다.", detail: (cloned.stderr || cloned.stdout).trim().slice(-500) };
     }
     const validated = await runCommand(
       POWERSHELL,
-      ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", join(LOCAL_HARNESS_DIR, "shared", "scripts", "gg-validate.ps1")],
-      { cwd: LOCAL_HARNESS_DIR, timeout_ms: 120000 }
+      ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", join(staging, "shared", "scripts", "gg-validate.ps1")],
+      { cwd: staging, timeout_ms: 120000 }
     );
-    return validated.ok
-      ? { status: "installed", message: "하네스 설치와 기본 검증이 완료되었습니다.", location: LOCAL_HARNESS_DIR }
-      : { status: "needs_review", reason: "validation_failed", message: "하네스는 설치했지만 기본 검증을 통과하지 못했습니다.", detail: (validated.stderr || validated.stdout).trim().slice(-500) };
+    if (!validated.ok) {
+      await rm(staging, { recursive: true, force: true });
+      return { status: "needs_review", reason: "validation_failed", message: "새 공식 설치본이 기본 검증을 통과하지 못했습니다. 기존 설치는 바꾸지 않았습니다.", detail: (validated.stderr || validated.stdout).trim().slice(-500) };
+    }
+    let backup = null;
+    if (existsSync(LOCAL_HARNESS_DIR)) {
+      backup = installBackupPath(LOCAL_HARNESS_DIR);
+      await rename(LOCAL_HARNESS_DIR, backup);
+    }
+    await rename(staging, LOCAL_HARNESS_DIR);
+    return { status: "installed", message: "공식 하네스 설치와 기본 검증이 완료되었습니다.", location: LOCAL_HARNESS_DIR, backup: backup ? basename(backup) : null };
   }
 
   const sourceDir = harnessSourceDir();
@@ -740,14 +816,30 @@ async function installComponent(target) {
     return { status: "blocked", reason: "harness_bootstrap_missing", message: "체커 설치에 필요한 하네스 설치 파일을 찾지 못했습니다. 하네스를 먼저 설치하세요." };
   }
   mkdirSync(LOCAL_TOOLS_DIR, { recursive: true });
+  let backup = null;
+  if (existsSync(LOCAL_CHECKER_DIR)) {
+    backup = installBackupPath(LOCAL_CHECKER_DIR);
+    await rename(LOCAL_CHECKER_DIR, backup);
+  }
   const installed = await runCommand("node", [bootstrap, "--target", LOCAL_CHECKER_DIR, "--yes", "--install-python"], { timeout_ms: 300000 });
   if (!installed.ok) {
-    return { status: "failed", reason: "checker_install_failed", message: "체커 설치를 완료하지 못했습니다. Python 3.11 이상과 pip 설치 상태를 확인하세요.", detail: (installed.stderr || installed.stdout).trim().slice(-500) };
+    await rm(LOCAL_CHECKER_DIR, { recursive: true, force: true });
+    if (backup) await rename(backup, LOCAL_CHECKER_DIR);
+    const detail = `${installed.stderr}\n${installed.stdout}`.trim();
+    if (/WinError 32|used by another process|다른 프로세스/i.test(detail)) {
+      return {
+        status: "failed",
+        reason: "checker_server_running",
+        message: "보안 체커가 다른 AI 도구에서 실행 중입니다. Codex·Claude Code·Claude Desktop을 종료한 뒤 다시 시도하세요.",
+        detail: "gvskb-server 실행 파일이 사용 중이라 교체하지 않았습니다. 기존 설치는 유지됩니다."
+      };
+    }
+    return { status: "failed", reason: "checker_install_failed", message: "체커 설치를 완료하지 못했습니다. Python 3.11 이상과 pip 설치 상태를 확인하세요.", detail: detail.slice(0, 600) };
   }
-  const doctor = await runCommand("gvskb", ["doctor"], { timeout_ms: 120000 });
-  return doctor.ok
-    ? { status: "installed", message: "체커 설치와 상태 점검이 완료되었습니다.", location: LOCAL_CHECKER_DIR }
-    : { status: "needs_review", reason: "doctor_failed", message: "체커는 설치했지만 상태 점검을 통과하지 못했습니다.", detail: (doctor.stderr || doctor.stdout).trim().slice(-500) };
+  const verified = await simpleVersionStatus("checker");
+  return verified.status === "current"
+    ? { status: "installed", message: "공식 체커 설치와 상태 점검이 완료되었습니다.", location: LOCAL_CHECKER_DIR, backup: backup ? basename(backup) : null }
+    : { status: "needs_review", reason: "post_install_verification_failed", message: "체커 설치 후 공식 설치 여부를 확인하지 못했습니다. 기존 개발 설치는 보존되어 있습니다.", detail: verified.message };
 }
 
 function mcpConfigPath(target) {
@@ -879,35 +971,35 @@ async function updatePreview() {
 }
 
 async function applyUpdates(targets = ["harness", "checker"]) {
-  const preview = await updatePreview();
   const requestedTargets = targets.filter((target) => target === "harness" || target === "checker");
   const eligibleTargets = requestedTargets.length ? requestedTargets : ["harness", "checker"];
-  const blockedTargets = preview.blocked_targets.filter((target) => eligibleTargets.includes(target));
+  const states = Object.fromEntries(await Promise.all(eligibleTargets.map(async (target) => [target, await simpleVersionStatus(target)])));
+  const blockedTargets = eligibleTargets.filter((target) => states[target].status !== "update_available");
   if (blockedTargets.length) {
     return {
       status: "blocked",
       reason: "update_not_eligible",
       blocked_targets: blockedTargets,
-      blocked_reasons: Object.fromEntries(blockedTargets.map((target) => [target, preview.blocked_reasons[target]]))
+      blocked_reasons: Object.fromEntries(blockedTargets.map((target) => [target, states[target].status]))
     };
   }
 
   const results = [];
-  for (const item of preview.items.filter((candidate) => eligibleTargets.includes(candidate.target))) {
-    const repoPath = item.target === "harness" ? harnessSourceDir() : (await checkerSummary()).source?.path;
+  for (const target of eligibleTargets) {
+    const repoPath = target === "harness" ? LOCAL_HARNESS_DIR : LOCAL_CHECKER_DIR;
     if (!repoPath || !existsSync(repoPath)) {
-      results.push({ target: item.target, status: "manual_update_required", reason: "editable_git_checkout_missing" });
+      results.push({ target, status: "manual_update_required", reason: "official_install_missing" });
       continue;
     }
     const pulled = await runCommand("git", ["-C", repoPath, "pull", "--ff-only", "origin", "main"], { timeout_ms: 120000 });
-    results.push({ target: item.target, status: pulled.ok ? "updated_or_current" : "failed", detail: (pulled.stderr || pulled.stdout).trim().slice(-500) });
+    results.push({ target, status: pulled.ok ? "updated_or_current" : "failed", detail: (pulled.stderr || pulled.stdout).trim().slice(-500) });
   }
 
   const harnessValidation = eligibleTargets.includes("harness")
     ? await runCommand(
       POWERSHELL,
-      ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", join(harnessSourceDir(), "shared", "scripts", "gg-validate.ps1")],
-      { cwd: harnessSourceDir(), timeout_ms: 120000 }
+      ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", join(LOCAL_HARNESS_DIR, "shared", "scripts", "gg-validate.ps1")],
+      { cwd: LOCAL_HARNESS_DIR, timeout_ms: 120000 }
     )
     : { ok: true };
   const checkerValidation = eligibleTargets.includes("checker")

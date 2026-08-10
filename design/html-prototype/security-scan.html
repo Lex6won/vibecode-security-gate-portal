@@ -539,6 +539,29 @@
       font-weight: 900;
     }
 
+    .flow-title {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin: 0;
+      font-size: 22px;
+      line-height: 30px;
+      font-weight: 900;
+    }
+
+    .flow-title .sequence {
+      width: 34px;
+      height: 34px;
+      flex: 0 0 auto;
+      display: grid;
+      place-items: center;
+      border-radius: 999px;
+      background: var(--soft);
+      color: #244d85;
+      font-size: 15px;
+      font-weight: 900;
+    }
+
     .panel p {
       margin: 8px 0 0;
       color: var(--muted);
@@ -643,10 +666,10 @@
 
     .save-row {
       margin-top: 12px;
-      padding: 12px;
+      padding: 18px;
       display: grid;
-      gap: 8px;
-      border-radius: 16px;
+      gap: 11px;
+      border-radius: 20px;
       background: var(--moon);
     }
 
@@ -655,16 +678,10 @@
       margin-bottom: 16px;
     }
 
-    .save-row strong {
-      font-size: 14px;
-      line-height: 1.4;
-      font-weight: 900;
-    }
-
     .save-row span {
       color: var(--muted);
-      font-size: 13px;
-      line-height: 1.45;
+      font-size: 14px;
+      line-height: 1.5;
       font-weight: 800;
       word-break: keep-all;
       overflow-wrap: break-word;
@@ -672,13 +689,13 @@
 
     .save-button {
       width: fit-content;
-      min-height: 36px;
-      padding: 0 14px;
+      min-height: 46px;
+      padding: 0 18px;
       border: 0;
       border-radius: 999px;
       background: var(--harbor);
       color: #ffffff;
-      font-size: 13px;
+      font-size: 15px;
       font-weight: 900;
       cursor: pointer;
       transition: transform .14s ease, box-shadow .14s ease, background-color .14s ease;
@@ -697,7 +714,7 @@
     }
 
     .mode-grid {
-      margin-top: 28px;
+      margin-top: 12px;
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: 18px;
@@ -771,10 +788,18 @@
       box-shadow: inset 0 0 0 1px rgba(16,32,51,.18);
     }
 
+    .mode-section {
+      margin-top: 24px;
+    }
+
     .result-card {
       grid-column: 2;
       grid-row: 2 / 4;
       padding: 20px;
+    }
+
+    .result-card > h2 {
+      margin-top: 22px;
     }
 
     .result-list {
@@ -893,7 +918,7 @@
 
       <section class="scan-grid">
         <div class="panel">
-          <h2>검사 대상</h2>
+          <h2 class="flow-title"><span class="sequence">2</span><span>검사 대상 선택</span></h2>
           <p>검사할 소스를 선택하세요. 원본 소스는 이 PC에서만 처리합니다.</p>
           <div class="source-tabs" role="tablist" aria-label="검사 대상 유형">
             <button class="tab active" type="button" data-target="folder">폴더 선택</button>
@@ -908,15 +933,18 @@
             <button class="scan-button" id="scanButton" type="button">폴더 선택</button>
           </div>
 
-          <div class="mode-grid" aria-label="검사 방식">
-            <button class="mode" type="button" data-mode="quick" data-mode-title="간편 점검"><strong>간편 점검</strong><span>개발 중 변경한 소스의 고위험 규칙과 의존성을 빠르게 확인합니다.</span><em>개발 중</em></button>
-            <button class="mode active" type="button" data-mode="standard" data-mode-title="표준 점검"><strong>표준 점검</strong><span>개발이 끝난 소스 전체와 의존성을 검사하고 HTML·JSON 보고서를 저장합니다.</span><em>제출 전</em></button>
-          </div>
+          <section class="mode-section" aria-labelledby="scan-mode-title">
+            <h2 class="flow-title" id="scan-mode-title"><span class="sequence">3</span><span>점검 방식 선택</span></h2>
+            <div class="mode-grid" aria-label="검사 방식">
+              <button class="mode" type="button" data-mode="quick" data-mode-title="간편 점검"><strong>간편 점검</strong><span>개발 중 변경한 소스의 고위험 규칙과 의존성을 빠르게 확인합니다.</span><em>개발 중</em></button>
+              <button class="mode active" type="button" data-mode="standard" data-mode-title="표준 점검"><strong>표준 점검</strong><span>개발이 끝난 소스 전체와 의존성을 검사하고 HTML·JSON 보고서를 저장합니다.</span><em>제출 전</em></button>
+            </div>
+          </section>
         </div>
 
         <aside class="result-card">
           <div class="save-row">
-            <strong>결과 저장 위치</strong>
+            <div class="flow-title"><span class="sequence">1</span><span>결과 저장 위치 선택</span></div>
             <span id="savePath">저장 위치를 선택하면 HTML, JSON, ZIP 결과물을<br>해당 위치에 저장합니다.</span>
             <button class="save-button" id="saveButton" type="button">저장 위치 선택</button>
           </div>
@@ -940,10 +968,10 @@
     <div class="modal-card">
       <div class="modal-head">
         <div>
-          <h2>검사를 진행하고 있습니다.</h2>
-          <p>표준점검은 전체 파일을 확인합니다. 시간이 오래 걸릴 수 있습니다.</p>
+          <h2 id="scanProgressTitle">검사를 진행하고 있습니다.</h2>
+          <p id="scanProgressDescription">표준점검은 전체 파일을 확인합니다. 시간이 오래 걸릴 수 있습니다.</p>
         </div>
-        <button class="modal-close" type="button" aria-label="진행상황 닫기">×</button>
+        <button class="modal-close" id="closeScanProgress" type="button" aria-label="점검 진행상황 닫기" hidden>×</button>
       </div>
       <div class="progress-summary" id="progressSummary" data-state="running">
         <div class="progress-overview">
@@ -961,6 +989,7 @@
         <div class="step" data-progress-step="save_reports" data-state="pending"><b>4</b><div><strong>PC 저장</strong><span id="progressSaveDetail">선택한 위치에 결과물을 저장합니다.</span></div></div>
       </div>
       <div class="modal-actions" id="scanCompleteActions" hidden>
+        <button class="button secondary" id="retryScan" type="button" hidden>다시 시도</button>
         <button class="button primary" id="closeCompletedScan" type="button">결과 확인</button>
       </div>
     </div>
@@ -975,9 +1004,12 @@
         </div>
         <button class="modal-close" id="closeSaveLocationPrompt" type="button" aria-label="저장 위치 선택 안내 닫기">×</button>
       </div>
-      <div class="modal-actions">
+      <div class="modal-actions" id="saveLocationPromptActions">
         <button class="button secondary" id="cancelSaveLocation" type="button">나중에 선택</button>
         <button class="button primary" id="selectSaveLocation" type="button">저장 위치 선택</button>
+      </div>
+      <div class="modal-actions" id="saveLocationCompleteActions" hidden>
+        <button class="button primary" id="confirmSaveLocation" type="button">확인</button>
       </div>
     </div>
   </section>
@@ -1006,6 +1038,10 @@
     const targetInput = document.querySelector("#targetInput");
     const scanButton = document.querySelector("#scanButton");
     const scanProgress = document.querySelector("#scanProgress");
+    const scanProgressTitle = document.querySelector("#scanProgressTitle");
+    const scanProgressDescription = document.querySelector("#scanProgressDescription");
+    const closeScanProgress = document.querySelector("#closeScanProgress");
+    const retryScan = document.querySelector("#retryScan");
     const folderPickerInput = document.querySelector("#folderPickerInput");
     const archivePickerInput = document.querySelector("#archivePickerInput");
     const saveButton = document.querySelector("#saveButton");
@@ -1013,6 +1049,11 @@
     const selectSaveLocation = document.querySelector("#selectSaveLocation");
     const closeSaveLocationPrompt = document.querySelector("#closeSaveLocationPrompt");
     const cancelSaveLocation = document.querySelector("#cancelSaveLocation");
+    const saveLocationPromptTitle = document.querySelector("#saveLocationPromptTitle");
+    const saveLocationPromptDescription = saveLocationPrompt.querySelector(".modal-head p");
+    const saveLocationPromptActions = document.querySelector("#saveLocationPromptActions");
+    const saveLocationCompleteActions = document.querySelector("#saveLocationCompleteActions");
+    const confirmSaveLocation = document.querySelector("#confirmSaveLocation");
     const targetProgress = document.querySelector("#targetProgress");
     const targetProgressTitle = document.querySelector("#targetProgressTitle");
     const targetProgressDescription = document.querySelector("#targetProgressDescription");
@@ -1049,6 +1090,7 @@
     let selectedTargetType = "";
     let selectedSaveDirectoryHandle = null;
     let browserSavedReports = [];
+    let lastScanMode = null;
     const targetText = {
       folder: {
         help: "클릭하면 Windows 탐색기에서 검사할 프로젝트 폴더를 선택합니다.",
@@ -1222,6 +1264,25 @@
       mode.classList.add("active");
     }
 
+    function setScanRunning(mode) {
+      scanProgressTitle.textContent = "검사를 진행하고 있습니다.";
+      scanProgressDescription.textContent = mode?.dataset.mode === "quick"
+        ? "간편 점검은 고위험 규칙과 의존성을 빠르게 확인합니다."
+        : "표준점검은 전체 파일을 확인합니다. 시간이 오래 걸릴 수 있습니다.";
+      closeScanProgress.hidden = true;
+      scanCompleteActions.hidden = true;
+      retryScan.hidden = true;
+    }
+
+    function finishScanProgress({ success, message, retry = false }) {
+      scanProgressTitle.textContent = success ? "점검이 완료되었습니다." : "점검을 완료하지 못했습니다.";
+      scanProgressDescription.textContent = message;
+      closeScanProgress.hidden = false;
+      scanCompleteActions.hidden = false;
+      retryScan.hidden = !retry;
+      closeCompletedScan.textContent = success ? "결과 확인" : "확인";
+    }
+
     function setResultPending(message) {
       resultDecision.textContent = "점검 중";
       resultFindings.textContent = "확인 중";
@@ -1239,6 +1300,11 @@
       resultDeps.textContent = "-";
       resultHtml.textContent = "생성 안 됨";
       resultJson.textContent = "생성 안 됨";
+      finishScanProgress({
+        success: false,
+        message: "문제를 확인한 뒤 다시 시도하거나 확인을 눌러 점검 화면으로 돌아가세요.",
+        retry: Boolean(lastScanMode)
+      });
     }
 
     function setResultDone(job, saveError = null) {
@@ -1305,7 +1371,12 @@
           : "점검과 파일 저장이 완료되었습니다. 아래 결과를 확인하세요.",
         steps: completedSteps
       });
-      scanCompleteActions.hidden = false;
+      finishScanProgress({
+        success: true,
+        message: saveError
+          ? "점검은 완료됐지만 결과 파일 저장을 확인해야 합니다. 저장 위치를 다시 선택해 주세요."
+          : "점검과 결과 파일 저장이 완료되었습니다. 결과 확인을 눌러 점검 결과를 확인하세요."
+      });
     }
 
     async function pollResult(scanId) {
@@ -1390,6 +1461,8 @@
       }
 
       activateMode(mode);
+      lastScanMode = mode;
+      setScanRunning(mode);
       progressTarget.textContent = `${getTargetLabel()} 접근 가능 여부 확인 중`;
       progressMode.textContent = `${mode.dataset.modeTitle} 실행`;
       renderProgress({
@@ -1399,7 +1472,6 @@
         steps: [{ name: "prepare_target", status: "running" }]
       });
       scanProgress.hidden = false;
-      scanCompleteActions.hidden = true;
       setResultPending(`${mode.dataset.modeTitle}을 시작했습니다.`);
 
       try {
@@ -1483,20 +1555,26 @@
         selectedSaveDir = selectedSaveDirectoryHandle.name;
         savePath.textContent = `${selectedSaveDir} 폴더에 결과물을 저장합니다.`;
         progressSaveDetail.textContent = `${selectedSaveDir} 폴더에 결과물을 저장합니다.`;
-        if (pendingMode) {
-          const queuedMode = pendingMode;
-          pendingMode = null;
-          await runScan(queuedMode);
-        }
+        saveLocationPromptTitle.textContent = "결과 저장 위치 선택 완료";
+        saveLocationPromptDescription.textContent = `${selectedSaveDir} 폴더에 점검 결과를 저장합니다. 다음 단계를 진행하세요.`;
+        saveLocationPromptActions.hidden = true;
+        saveLocationCompleteActions.hidden = false;
+        confirmSaveLocation.textContent = pendingMode ? "확인하고 검사 대상 선택" : "확인";
         return true;
       } catch (error) {
         if (error && error.name === "AbortError") {
           savePath.textContent = "저장 위치 선택을 취소했습니다. 점검을 시작하려면 저장 위치를 선택하세요.";
-          pendingMode = null;
+          saveLocationPromptTitle.textContent = "저장 위치를 선택해 주세요.";
+          saveLocationPromptDescription.textContent = "저장 위치를 선택하지 않았습니다. 계속하려면 저장 위치 선택을 다시 누르세요.";
+          saveLocationPromptActions.hidden = false;
+          saveLocationCompleteActions.hidden = true;
           return false;
         }
         savePath.textContent = "저장 위치를 선택하지 못했습니다. 저장할 폴더를 다시 선택하세요.";
-        pendingMode = null;
+        saveLocationPromptTitle.textContent = "저장 위치를 다시 선택해 주세요.";
+        saveLocationPromptDescription.textContent = "저장 위치를 확인하지 못했습니다. 저장 위치 선택을 다시 누르세요.";
+        saveLocationPromptActions.hidden = false;
+        saveLocationCompleteActions.hidden = true;
         return false;
       } finally {
         saveLocationSelectionInFlight = false;
@@ -1507,6 +1585,10 @@
 
     function requestSaveLocation(mode = null) {
       if (mode) pendingMode = mode;
+      saveLocationPromptTitle.textContent = "점검결과를 저장할 위치를 선택해 주세요.";
+      saveLocationPromptDescription.textContent = "점검을 시작하려면 HTML, JSON, ZIP 결과물을 저장할 폴더를 먼저 선택해야 합니다.";
+      saveLocationPromptActions.hidden = false;
+      saveLocationCompleteActions.hidden = true;
       saveLocationPrompt.hidden = false;
     }
 
@@ -1517,13 +1599,18 @@
 
     saveButton.addEventListener("click", () => requestSaveLocation());
     selectSaveLocation.addEventListener("click", async () => {
-      saveLocationPrompt.hidden = true;
       await chooseSaveLocation();
+    });
+    confirmSaveLocation.addEventListener("click", async () => {
+      const queuedMode = pendingMode;
+      pendingMode = null;
+      saveLocationPrompt.hidden = true;
+      if (queuedMode) await runScan(queuedMode);
     });
     closeSaveLocationPrompt.addEventListener("click", closeSavePrompt);
     cancelSaveLocation.addEventListener("click", closeSavePrompt);
 
-    document.querySelector(".modal-close").addEventListener("click", () => {
+    closeScanProgress.addEventListener("click", () => {
       scanProgress.hidden = true;
     });
 
@@ -1532,12 +1619,18 @@
       document.querySelector(".result-card").scrollIntoView({ behavior: "smooth", block: "nearest" });
     });
 
+    retryScan.addEventListener("click", async () => {
+      const mode = lastScanMode;
+      scanProgress.hidden = true;
+      if (mode) await runScan(mode);
+    });
+
 
     window.addEventListener("keydown", (event) => {
       if (event.key === "Escape") {
-        scanProgress.hidden = true;
-        saveLocationPrompt.hidden = true;
-        targetProgress.hidden = true;
+        if (!scanCompleteActions.hidden) scanProgress.hidden = true;
+        if (!saveLocationPrompt.hidden) closeSavePrompt();
+        if (!targetProgressActions.hidden) targetProgress.hidden = true;
       }
     });
   </script>

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { once } from "node:events";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -208,11 +208,11 @@ async function scenarioBrowserSelectedTargets(fixture) {
 
 async function scenarioHarnessAndMcp(mcpConfigPath, operationLogPath) {
   const harnessVersion = await fetchJson("/api/local/version-status?target=harness");
-  assert.ok(["current", "update_available", "update_blocked", "check_unavailable", "not_installed"].includes(harnessVersion.status));
-  assert.ok(["최신 버전입니다.", "업데이트가 필요합니다.", "설치되어 있지 않습니다."].includes(harnessVersion.message) || harnessVersion.status === "check_unavailable");
+  assert.ok(["current", "update_available", "reinstall_required", "check_unavailable", "not_installed"].includes(harnessVersion.status));
+  assert.ok(["최신 버전입니다.", "업데이트가 필요합니다.", "설치되어 있지 않습니다."].includes(harnessVersion.message) || ["check_unavailable", "reinstall_required"].includes(harnessVersion.status));
 
   const checkerVersion = await fetchJson("/api/local/version-status?target=checker");
-  assert.ok(["current", "update_available", "update_blocked", "check_unavailable", "not_installed"].includes(checkerVersion.status));
+  assert.ok(["current", "update_available", "reinstall_required", "check_unavailable", "not_installed"].includes(checkerVersion.status));
 
   const status = await fetchJson("/api/local/status");
   assert.equal(status.project_harness.status, "applied");
@@ -303,6 +303,95 @@ async function scenarioAdmin(exportDirectory) {
   return { summary, list, exported };
 }
 
+function runGit(args, cwd) {
+  const result = spawnSync("git", args, { cwd, encoding: "utf8", windowsHide: true });
+  assert.equal(result.status, 0, `git ${args.join(" ")} failed: ${result.stderr || result.stdout}`);
+}
+
+async function startStateFixtureServer(fixtureDir) {
+  const port = Number(process.env.PORTAL_STATE_TEST_PORT || 8792);
+  const toolsDir = join(fixtureDir, "managed-tools");
+  const checkerDir = join(toolsDir, "vibecode-checker");
+  const harnessDir = join(toolsDir, "vibe_harness_codex");
+  const checkerStatusPath = join(fixtureDir, "checker-status.json");
+  await mkdir(checkerDir, { recursive: true });
+  await mkdir(harnessDir, { recursive: true });
+  for (const directory of [checkerDir, harnessDir]) {
+    runGit(["init"], directory);
+    runGit(["config", "user.email", "portal-test@example.invalid"], directory);
+    runGit(["config", "user.name", "Portal scenario"], directory);
+    await writeFile(join(directory, "README.txt"), "fixture\n", "utf8");
+    runGit(["add", "."], directory);
+    runGit(["commit", "-m", "fixture"], directory);
+    runGit(["branch", "-M", "main"], directory);
+  }
+  runGit(["remote", "add", "origin", "https://github.com/Lex6won/vibecode-checker.git"], checkerDir);
+  runGit(["remote", "add", "origin", "https://github.com/Lex6won/vibe_harness_codex.git"], harnessDir);
+
+  const writeCheckerStatus = async (payload) => writeFile(checkerStatusPath, `${JSON.stringify(payload)}\n`, "utf8");
+  await writeCheckerStatus({ installed: false });
+  const child = spawn(process.execPath, ["src/server.js"], {
+    cwd: process.cwd(),
+    env: {
+      ...process.env,
+      PORT: String(port),
+      PORTAL_TOOLS_DIR: toolsDir,
+      PORTAL_HARNESS_SOURCE_DIR: join(fixtureDir, "no-development-harness"),
+      PORTAL_TEST_CHECKER_STATUS_FILE: checkerStatusPath,
+      ADMIN_INITIAL_PASSWORD: adminPassword,
+      ADMIN_AUTH_FILE: join(fixtureDir, "state-admin.json"),
+      PYTHONUTF8: "1",
+      PYTHONIOENCODING: "utf-8"
+    },
+    stdio: ["ignore", "pipe", "pipe"],
+    windowsHide: true
+  });
+  const fixtureBaseUrl = `http://127.0.0.1:${port}`;
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    try {
+      const response = await fetch(`${fixtureBaseUrl}/health`);
+      if (response.ok) break;
+    } catch {
+      // The local test server is still starting.
+    }
+    await wait(250);
+  }
+  const status = async (target) => {
+    const response = await fetch(`${fixtureBaseUrl}/api/local/version-status?target=${target}`);
+    assert.ok(response.ok, `state fixture ${target} version status must respond`);
+    return response.json();
+  };
+  try {
+    assert.equal((await status("harness")).status, "update_available", "official harness install must expose only update");
+    assert.equal((await status("checker")).status, "not_installed", "no checker install must expose only install");
+
+    const fileUrl = `file:///${checkerDir.replaceAll("\\", "/")}`;
+    await writeCheckerStatus({
+      schema_version: 1,
+      installed: true,
+      version: "0.3.0",
+      install_identity: { editable: true, install_url: fileUrl },
+      runtime_freshness: { process_stale: false }
+    });
+    assert.equal((await status("checker")).status, "update_available", "official managed checker must expose update when older than GitHub main");
+
+    await writeCheckerStatus({
+      schema_version: 1,
+      installed: true,
+      version: "0.3.0",
+      install_identity: { editable: true, install_url: "file:///C:/developer/vibecode-checker" },
+      runtime_freshness: { process_stale: false }
+    });
+    assert.equal((await status("checker")).status, "reinstall_required", "development checker install must expose official reinstallation, never update");
+
+    await writeCheckerStatus({ status: "invalid_contract" });
+    assert.equal((await status("checker")).status, "check_unavailable", "an unknown checker status contract must not unlock install or update");
+  } finally {
+    child.kill();
+    await Promise.race([once(child, "exit"), wait(2000)]);
+  }
+}
+
 const fixture = await createZipFixture();
 const adminExportDirectory = join(fixture.fixtureDir, "admin-export");
 const mcpConfigPath = join(fixture.fixtureDir, "claude_desktop_config.json");
@@ -346,6 +435,7 @@ try {
   const browserTargets = await scenarioBrowserSelectedTargets(fixture);
   await scenarioHarnessAndMcp(mcpConfigPath, operationLogPath);
   await scenarioAdmin(adminExportDirectory);
+  await startStateFixtureServer(fixture.fixtureDir);
   console.log(JSON.stringify({
     status: "passed",
     base_url: baseUrl,
@@ -358,7 +448,8 @@ try {
     browser_folder_scan: browserTargets.folderResult.id,
     browser_zip_scan: browserTargets.archiveResult.id,
       harness_mcp: true,
-      admin: true
+      admin: true,
+      installation_state_matrix: true
     }
   }, null, 2));
 } catch (error) {

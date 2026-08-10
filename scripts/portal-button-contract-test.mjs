@@ -180,6 +180,11 @@ async function assertLocalPickerContract() {
   assert.ok(html.includes('confirmTargetProgress.addEventListener("click", async () =>'), "source preparation confirmation must be wired");
   assert.ok(!html.includes('id="resultNote"'), "scan results must not show the obsolete yellow result-ID section");
   assert.ok(html.includes('id="scanCompleteActions"') && html.includes('id="closeCompletedScan"'), "completed scans must offer a clear result-confirmation action");
+  assert.ok(html.includes('id="closeScanProgress"') && html.includes('function setScanRunning(mode)') && html.includes('function finishScanProgress'), "scan progress must hide close controls until a final state is reached");
+  assert.ok(html.includes('id="retryScan"') && html.includes('retryScan.addEventListener("click"'), "failed scans must offer a clear retry action");
+  assert.ok(html.includes('id="saveLocationCompleteActions"') && html.includes('id="confirmSaveLocation"'), "save-location selection must show a completion confirmation before advancing");
+  assert.ok(html.includes('confirmSaveLocation.addEventListener("click", async () =>'), "save-location completion confirmation must advance the queued scan deliberately");
+  assert.ok(html.includes('class="flow-title"><span class="sequence">1</span>') && html.includes('class="flow-title"><span class="sequence">2</span>') && html.includes('class="flow-title" id="scan-mode-title"><span class="sequence">3</span>'), "scan flow must visibly order save location, source selection, and scan mode");
   assert.ok(html.includes('function showScanCompleted(job, progress, saveError = null)') && html.includes('점검과 파일 저장이 완료되었습니다.'), "completed scan must visibly confirm local report saving");
   assert.ok(html.includes('showScanCompleted(job, progress, saveError)') && html.includes('결과 파일 저장을 확인하세요.'), "scan completion must remain visible when local report saving fails");
   assert.ok(html.includes('progress.status === "failed" || job.status === "failed"'), "checker failures must not be treated as local save or connection retries");
@@ -187,6 +192,19 @@ async function assertLocalPickerContract() {
   assert.ok(html.includes('window.showDirectoryPicker'), "report save location must use the browser directory picker");
   assert.ok(html.includes('error.name === "AbortError"') && html.includes('저장 위치 선택을 취소했습니다.'), "save-location cancellation must be shown as guidance, not a browser error");
   assert.ok(html.includes('targetSelectionInFlight'), "native target picker must prevent duplicate picker windows");
+}
+
+async function assertInstallActionsPerComponent() {
+  const html = await fetchText("/harness");
+  for (const target of ["harness", "checker"]) {
+    const actions = [...html.matchAll(new RegExp(`data-action="${target}-(install|update)"`, "g"))];
+    assert.equal(actions.length, 2, `${target} must expose exactly install and update actions`);
+  }
+  assert.ok(html.includes('class="component-state"'), "version status must be shown as read-only guidance, not a function button");
+  assert.ok(html.includes('title: "공식 설치"'), "unofficial or development installs must offer official installation with no extra action");
+  assert.ok(html.includes('id="operationActions"') && html.includes('id="actionResultClose"'), "installation progress must have dedicated final-state controls");
+  assert.ok(html.includes('operationActions.hidden = true;') && html.includes('actionResultClose.hidden = true;'), "installation progress must hide confirmation controls while work is running");
+  assert.ok(html.includes('operationActions.hidden = false;') && html.includes('actionResultClose.hidden = false;'), "installation completion must reveal confirmation controls");
 }
 
 const child = spawn(process.execPath, ["src/server.js"], {
@@ -214,6 +232,7 @@ try {
   await fetchText("/first-screen-gg-v2-1.html");
   await assertApiBackedButtons();
   await assertLocalPickerContract();
+  await assertInstallActionsPerComponent();
   console.log(JSON.stringify({ status: "passed", base_url: baseUrl, pages: results }, null, 2));
 } catch (error) {
   console.error(stdout);
