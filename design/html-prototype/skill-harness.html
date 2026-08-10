@@ -380,6 +380,23 @@
       color: var(--ink);
     }
 
+    .tool-state {
+      margin-left: 5px;
+      padding: 3px 6px;
+      display: inline-flex;
+      border-radius: 999px;
+      background: var(--soft);
+      color: var(--muted);
+      font-size: 10px;
+      line-height: 1;
+      font-weight: 900;
+    }
+
+    .tool-state[data-state="registered"] { background: #e8f8a9; color: #174a42; }
+    .tool-state[data-state="missing"],
+    .tool-state[data-state="configuration_incomplete"] { background: #fff1c8; color: #805300; }
+    .tool-state[data-state="not_supported"] { background: #edf1f8; color: var(--muted); }
+
     .feature-note {
       min-height: 0;
       padding: 10px 12px;
@@ -1388,18 +1405,19 @@
         <div class="service-flow">
           <div class="flow-heading"><strong>연결 순서</strong><span>사용할 AI 도구를 선택하세요.</span></div>
           <div class="target-tools" role="radiogroup" aria-label="체커 MCP 연결 도구">
-            <button class="target-tool active" type="button" role="radio" aria-checked="true" data-mcp-target="codex">ChatGPT 데스크톱 · Codex</button>
-            <button class="target-tool" type="button" role="radio" aria-checked="false" data-mcp-target="claude-code">Claude Code</button>
-            <button class="target-tool" type="button" role="radio" aria-checked="false" data-mcp-target="claude-desktop">Claude Desktop</button>
-            <button class="target-tool" type="button" role="radio" aria-checked="false" data-mcp-target="lovable">Lovable</button>
+            <button class="target-tool active" type="button" role="radio" aria-checked="true" data-mcp-target="codex">ChatGPT 데스크톱 · Codex <span class="tool-state" data-mcp-state="codex">확인 전</span></button>
+            <button class="target-tool" type="button" role="radio" aria-checked="false" data-mcp-target="claude-code">Claude Code <span class="tool-state" data-mcp-state="claude-code">확인 전</span></button>
+            <button class="target-tool" type="button" role="radio" aria-checked="false" data-mcp-target="claude-desktop">Claude Desktop <span class="tool-state" data-mcp-state="claude-desktop">확인 전</span></button>
+            <button class="target-tool" type="button" role="radio" aria-checked="false" data-mcp-target="lovable">Lovable <span class="tool-state" data-mcp-state="lovable">확인 전</span></button>
           </div>
           <div class="feature-note" id="mcpTargetNote">등록 위치: 프로젝트 <code>.codex/config.toml</code> · 실행 명령: <code>gvskb-server</code></div>
         </div>
         <div class="service-actions">
           <div class="action-grid" aria-label="체커 MCP 기능">
-            <button class="action-button" type="button" data-action="mcp-version"><strong>설치 버전 확인</strong><span>체커 최신 여부를 봅니다.</span></button>
+            <button class="action-button" type="button" data-action="mcp-status"><strong>연결 상태 확인</strong><span>선택한 도구를 확인합니다.</span></button>
             <button class="action-button install" type="button" data-action="mcp-install"><strong>MCP 등록 방법</strong><span>선택한 도구에 연결합니다.</span></button>
-            <button class="action-button update" type="button" data-action="mcp-update" disabled><strong>업데이트</strong><span>확인 후 진행합니다.</span></button>
+            <button class="action-button update" type="button" data-action="checker-version"><strong>체커 버전 확인</strong><span>GitHub 최신 여부를 봅니다.</span></button>
+            <button class="action-button update" type="button" data-action="checker-update" disabled hidden><strong>체커 업데이트</strong><span>확인 후 진행합니다.</span></button>
           </div>
           <p class="action-status" id="checkerStatus" aria-live="polite"></p>
         </div>
@@ -1440,6 +1458,7 @@
     const operationRetry = document.querySelector("#operationRetry");
     const mcpTargetNote = document.querySelector("#mcpTargetNote");
     let selectedMcpTarget = "codex";
+    let mcpToolStatuses = {};
     let operationTimer = null;
     let operationState = null;
     let retryOperation = null;
@@ -1451,6 +1470,77 @@
       lovable: "현재 자동 MCP 등록을 지원하지 않습니다. 결과물은 포털에서 표준 점검으로 확인합니다."
     };
 
+    const mcpTargetLabels = {
+      codex: "ChatGPT 데스크톱 · Codex",
+      "claude-code": "Claude Code",
+      "claude-desktop": "Claude Desktop",
+      lovable: "Lovable"
+    };
+
+    function mcpStateLabel(status) {
+      if (status === "registered") return "설치됨";
+      if (status === "configuration_incomplete") return "설정 확인 필요";
+      if (status === "not_supported") return "자동 등록 미지원";
+      if (status === "missing") return "미설치";
+      return "확인 불가";
+    }
+
+    function renderMcpTarget(target, connection) {
+      if (!connection) return;
+      mcpToolStatuses[target] = connection;
+      const state = document.querySelector(`[data-mcp-state="${target}"]`);
+      if (state) {
+        state.textContent = mcpStateLabel(connection.status);
+        state.dataset.state = connection.status;
+      }
+      if (target === selectedMcpTarget) refreshSelectedMcpControls();
+    }
+
+    function refreshSelectedMcpControls() {
+      const connection = mcpToolStatuses[selectedMcpTarget];
+      const statusButton = buttonFor("mcp-status");
+      const installButton = buttonFor("mcp-install");
+      if (!statusButton || !installButton) return;
+      statusButton.disabled = false;
+      installButton.disabled = false;
+      statusButton.classList.remove("is-current", "is-update-needed", "is-checking");
+      statusButton.querySelector("strong").textContent = "연결 상태 확인";
+      statusButton.querySelector("span").textContent = "선택한 도구를 확인합니다.";
+      installButton.querySelector("strong").textContent = "MCP 등록 방법";
+      installButton.querySelector("span").textContent = "선택한 도구에 연결합니다.";
+
+      const statusText = connection ? mcpStateLabel(connection.status) : "확인 전";
+      mcpTargetNote.textContent = `${mcpNotes[selectedMcpTarget]} 현재 상태: ${statusText}.`;
+      if (connection?.status === "registered") {
+        statusButton.classList.add("is-current");
+        statusButton.querySelector("strong").textContent = "연결됨";
+        statusButton.querySelector("span").textContent = "이 도구에 등록되었습니다.";
+      }
+      if (connection?.status === "not_supported") {
+        statusButton.disabled = true;
+        installButton.disabled = true;
+        statusButton.querySelector("strong").textContent = "자동 등록 미지원";
+        statusButton.querySelector("span").textContent = "포털 점검을 사용하세요.";
+        installButton.querySelector("strong").textContent = "등록할 수 없음";
+        installButton.querySelector("span").textContent = "현재 자동 연결을 지원하지 않습니다.";
+      }
+    }
+
+    async function refreshMcpToolStatuses() {
+      try {
+        const response = await fetch("/api/local/mcp/status", { cache: "no-store" });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || "mcp_status_failed");
+        Object.entries(result.tools || {}).forEach(([target, connection]) => renderMcpTarget(target, connection));
+      } catch {
+        document.querySelectorAll("[data-mcp-state]").forEach((state) => {
+          state.textContent = "확인 불가";
+          state.dataset.state = "unknown";
+        });
+        setStatus("checker", "AI 도구별 MCP 설치 상태를 확인하지 못했습니다. 연결을 다시 확인하세요.", "error");
+      }
+    }
+
     document.querySelectorAll("[data-mcp-target]").forEach((button) => {
       button.addEventListener("click", () => {
         document.querySelectorAll("[data-mcp-target]").forEach((item) => {
@@ -1460,7 +1550,7 @@
         button.classList.add("active");
         button.setAttribute("aria-checked", "true");
         selectedMcpTarget = button.dataset.mcpTarget;
-        mcpTargetNote.textContent = mcpNotes[selectedMcpTarget];
+        refreshSelectedMcpControls();
       });
     });
 
@@ -1589,14 +1679,20 @@
 
     function resetVersionButton(button) {
       button.disabled = false;
+      button.hidden = false;
       button.classList.remove("is-current", "is-update-needed", "is-checking");
       button.querySelector("strong").textContent = "다시 확인";
       button.querySelector("span").textContent = "GitHub 기준으로 확인합니다.";
+      if (button.dataset.action === "checker-version") {
+        const updateButton = buttonFor("checker-update");
+        updateButton.hidden = true;
+        updateButton.disabled = true;
+      }
     }
 
     async function checkVersion(target) {
-      const versionAction = target === "harness" ? "harness-version" : "mcp-version";
-      const updateAction = target === "harness" ? "harness-update" : "mcp-update";
+      const versionAction = target === "harness" ? "harness-version" : "checker-version";
+      const updateAction = target === "harness" ? "harness-update" : "checker-update";
       const button = buttonFor(versionAction);
       const updateButton = buttonFor(updateAction);
       button.disabled = true;
@@ -1614,6 +1710,7 @@
           button.querySelector("strong").textContent = "최신 버전";
           button.querySelector("span").textContent = "GitHub와 같습니다.";
           updateButton.disabled = true;
+          updateButton.hidden = target === "checker";
           updateButton.querySelector("strong").textContent = "업데이트 불필요";
           updateButton.querySelector("span").textContent = "최신 상태입니다.";
           setStatus(target, "최신 버전입니다.", "current");
@@ -1625,6 +1722,10 @@
           button.querySelector("strong").textContent = "업데이트 필요";
           button.querySelector("span").textContent = "GitHub에 새 버전이 있습니다.";
           updateButton.disabled = false;
+          if (target === "checker") {
+            button.hidden = true;
+            updateButton.hidden = false;
+          }
           updateButton.querySelector("strong").textContent = "업데이트";
           updateButton.querySelector("span").textContent = "승인 후 적용합니다.";
           setStatus(target, "업데이트가 필요합니다.", "update");
@@ -1665,15 +1766,47 @@
         description: "선택한 AI 도구의 설정 위치와 현재 연결 상태를 확인합니다.",
         steps: ["설정 위치 확인", "현재 연결 확인", "등록 방법 안내"],
         task: async () => {
-          const response = await fetch("/api/local/mcp/register", { method: "POST" });
+          const response = await fetch("/api/local/mcp/register", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ target: selectedMcpTarget })
+          });
           const result = await response.json();
           if (!response.ok) throw new Error(result.error || "MCP 상태를 확인하지 못했습니다.");
           return result;
         },
-        complete: (result) => ({
-          title: "MCP 등록 안내 준비 완료",
-          description: `${mcpNotes[selectedMcpTarget]} 이 화면은 설정 위치와 연결 상태를 확인한 것입니다. ${result.next_action || "설정 파일을 백업한 뒤 사용자 승인으로 등록합니다."}`
-        })
+        complete: (result) => {
+          renderMcpTarget(selectedMcpTarget, result.connection);
+          return {
+            title: "MCP 등록 안내 준비 완료",
+            description: `${mcpNotes[selectedMcpTarget]} 현재 상태: ${mcpStateLabel(result.connection?.status)}. ${result.next_action || "설정 파일을 백업한 뒤 사용자 승인으로 등록합니다."}`
+          };
+        }
+      });
+    }
+
+    function checkMcpTarget(target = selectedMcpTarget) {
+      const label = mcpTargetLabels[target];
+      return runProgressTask({
+        title: `${label} MCP 연결 상태를 확인하고 있습니다.`,
+        description: "이 도구의 설정 파일과 체커 실행 명령을 확인합니다.",
+        steps: ["설정 파일 확인", "체커 명령 확인", "연결 상태 안내"],
+        task: async () => {
+          const response = await fetch(`/api/local/mcp/status?target=${encodeURIComponent(target)}`, { cache: "no-store" });
+          const result = await response.json();
+          if (!response.ok) throw new Error(result.error || "mcp_status_failed");
+          return result;
+        },
+        complete: (result) => {
+          renderMcpTarget(target, result.connection);
+          const state = result.connection?.status;
+          const description = state === "registered"
+            ? `${label}에 보안 체커 MCP가 설치되어 있습니다.`
+            : state === "not_supported"
+              ? `${label}은 현재 자동 MCP 등록을 지원하지 않습니다. 포털에서 표준 점검을 사용하세요.`
+              : `${label}에 보안 체커 MCP가 설치되어 있지 않습니다. MCP 등록 방법을 눌러 설정 위치를 확인하세요.`;
+          return { title: `${label} MCP 연결 상태 확인 완료`, description };
+        }
       });
     }
 
@@ -1712,9 +1845,9 @@
       if (!result || ["blocked", "needs_review"].includes(result.status)) {
         return;
       }
-      const versionButton = buttonFor(target === "harness" ? "harness-version" : "mcp-version");
+      const versionButton = buttonFor(target === "harness" ? "harness-version" : "checker-version");
       resetVersionButton(versionButton);
-      buttonFor(target === "harness" ? "harness-update" : "mcp-update").disabled = true;
+      buttonFor(target === "harness" ? "harness-update" : "checker-update").disabled = true;
       setStatus(target, "업데이트가 완료되었습니다. 최신 버전을 다시 확인하세요.");
     }
 
@@ -1722,11 +1855,12 @@
       button.addEventListener("click", async () => {
         try {
           if (button.dataset.action === "harness-version") return checkVersion("harness");
-          if (button.dataset.action === "mcp-version") return checkVersion("checker");
+          if (button.dataset.action === "mcp-status") return checkMcpTarget();
+          if (button.dataset.action === "checker-version") return checkVersion("checker");
           if (button.dataset.action === "harness-install") return showHarnessInstallGuide();
           if (button.dataset.action === "mcp-install") return showMcpInstallGuide();
           if (button.dataset.action === "harness-update") return applyApprovedUpdate("harness");
-          if (button.dataset.action === "mcp-update") return applyApprovedUpdate("checker");
+          if (button.dataset.action === "checker-update") return applyApprovedUpdate("checker");
         } catch (error) {
           showResult("기능 실행", "완료하지 못했습니다. 다시 확인하세요.");
         }
@@ -1742,6 +1876,8 @@
     operationRetry.addEventListener("click", () => {
       if (retryOperation) retryOperation();
     });
+
+    refreshMcpToolStatuses();
 
     window.addEventListener("keydown", (event) => {
       if (event.key === "Escape" && !operationTimer) {

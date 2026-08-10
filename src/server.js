@@ -467,22 +467,66 @@ async function checkerSummary() {
 }
 
 async function mcpSummary() {
-  const codexProject = existsSync(join(ROOT, ".codex", "config.toml"));
-  const commonMcp = existsSync(join(ROOT, ".mcp.json"));
-  let commonMcpValid = false;
+  const codexPath = join(ROOT, ".codex", "config.toml");
+  const claudeCodePath = join(ROOT, ".mcp.json");
+  const claudeDesktopPaths = [
+    process.env.APPDATA ? join(process.env.APPDATA, "Claude", "claude_desktop_config.json") : "",
+    process.env.HOME ? join(process.env.HOME, "Library", "Application Support", "Claude", "claude_desktop_config.json") : ""
+  ].filter(Boolean);
 
-  if (commonMcp) {
+  const tomlSource = existsSync(codexPath) ? await readFile(codexPath, "utf8") : "";
+  let claudeCodeSource = "";
+  let claudeDesktopSource = "";
+  let claudeCodeValid = false;
+  let claudeDesktopValid = false;
+
+  if (existsSync(claudeCodePath)) {
     try {
-      JSON.parse(await readFile(join(ROOT, ".mcp.json"), "utf8"));
-      commonMcpValid = true;
+      claudeCodeSource = await readFile(claudeCodePath, "utf8");
+      JSON.parse(claudeCodeSource);
+      claudeCodeValid = true;
     } catch {
-      commonMcpValid = false;
+      claudeCodeValid = false;
     }
   }
 
+  for (const path of claudeDesktopPaths) {
+    if (!existsSync(path)) continue;
+    try {
+      claudeDesktopSource = await readFile(path, "utf8");
+      JSON.parse(claudeDesktopSource);
+      claudeDesktopValid = true;
+      break;
+    } catch {
+      claudeDesktopValid = false;
+      break;
+    }
+  }
+
+  const hasCheckerCommand = (source) => /gvskb-server/.test(source);
+  const tools = {
+    codex: {
+      status: hasCheckerCommand(tomlSource) ? "registered" : "missing",
+      setting_location: "프로젝트/.codex/config.toml"
+    },
+    "claude-code": {
+      status: claudeCodeValid && hasCheckerCommand(claudeCodeSource) ? "registered" : existsSync(claudeCodePath) ? "configuration_incomplete" : "missing",
+      setting_location: "프로젝트/.mcp.json"
+    },
+    "claude-desktop": {
+      status: claudeDesktopValid && hasCheckerCommand(claudeDesktopSource) ? "registered" : claudeDesktopSource ? "configuration_incomplete" : "missing",
+      setting_location: "Claude Desktop MCP 설정"
+    },
+    lovable: {
+      status: "not_supported",
+      setting_location: "자동 MCP 등록 미지원"
+    }
+  };
+
   return {
-    codex_project: codexProject ? "registered" : "missing",
-    common_mcp: commonMcp ? commonMcpValid ? "registered" : "invalid_json" : "missing",
+    tools,
+    codex_project: tools.codex.status,
+    common_mcp: tools["claude-code"].status,
     checker_command: "gvskb-server"
   };
 }
@@ -1233,18 +1277,36 @@ async function handleApi(request, response, pathname) {
   }
 
   if (request.method === "POST" && pathname === "/api/local/mcp/register") {
+    const body = await readJson(request);
+    const target = ["codex", "claude-code", "claude-desktop", "lovable"].includes(body.target) ? body.target : "codex";
     const mcp = await mcpSummary();
     const executionGate = await executionGateSummary();
-    const alreadyRegistered = mcp.codex_project === "registered" && mcp.common_mcp === "registered";
+    const connection = mcp.tools[target];
+    const alreadyRegistered = connection.status === "registered";
     json(response, 200, {
       status: alreadyRegistered ? "already_registered" : "needs_user_approval",
+      target,
+      connection,
       applies_without_approval: false,
       mcp,
       execution_gate: executionGate,
       next_action: alreadyRegistered
-        ? "체커 MCP가 등록되어 있습니다. 연결 검증과 개발 게이트 상태를 확인하세요."
-        : "설정 파일 백업과 사용자 승인 후 MCP 등록을 진행해야 합니다."
+        ? "선택한 AI 도구에 체커 MCP가 등록되어 있습니다. 연결 검증을 진행하세요."
+        : connection.status === "not_supported"
+          ? "선택한 AI 도구는 자동 MCP 등록을 지원하지 않습니다. 포털에서 표준 점검을 사용하세요."
+          : "선택한 AI 도구의 설정 파일을 백업한 뒤 MCP 등록을 진행해야 합니다."
     });
+    return;
+  }
+
+  if (request.method === "GET" && pathname === "/api/local/mcp/status") {
+    const target = new URL(request.url || "/", "http://localhost").searchParams.get("target");
+    const mcp = await mcpSummary();
+    if (target && !Object.hasOwn(mcp.tools, target)) {
+      json(response, 400, { error: "invalid_mcp_target", message: "확인할 AI 도구가 올바르지 않습니다." });
+      return;
+    }
+    json(response, 200, target ? { target, connection: mcp.tools[target] } : mcp);
     return;
   }
 

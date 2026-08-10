@@ -235,7 +235,16 @@ async function scenarioHarnessAndMcp() {
   const mcp = await fetchJson("/api/local/mcp/register", { method: "POST" });
   assert.ok(["already_registered", "needs_user_approval"].includes(mcp.status));
   assert.equal(mcp.applies_without_approval, false);
-  return { status, preview, apply, mcp };
+
+  const mcpStatuses = await fetchJson("/api/local/mcp/status");
+  for (const target of ["codex", "claude-code", "claude-desktop", "lovable"]) {
+    assert.ok(mcpStatuses.tools[target], `MCP status must include ${target}`);
+    const targetStatus = await fetchJson(`/api/local/mcp/status?target=${target}`);
+    assert.equal(targetStatus.target, target, `MCP status must check ${target} independently`);
+    assert.equal(targetStatus.connection.status, mcpStatuses.tools[target].status);
+  }
+  assert.equal(mcpStatuses.tools.lovable.status, "not_supported", "Lovable must be shown as separately unsupported, not registered");
+  return { status, preview, apply, mcp, mcpStatuses };
 }
 
 async function scenarioAdmin(exportDirectory) {
