@@ -510,11 +510,15 @@ async function mcpSummary() {
       setting_location: "프로젝트/.codex/config.toml"
     },
     "claude-code": {
-      status: claudeCodeValid && hasCheckerCommand(claudeCodeSource) ? "registered" : existsSync(claudeCodePath) ? "configuration_incomplete" : "missing",
+      status: claudeCodeValid && hasCheckerCommand(claudeCodeSource)
+        ? "registered"
+        : existsSync(claudeCodePath) && !claudeCodeValid ? "configuration_incomplete" : "missing",
       setting_location: "프로젝트/.mcp.json"
     },
     "claude-desktop": {
-      status: claudeDesktopValid && hasCheckerCommand(claudeDesktopSource) ? "registered" : claudeDesktopSource ? "configuration_incomplete" : "missing",
+      status: claudeDesktopValid && hasCheckerCommand(claudeDesktopSource)
+        ? "registered"
+        : claudeDesktopSource && !claudeDesktopValid ? "configuration_incomplete" : "missing",
       setting_location: "Claude Desktop MCP 설정"
     },
     lovable: {
