@@ -1,3 +1,7 @@
+-- [DEPRECATED 2026-08-12] 이 파일은 폐기 예정이다. 경기도 기관 제약(Supabase 금지,
+-- 인증 직접구현 금지)에 따라 auth.users/auth.uid()/RLS 의존을 제거한
+-- db/schema.postgresql.sql 로 대체되었다. 새 작업은 그 파일을 기준으로 한다.
+--
 -- Supabase/PostgreSQL schema draft for VibeCode Security Gate Portal.
 -- This stores anonymous scan metadata only. Do not store source code,
 -- raw archives, GitHub tokens, names, departments, or full local paths.

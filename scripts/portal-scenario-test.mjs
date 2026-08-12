@@ -255,10 +255,16 @@ async function scenarioBrowserSelectedTargets(fixture) {
   return { folderResult, archiveResult };
 }
 
+async function approvalToken() {
+  const issued = await fetchJson("/api/local/approval-token", { method: "POST" });
+  assert.ok(issued.approval_token, "the portal must issue a one-time approval token");
+  return issued.approval_token;
+}
+
 async function scenarioHarnessAndMcp(mcpConfigPath, operationLogPath) {
   const harnessVersion = await fetchJson("/api/local/version-status?target=harness");
   assert.ok(["current", "update_available", "reinstall_required", "check_unavailable", "not_installed"].includes(harnessVersion.status));
-  assert.ok(["최신 버전입니다.", "업데이트가 필요합니다.", "설치되어 있지 않습니다."].includes(harnessVersion.message) || ["check_unavailable", "reinstall_required"].includes(harnessVersion.status));
+  assert.ok(["최신 버전입니다.", "업데이트가 필요합니다.", "설치되어 있지 않습니다."].some((known) => String(harnessVersion.message || "").startsWith(known)) || ["check_unavailable", "reinstall_required"].includes(harnessVersion.status));
 
   const checkerVersion = await fetchJson("/api/local/version-status?target=checker");
   assert.ok(["current", "update_available", "reinstall_required", "check_unavailable", "not_installed"].includes(checkerVersion.status));
@@ -280,10 +286,17 @@ async function scenarioHarnessAndMcp(mcpConfigPath, operationLogPath) {
   assert.ok(preview.items.some((item) => item.target === "harness" && item.current_version), "harness update preview must include the local version");
   assert.ok(preview.items.some((item) => item.target === "checker" && item.current_version), "checker update preview must include the local version");
 
+  const staleApproval = await fetch(`${baseUrl}/api/local/update/apply`, {
+    method: "POST",
+    headers: localHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify({ approval_token: "user-confirmed" })
+  });
+  assert.equal(staleApproval.status, 409, "fixed or reused approval strings must never authorize an update");
+
   const apply = await fetchJson("/api/local/update/apply", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ approval_token: "user-confirmed" })
+    body: JSON.stringify({ approval_token: await approvalToken() })
   });
   assert.equal(apply.status, "blocked", "dirty or non-main checker worktree must block automatic update");
   assert.ok(apply.blocked_targets.includes("checker"), "checker worktree eligibility must be checked before update");
@@ -304,7 +317,7 @@ async function scenarioHarnessAndMcp(mcpConfigPath, operationLogPath) {
   const mcpRegistration = await fetchJson("/api/local/mcp/register", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ target: "claude-desktop", approval_token: "user-confirmed" })
+    body: JSON.stringify({ target: "claude-desktop", approval_token: await approvalToken() })
   });
   assert.equal(mcpRegistration.status, "registered", "MCP registration must update only the selected test configuration");
   assert.equal(mcpRegistration.connection.status, "registered");
@@ -317,7 +330,10 @@ async function scenarioHarnessAndMcp(mcpConfigPath, operationLogPath) {
 }
 
 async function scenarioAdmin(exportDirectory) {
-  const unauthorized = await fetch(`${baseUrl}/api/admin/summary`);
+  const withoutToken = await fetch(`${baseUrl}/api/admin/summary`);
+  assert.equal(withoutToken.status, 403, "admin APIs must reject requests without the portal request token");
+
+  const unauthorized = await fetch(`${baseUrl}/api/admin/summary`, { headers: localHeaders() });
   assert.equal(unauthorized.status, 401, "admin summary must reject unauthenticated requests");
 
   const loginResponse = await fetch(`${baseUrl}/api/admin/login`, {
@@ -389,6 +405,7 @@ async function startStateFixtureServer(fixtureDir) {
       PORTAL_TEST_CHECKER_STATUS_FILE: checkerStatusPath,
       ADMIN_INITIAL_PASSWORD: adminPassword,
       ADMIN_AUTH_FILE: join(fixtureDir, "state-admin.json"),
+      PORTAL_SCAN_HISTORY_FILE: join(fixtureDir, "state-scan-history.jsonl"),
       PORTAL_LOCAL_API_TOKEN: localApiToken,
       PYTHONUTF8: "1",
       PYTHONIOENCODING: "utf-8"
@@ -407,7 +424,7 @@ async function startStateFixtureServer(fixtureDir) {
     await wait(250);
   }
   const status = async (target) => {
-    const response = await fetch(`${fixtureBaseUrl}/api/local/version-status?target=${target}`);
+    const response = await fetch(`${fixtureBaseUrl}/api/local/version-status?target=${target}`, { headers: localHeaders() });
     assert.ok(response.ok, `state fixture ${target} version status must respond`);
     return response.json();
   };
@@ -460,6 +477,7 @@ const child = spawn(process.execPath, ["src/server.js"], {
     PORTAL_TEST_ARCHIVE_PATH: fixture.archivePath,
     PORTAL_TEST_CLAUDE_DESKTOP_CONFIG: mcpConfigPath,
     PORTAL_OPERATION_LOG_FILE: operationLogPath,
+    PORTAL_SCAN_HISTORY_FILE: join(fixture.fixtureDir, "scan-history.jsonl"),
     PORTAL_LOCAL_API_TOKEN: localApiToken,
     PYTHONUTF8: "1",
     PYTHONIOENCODING: "utf-8"

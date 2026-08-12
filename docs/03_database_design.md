@@ -1,5 +1,16 @@
 # 공공 바이브코딩 보안 체커 포털 DB 설계
 
+> **2026-08-12 개정 고지**
+> - 확장 스택이 **Supabase → 일반 PostgreSQL 16**으로 변경되었다(경기도 기관 제약: Supabase 금지·인증 직접구현 금지). 확정 스키마는 `db/schema.postgresql.sql`이며, `supabase/schema.sql`과 `docs/10_supabase_design.md`는 폐기 예정 참고자료다.
+> - enum 확정값(문서 02/04/실제 코드와 통일):
+>   - `scan_mode`: `quick / standard / full` (제출용 전체 점검 = full)
+>   - 작업 판정 `scan_decision`: `allow / quick_complete / needs_review / blocked / incomplete` (server.js 실제 값 기준. 구 `submittable`→`allow`, `needs_fix`는 finding 레벨로 흡수)
+>   - 발견 판정 `finding_decision`: 6상태 `confirmed_block / review_required / warning / false_positive_candidate / not_scanned / pass` (04 P0-2)
+>   - `step_name`: `prepare_target / code_scan / dependency_scan / installed_packages_scan / vendor_bundle_scan / render_report / save_reports`
+> - 관리자 인증: `admin_users`(자체 비밀번호) 방식은 정책 위반으로 폐기. 기관 통합인증(Keycloak OIDC/SSO/GPKI) subject를 저장하는 `admin_accounts`로 대체(착수 차단조건 B3).
+> - 패키지 관측/판정 2계층(`package_observations` / `package_decisions`) 추가 — 웹사이트DB구상(2026-08-09) 및 gg-trusted-registry 연동합의 반영.
+> 아래 본문은 개정 전 원문이며, 위 고지와 충돌하는 부분은 고지가 우선한다.
+
 ## 전제
 
 - 일반 사용자는 로그인 없이 검사한다.

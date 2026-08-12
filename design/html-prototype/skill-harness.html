@@ -1888,6 +1888,19 @@
       return document.querySelector(`[data-action="${action}"]`);
     }
 
+    async function requestApprovalToken() {
+      const response = await fetch("/api/local/approval-token", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "{}"
+      });
+      const result = await response.json();
+      if (!response.ok || !result.approval_token) {
+        throw new Error(result.error || "승인 절차를 시작하지 못했습니다. 화면을 새로고침한 뒤 다시 시도하세요.");
+      }
+      return result.approval_token;
+    }
+
     function setStatus(target, message, tone = "") {
       const node = document.querySelector(target === "harness" ? "#harnessStatus" : "#checkerStatus");
       node.textContent = message;
@@ -1910,7 +1923,7 @@
           const response = await fetch("/api/local/component/install", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ target, approval_token: "user-confirmed" })
+            body: JSON.stringify({ target, approval_token: await requestApprovalToken() })
           });
           const result = await response.json();
           if (!response.ok) throw new Error(result.error || "component_install_failed");
@@ -1943,7 +1956,7 @@
           const response = await fetch("/api/local/mcp/register", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ target: selectedMcpTarget, approval_token: "user-confirmed" })
+            body: JSON.stringify({ target: selectedMcpTarget, approval_token: await requestApprovalToken() })
           });
           const result = await response.json();
           if (!response.ok) throw new Error(result.error || "mcp_register_failed");
@@ -1975,7 +1988,7 @@
           const response = await fetch("/api/local/update/apply", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ approval_token: "user-confirmed", targets: [target] })
+            body: JSON.stringify({ approval_token: await requestApprovalToken(), targets: [target] })
           });
           const updateResult = await response.json();
           if (!response.ok) throw new Error(updateResult.error || "업데이트 요청을 완료하지 못했습니다.");

@@ -1,5 +1,7 @@
 # Supabase 연계 DB 설계
 
+> **[폐기 예정 2026-08-12]** 경기도 기관 제약(Supabase 금지·인증 직접구현 금지)에 따라 이 문서의 Supabase Auth/Edge Function/RLS/Storage 경로는 채택하지 않는다. 확정 스키마는 `db/schema.postgresql.sql`, 개정 고지는 `03_database_design.md` 상단 참조. 데이터 최소화 원칙(아래 '결론')만 유효하다.
+
 ## 결론
 
 중앙 DB에는 원본 소스, 원본 압축파일, GitHub 토큰, 로컬 전체 경로, 보고서 본문을 저장하지 않는다. 로컬 실행 및 옵트인 메타 전송의 확정 기준은 [16_local_execution_architecture.md](./16_local_execution_architecture.md)를 따른다.

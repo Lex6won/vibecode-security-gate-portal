@@ -358,3 +358,53 @@ gvskb doctor
 - `harness-final-smoke.mjs`가 프로젝트별 사용자 시나리오 테스트 스크립트 존재 여부를 확인할 수 있어야 한다.
 - L1/L2 웹앱에는 `scenario:test` 또는 동등한 smoke 명령을 표준으로 요구하는 편이 좋다.
 - 하네스 문서에 “health만으로는 사용자 기능 검증이 아니다”를 명시해야 한다.
+
+## 2026-08-12 전체 설계 검증 후속 보안·정합성 일괄 수정
+
+배경: `docs/20_설계검증보고_2026-08-12.md`의 지적 사항을 일괄 반영했다.
+
+서버(`src/server.js`) 변경:
+
+- 제어 API(설치·업데이트 적용·MCP 등록)의 고정 승인 문자열 `user-confirmed`를 폐기하고, `POST /api/local/approval-token`이 발급하는 **일회용 승인 토큰**(2분 만료, 1회 소비)으로 교체했다. 고정 문자열은 이제 409로 거부된다.
+- 로컬 요청 경계를 강화해 **모든 `/api/*` 요청(GET 포함)** 에 `X-VibeCode-Local-Token`을 요구한다. 기존에는 상태 변경 요청만 요구해 비브라우저 로컬 프로세스가 `/api/local/status`로 설치 경로 등을 조회할 수 있었다.
+- ZIP 검사 대상에 대해 압축 해제 **전** 사전검사를 추가했다(`inspectZip`/`assertSafeArchive`): 원본 500MB·해제 후 2GB·항목 5만 개·압축비 200배 상한, 상위 폴더 탈출(`..`)·절대 경로 항목 거부. 압축폭탄·zip-slip 대응.
+- 검사 이력을 `.local/scan-history.jsonl`(JSONL append)로 **영속화**하고 기동 시 복원한다. 서버 재시작 시 관리자 통계가 소실되던 문제 해소. 경로는 `PORTAL_SCAN_HISTORY_FILE`로 재지정 가능하며 시나리오 테스트는 격리 경로를 쓴다.
+- 관리자 로그인에 잠금을 추가했다(연속 5회 실패 시 5분 잠금, 429 반환).
+- 오류 상세·체커 출력 꼬리에서 로컬 절대 경로를 basename으로 마스킹한다(`redactLocalPath`).
+
+프런트엔드(`design/html-prototype/skill-harness.html`): 설치·MCP 등록·업데이트 3개 호출부가 승인 대화상자 확인 후 일회용 토큰을 발급받아 전달하도록 변경.
+
+테스트(`scripts/portal-scenario-test.mjs`) 변경:
+
+- 고정 승인 문자열 사용부 2곳을 일회용 토큰 발급으로 교체하고, **고정 문자열이 409로 거부되는지 확인하는 회귀 검사**를 추가했다.
+- 새 경계(모든 /api에 토큰)에 맞게 관리자 비인가 검사(토큰 없음 403 → 토큰 있음+세션 없음 401 2단계)와 상태 픽스처 조회에 토큰을 추가했다.
+- 하네스 버전 메시지 단정을 startsWith 기반으로 바꿨다(개발 폴더가 git 저장소가 아닌 환경에서 `not_installed` 상세 메시지와 정확 일치 실패하던 기존 환경 의존 결함).
+- 시나리오 서버 2종에 `PORTAL_SCAN_HISTORY_FILE` 격리 경로를 지정해 테스트 스캔이 실이력에 섞이지 않게 했다(오염된 12건은 삭제).
+
+DB·문서 변경:
+
+- `db/schema.postgresql.sql` 신설: Supabase 의존(auth.users·auth.uid()·RLS·Edge Function) 제거, enum 확정(scan_mode `quick/standard/full`, 작업판정 5종, 발견판정 6상태, 검사단계 7종), 관측/판정 2계층(`package_observations`/`package_decisions`)과 심사 큐 보호(check 제약으로 lockfile·installed 큐 진입 차단), 기관 인증 연계형 `admin_accounts`, DB 롤 기반 권한(판정 테이블은 사람 경로만 쓰기).
+- `supabase/schema.sql`·`docs/10` 폐기 예정 표기, `docs/03` 상단 개정 고지(enum·인증·2계층), `docs/01`·`docs/04` 경기도 망분리 전제 정정, `docs/06` origin/main 최신 판정 기준의 자기모순 정정, `docs/00` fixture 사양 명시, README 갱신.
+- 발표자료 v2.1 생성(`AI챔피언 개발 폴더/바이브코딩_인터랙티브_설명자료_v2.1_승격체계 포함(원준석).html`): 등급 문구 정정(경량·일반은 내부용 한정), 이용자 100명 실측 재심사 루프, 재현 가능 빌드 전제조건 4항, 취약점 DB 반입 주기·담당, 대민 구역 인증서 수동 갱신, 가명 표본 생성 절차.
+
+검증 결과:
+
+- `npm run guard` 전체 통과 — check(문법+폴더선택기) / harness:gate / button:test / scenario:test(10개 시나리오) / security:scan(발견 0건).
+- 수동 경계 검증: 토큰 없는 /api GET 403, 위조 Host 421, /health 200, 고정 승인 문자열 409, 일회용 토큰 발급·소비 정상.
+- ZIP 사전검사 PowerShell 스니펫 단독 검증(정상 ZIP: 항목 수·용량 출력, 불량 경로 탐지 로직 포함).
+
+남은 항목(코드 밖):
+
+- 시흥시 TLS 개인키 폐기·재발급, 담당자 통보, OneDrive 휴지통·버전기록 정리(19번 문서 §0-1).
+- 저장소 이원화 해소(§0-2): `C:\Users\first\vibecode-security-gate-portal`의 docs 17·18과 본 저장소 통합 — 정본 위치 결정 필요.
+- 착수 차단조건 B2(코드서명)·B3(기관 인증 연계) 확정.
+
+### 2026-08-12 (후속) 시흥시 개인키 사고 정리와 기동 시 임시폴더 자동 정리
+
+- `docs/21_보안사고_시흥시TLS개인키.md` 신설 — 사고 경위·인증서 채증(공개정보)·위험평가·통보 문안·OneDrive 정리 절차.
+- **08-10 조치가 절반만 이뤄져 있었음을 발견**했다. 개인키 삭제가 OneDrive 저장소에만 적용되고 **사본 저장소(홈 디렉터리)에 개인키 6사본 + Flask 비밀키 3사본이 그대로 남아 있었다.** 저장소 이원화가 보안 사안이라는 실증 사례다. 양 저장소 `tmp/scan-targets` 전체(17,019개 파일)를 제거하고 잔존 0건을 확인했다.
+- Git 전 리비전 검색으로 키가 커밋된 적 없음을 확인했다(`tmp/`는 `.gitignore` 대상). 이력 재작성 불필요.
+- 재발 방지로 `purgeOrphanScanTargets()`를 추가해 **기동 시 `tmp/scan-targets`를 비운다.**
+- **구현 중 확인한 환경 함정**: 이 개발 환경의 샌드박스는 node 프로세스의 **동기 재귀 삭제(`fs.rmSync({recursive:true})`)를 프로세스 강제 종료(exit 127)로 차단**한다. 예외도 로그도 남지 않아 "서버가 조용히 죽는" 증상으로만 나타난다. **비동기 `fs/promises.rm`은 정상 동작**한다. A/B 대조로 확인했으며, 파일의 기존 정리 코드가 이미 비동기 `rm`을 쓰고 있었기에 그에 맞춰 통일했다. 앞으로 이 저장소에서 `rmSync` 재귀 삭제는 쓰지 않는다.
+- 문서 번호 충돌 정정: 사본 저장소에 `19_screen_spec_v2.md`가 이미 있어 설계검증보고를 **20번**으로 옮겼다(README·연혁 참조 갱신).
+- 검증: `npm run guard` 전체 통과(시나리오 10종·보안스캔 0건), 기동 시 고아 폴더 자동 정리 동작 확인.

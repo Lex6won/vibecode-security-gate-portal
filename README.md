@@ -47,7 +47,8 @@ vibecode-security-gate-portal/
 ├── design/html-prototype/         # 정적 HTML 화면 시안
 ├── fixtures/checker-negative-fixture/
 │   └── ...                        # 체커 검증용 취약 샘플, 실제 서비스 소스 아님
-├── supabase/schema.sql            # 향후 Supabase 연계용 PostgreSQL/RLS 초안
+├── db/schema.postgresql.sql       # 확장용 PostgreSQL 16 스키마(기관 승인 스택, 확정본)
+├── supabase/schema.sql            # [폐기 예정] 구 Supabase 초안 — 기관 제약(Supabase 금지)으로 대체됨
 ├── tools/pc-status.ps1            # 로컬 PC 상태 점검 계약 스크립트
 └── src/                           # 향후 포털 구현 소스 위치
 ```
@@ -60,12 +61,14 @@ vibecode-security-gate-portal/
 | `docs/02_screen_function_spec.md` | 화면 구성과 화면별 기능 |
 | `docs/03_database_design.md` | DB 모델과 화면-DB 매핑 |
 | `docs/09_functional_design.md` | 기능 흐름, API, 상태 모델 |
-| `docs/10_supabase_design.md` | Supabase 연계, RLS, Storage 정책 |
+| `docs/10_supabase_design.md` | [폐기 예정] 구 Supabase 연계안 — `db/schema.postgresql.sql`로 대체 |
 | `docs/11_single_view_modal_design.md` | 스크롤 없는 단일 화면과 레이어 팝업 UX 기준 |
 | `docs/12_harness_checker_implementation_log.md` | 하네스·체커 적용 기록과 개발 비용 기록 |
 | `docs/14_service_implementation_status.md` | 서비스 구현 상태, 미구현 범위, 하네스·체커 영향 |
 | `docs/16_local_execution_architecture.md` | 로컬 실행 경계, PC 저장, 업데이트·검사 진행률의 확정 설계와 구현 기록 |
-| `supabase/schema.sql` | Supabase PostgreSQL 스키마 초안 |
+| `db/schema.postgresql.sql` | PostgreSQL 16 확장 스키마(enum 통일·2계층 관측/판정·기관 인증 연계) |
+| `docs/20_설계검증보고_2026-08-12.md` | 전체 설계 검증 보고와 조치 이력 |
+| `docs/21_보안사고_시흥시TLS개인키.md` | 타 기관 개인키 노출 사고 대응 기록과 통보 문안 |
 
 ## 하네스 적용 기준
 

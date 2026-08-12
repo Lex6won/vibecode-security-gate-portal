@@ -79,6 +79,36 @@ const LOCAL_HOSTS = new Set([
   `127.0.0.1:${PORT}`,
   `localhost:${PORT}`
 ]);
+const MAX_ARCHIVE_BYTES = 500 * 1024 * 1024;
+const MAX_EXTRACTED_BYTES = 2 * 1024 * 1024 * 1024;
+const MAX_ARCHIVE_ENTRIES = 50000;
+const MAX_COMPRESSION_RATIO = 200;
+const SCAN_HISTORY_FILE = runtimePath("PORTAL_SCAN_HISTORY_FILE", join(ROOT, ".local", "scan-history.jsonl"));
+const APPROVAL_TOKEN_TTL_MS = 2 * 60 * 1000;
+const approvalTokens = new Map();
+const LOGIN_LOCK_THRESHOLD = 5;
+const LOGIN_LOCK_MS = 5 * 60 * 1000;
+const loginFailures = { count: 0, locked_until: 0 };
+
+function issueApprovalToken() {
+  for (const [token, expiresAt] of approvalTokens) {
+    if (expiresAt <= Date.now()) approvalTokens.delete(token);
+  }
+  const token = randomBytes(24).toString("hex");
+  approvalTokens.set(token, Date.now() + APPROVAL_TOKEN_TTL_MS);
+  return token;
+}
+
+function consumeApprovalToken(value) {
+  const token = String(value || "");
+  const expiresAt = approvalTokens.get(token);
+  approvalTokens.delete(token);
+  return Boolean(expiresAt && expiresAt > Date.now());
+}
+
+function redactLocalPath(value) {
+  return String(value || "").replace(/[A-Za-z]:[\\/][^\s"'<>|]+/g, (match) => `…${basename(match)}`);
+}
 
 function passwordRecord(password) {
   const salt = randomBytes(16).toString("hex");
@@ -113,6 +143,76 @@ function loadAdminCredentials() {
 let adminCredentials = loadAdminCredentials();
 
 const jobs = new Map();
+
+function persistedJobRecord(job) {
+  return {
+    id: job.id,
+    mode: job.mode,
+    target_type: job.target_type,
+    target_label: job.target_label || "",
+    save_dir: job.save_dir || "",
+    status: job.status,
+    decision: job.decision,
+    summary: job.summary || null,
+    steps: job.steps || [],
+    reports: (job.reports || []).map(({ file_name, path, url }) => ({ file_name, path, url })),
+    saved_reports: (job.saved_reports || []).map(({ file_name }) => ({ file_name })),
+    report_stem: job.report_stem || null,
+    created_at: job.created_at,
+    updated_at: job.updated_at || null,
+    error: job.error || null
+  };
+}
+
+async function persistJob(job) {
+  try {
+    mkdirSync(dirname(SCAN_HISTORY_FILE), { recursive: true });
+    await appendFile(SCAN_HISTORY_FILE, `${JSON.stringify(persistedJobRecord(job))}\n`, "utf8");
+  } catch {
+    // History persistence must never break a completed scan response.
+  }
+}
+
+function loadScanHistory() {
+  if (!existsSync(SCAN_HISTORY_FILE)) return;
+  try {
+    const lines = readFileSync(SCAN_HISTORY_FILE, "utf8").split(/\r?\n/).filter(Boolean);
+    for (const line of lines) {
+      try {
+        const record = JSON.parse(line);
+        if (record?.id) jobs.set(record.id, { temporary_paths: [], ...record });
+      } catch {
+        // Skip corrupted lines instead of losing the whole history.
+      }
+    }
+  } catch {
+    // A broken history file must not prevent the portal from starting.
+  }
+}
+
+loadScanHistory();
+
+// Scan targets are copies of someone else's project and may hold credentials or keys.
+// A crashed or interrupted job leaves its copy behind, so every startup clears the
+// whole staging area: no job can be running yet, therefore every entry is an orphan.
+// (2026-08-12 incident: leftovers here held another agency's TLS private key.)
+async function purgeOrphanScanTargets() {
+  if (!existsSync(TMP_DIR)) return;
+  let removed = 0;
+  for (const entry of await readdir(TMP_DIR)) {
+    try {
+      await rm(join(TMP_DIR, entry), { recursive: true, force: true });
+      removed += 1;
+    } catch {
+      // A locked leftover must not stop the portal from starting.
+    }
+  }
+  if (removed) console.log(`이전 검사에서 남은 임시 폴더 ${removed}개를 정리했습니다.`);
+}
+
+purgeOrphanScanTargets().catch(() => {
+  // Startup hygiene is best effort; a failure here must not block the portal.
+});
 
 const staticRoutes = new Map([
   ["/", "main page.html"],
@@ -224,7 +324,7 @@ function isStateChangingRequest(request) {
   return ["POST", "PUT", "PATCH", "DELETE"].includes(request.method || "");
 }
 
-function requireTrustedLocalRequest(request, response) {
+function requireTrustedLocalRequest(request, response, pathname = "") {
   if (!isAllowedLocalHost(request)) {
     json(response, 421, { error: "local_host_required", message: "로컬 포털 주소에서만 요청할 수 있습니다." });
     return false;
@@ -233,7 +333,7 @@ function requireTrustedLocalRequest(request, response) {
     json(response, 403, { error: "untrusted_origin", message: "현재 포털 화면에서만 요청할 수 있습니다." });
     return false;
   }
-  if (isStateChangingRequest(request) && !hasLocalApiToken(request)) {
+  if ((isStateChangingRequest(request) || pathname.startsWith("/api/")) && !hasLocalApiToken(request)) {
     json(response, 403, { error: "local_request_token_required", message: "포털 화면을 새로고침한 뒤 다시 시도하세요." });
     return false;
   }
@@ -391,7 +491,43 @@ async function pickLocalPath(kind) {
   return resolve(selectedPath);
 }
 
+async function inspectZip(archivePath) {
+  const archive = escapePowerShellLiteral(archivePath);
+  const script = `Add-Type -AssemblyName System.IO.Compression.FileSystem; $zip = [System.IO.Compression.ZipFile]::OpenRead('${archive}'); $count = 0; $total = 0; $bad = ''; foreach ($e in $zip.Entries) { $count++; $total += $e.Length; $n = $e.FullName.Replace('\\', '/'); if ($n -match '^[A-Za-z]:' -or $n.StartsWith('/') -or $n -match '(^|/)\\.\\.(/|$)') { if (-not $bad) { $bad = $n } } }; $zip.Dispose(); [Console]::Out.Write("$count\`n$total\`n$bad")`;
+  const inspected = await runCommand(POWERSHELL, ["-NoProfile", "-Command", script], { timeout_ms: 120000 });
+  if (!inspected.ok) {
+    throw new Error("압축파일 구조를 확인하지 못해 검사를 시작하지 않았습니다. 파일이 손상되지 않았는지 확인하세요.");
+  }
+  const [entries, totalBytes, badEntry] = inspected.stdout.split(/\r?\n/);
+  return {
+    entries: Number(entries || 0),
+    total_bytes: Number(totalBytes || 0),
+    bad_entry: (badEntry || "").trim() || null
+  };
+}
+
+async function assertSafeArchive(archivePath) {
+  const archiveBytes = statSync(archivePath).size;
+  if (archiveBytes > MAX_ARCHIVE_BYTES) {
+    throw new Error("ZIP 파일이 500MB를 초과해 검사할 수 없습니다. 불필요한 파일을 빼고 다시 압축하세요.");
+  }
+  const inspection = await inspectZip(archivePath);
+  if (inspection.bad_entry) {
+    throw new Error("압축파일 안에 허용되지 않는 경로(상위 폴더 탈출·절대 경로)가 있어 검사를 중단했습니다.");
+  }
+  if (inspection.entries > MAX_ARCHIVE_ENTRIES) {
+    throw new Error(`압축파일 항목이 ${MAX_ARCHIVE_ENTRIES.toLocaleString()}개를 초과해 검사할 수 없습니다.`);
+  }
+  if (inspection.total_bytes > MAX_EXTRACTED_BYTES) {
+    throw new Error("압축을 풀었을 때 용량이 2GB를 초과해 검사할 수 없습니다.");
+  }
+  if (archiveBytes > 0 && inspection.total_bytes / archiveBytes > MAX_COMPRESSION_RATIO) {
+    throw new Error("압축 비율이 비정상적으로 높아(압축폭탄 의심) 검사를 중단했습니다.");
+  }
+}
+
 async function extractZip(archivePath, destination) {
+  await assertSafeArchive(archivePath);
   const archive = escapePowerShellLiteral(archivePath);
   const output = escapePowerShellLiteral(destination);
   const extracted = await runCommand(
@@ -400,7 +536,7 @@ async function extractZip(archivePath, destination) {
     { timeout_ms: 300000 }
   );
   if (!extracted.ok) {
-    throw new Error(`ZIP 압축을 풀지 못했습니다. ${extracted.stderr || extracted.stdout}`.trim());
+    throw new Error(`ZIP 압축을 풀지 못했습니다. ${redactLocalPath(extracted.stderr || extracted.stdout)}`.trim());
   }
 }
 
@@ -854,7 +990,7 @@ async function installComponent(target) {
     const staging = installStagingPath(LOCAL_HARNESS_DIR);
     const cloned = await runCommand("git", ["clone", "--depth", "1", HARNESS_REPOSITORY, staging], { timeout_ms: 120000 });
     if (!cloned.ok) {
-      return { status: "failed", reason: "clone_failed", message: "하네스 공식 저장소를 가져오지 못했습니다.", detail: (cloned.stderr || cloned.stdout).trim().slice(-500) };
+      return { status: "failed", reason: "clone_failed", message: "하네스 공식 저장소를 가져오지 못했습니다.", detail: redactLocalPath((cloned.stderr || cloned.stdout).trim().slice(-500)) };
     }
     const validated = await runCommand(
       POWERSHELL,
@@ -863,7 +999,7 @@ async function installComponent(target) {
     );
     if (!validated.ok) {
       await rm(staging, { recursive: true, force: true });
-      return { status: "needs_review", reason: "validation_failed", message: "새 공식 설치본이 기본 검증을 통과하지 못했습니다. 기존 설치는 바꾸지 않았습니다.", detail: (validated.stderr || validated.stdout).trim().slice(-500) };
+      return { status: "needs_review", reason: "validation_failed", message: "새 공식 설치본이 기본 검증을 통과하지 못했습니다. 기존 설치는 바꾸지 않았습니다.", detail: redactLocalPath((validated.stderr || validated.stdout).trim().slice(-500)) };
     }
     let backup = null;
     if (existsSync(LOCAL_HARNESS_DIR)) {
@@ -898,7 +1034,7 @@ async function installComponent(target) {
         detail: "gvskb-server 실행 파일이 사용 중이라 교체하지 않았습니다. 기존 설치는 유지됩니다."
       };
     }
-    return { status: "failed", reason: "checker_install_failed", message: "체커 설치를 완료하지 못했습니다. Python 3.11 이상과 pip 설치 상태를 확인하세요.", detail: detail.slice(0, 600) };
+    return { status: "failed", reason: "checker_install_failed", message: "체커 설치를 완료하지 못했습니다. Python 3.11 이상과 pip 설치 상태를 확인하세요.", detail: redactLocalPath(detail.slice(0, 600)) };
   }
   const verified = await simpleVersionStatus("checker");
   return verified.status === "current"
@@ -1056,7 +1192,7 @@ async function applyUpdates(targets = ["harness", "checker"]) {
       continue;
     }
     const pulled = await runCommand("git", ["-C", repoPath, "pull", "--ff-only", "origin", "main"], { timeout_ms: 120000 });
-    results.push({ target, status: pulled.ok ? "updated_or_current" : "failed", detail: (pulled.stderr || pulled.stdout).trim().slice(-500) });
+    results.push({ target, status: pulled.ok ? "updated_or_current" : "failed", detail: redactLocalPath((pulled.stderr || pulled.stdout).trim().slice(-500)) });
   }
 
   const harnessValidation = eligibleTargets.includes("harness")
@@ -1301,6 +1437,7 @@ async function runScanJob(job) {
       steps: [{ name: "prepare_target", status: "failed" }]
     });
     await cleanupJobTargets(job);
+    await persistJob(job);
     return;
   }
 
@@ -1408,8 +1545,8 @@ async function runScanJob(job) {
     saved_reports: savedReports,
     report_save_error: saveError,
     checker_exit_code: scan.code,
-    checker_stdout_tail: scan.stdout.split(/\r?\n/).filter(Boolean).slice(-12),
-    checker_stderr_tail: scan.stderr.split(/\r?\n/).filter(Boolean).slice(-12),
+    checker_stdout_tail: scan.stdout.split(/\r?\n/).filter(Boolean).slice(-12).map(redactLocalPath),
+    checker_stderr_tail: scan.stderr.split(/\r?\n/).filter(Boolean).slice(-12).map(redactLocalPath),
     summary: {
       scanned_file_count: scannedFileCount,
       finding_count: findingCount,
@@ -1420,6 +1557,7 @@ async function runScanJob(job) {
     }
   });
   await cleanupJobTargets(job);
+  await persistJob(job);
 }
 
 function adminSummary() {
@@ -1519,6 +1657,7 @@ async function startScan(request, response) {
       error: String(error.message || error)
     });
     await cleanupJobTargets(job);
+    await persistJob(job);
   });
 
   json(response, 202, {
@@ -1536,11 +1675,23 @@ async function handleApi(request, response, pathname) {
   }
 
   if (request.method === "POST" && pathname === "/api/admin/login") {
+    if (loginFailures.locked_until > Date.now()) {
+      const waitSeconds = Math.ceil((loginFailures.locked_until - Date.now()) / 1000);
+      json(response, 429, { error: "login_locked", message: `로그인 시도가 반복 실패해 잠시 잠겼습니다. ${waitSeconds}초 후 다시 시도하세요.` });
+      return;
+    }
     const body = await readJson(request);
     if (body.id !== ADMIN_ID || !verifyPassword(body.password)) {
+      loginFailures.count += 1;
+      if (loginFailures.count >= LOGIN_LOCK_THRESHOLD) {
+        loginFailures.locked_until = Date.now() + LOGIN_LOCK_MS;
+        loginFailures.count = 0;
+      }
       json(response, 401, { error: "invalid_admin_credentials", message: "아이디 또는 비밀번호를 확인하세요." });
       return;
     }
+    loginFailures.count = 0;
+    loginFailures.locked_until = 0;
     const [cookie] = createAdminSession();
     json(response, 200, { status: "authenticated", next: "/admin" }, { "Set-Cookie": cookie });
     return;
@@ -1598,10 +1749,15 @@ async function handleApi(request, response, pathname) {
     return;
   }
 
+  if (request.method === "POST" && pathname === "/api/local/approval-token") {
+    json(response, 200, { approval_token: issueApprovalToken(), expires_in_seconds: APPROVAL_TOKEN_TTL_MS / 1000 });
+    return;
+  }
+
   if (request.method === "POST" && pathname === "/api/local/update/apply") {
     const body = await readJson(request);
-    if (body.approval_token !== "user-confirmed") {
-      json(response, 409, { status: "blocked", reason: "approval_required" });
+    if (!consumeApprovalToken(body.approval_token)) {
+      json(response, 409, { status: "blocked", reason: "approval_required", message: "승인 절차가 만료되었습니다. 화면에서 다시 승인해 주세요." });
       return;
     }
     const result = await applyUpdates(Array.isArray(body.targets) ? body.targets : undefined);
@@ -1617,8 +1773,8 @@ async function handleApi(request, response, pathname) {
       json(response, 400, { error: "invalid_install_target", message: "설치할 대상을 찾지 못했습니다." });
       return;
     }
-    if (body.approval_token !== "user-confirmed") {
-      json(response, 409, { status: "blocked", reason: "approval_required", message: "설치 전 사용자 확인이 필요합니다." });
+    if (!consumeApprovalToken(body.approval_token)) {
+      json(response, 409, { status: "blocked", reason: "approval_required", message: "설치 전 사용자 확인이 필요합니다. 화면에서 다시 승인해 주세요." });
       return;
     }
     const result = await installComponent(target);
@@ -1660,7 +1816,7 @@ async function handleApi(request, response, pathname) {
   if (request.method === "POST" && pathname === "/api/local/mcp/register") {
     const body = await readJson(request);
     const target = ["codex", "claude-code", "claude-desktop"].includes(body.target) ? body.target : "codex";
-    if (body.approval_token !== "user-confirmed") {
+    if (!body.approval_token) {
       const mcp = await mcpSummary();
       json(response, 200, {
         status: mcp.tools[target]?.status === "registered" ? "already_registered" : "needs_user_approval",
@@ -1669,6 +1825,10 @@ async function handleApi(request, response, pathname) {
         applies_without_approval: false,
         next_action: "체커 실행 명령과 설정 파일을 확인한 뒤 사용자 승인으로 등록합니다."
       });
+      return;
+    }
+    if (!consumeApprovalToken(body.approval_token)) {
+      json(response, 409, { status: "blocked", reason: "approval_required", message: "승인 절차가 만료되었습니다. 화면에서 다시 승인해 주세요." });
       return;
     }
     const result = await registerMcp(target);
@@ -1746,8 +1906,8 @@ async function handleApi(request, response, pathname) {
 
 createServer(async (request, response) => {
   try {
-    if (!requireTrustedLocalRequest(request, response)) return;
     const url = new URL(request.url || "/", `http://127.0.0.1:${PORT}`);
+    if (!requireTrustedLocalRequest(request, response, url.pathname)) return;
     if (url.pathname === "/health" || url.pathname.startsWith("/api/")) {
       await handleApi(request, response, url.pathname);
       return;
