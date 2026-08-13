@@ -10,6 +10,7 @@
     "harness:gate": "node scripts/portal-harness-gate.mjs .",
     "security:scan": "gvskb scan src --profile dev-quick --format json --output reports/dev-quick-src --max-files 200 --fail-on block",
     "button:test": "node scripts/portal-button-contract-test.mjs",
+    "db:check": "node scripts/db-schema-structure-check.mjs",
     "scenario:test": "node scripts/portal-scenario-test.mjs",
     "guard": "npm run check && npm run harness:gate && npm run button:test && npm run scenario:test && npm run security:scan"
   },

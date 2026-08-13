@@ -184,18 +184,77 @@ create table dependency_findings (
 
 create table package_observations (
   id uuid primary key default gen_random_uuid(),
+  scan_job_id uuid references scan_jobs(id) on delete set null,
   ecosystem varchar(40) not null,
   package_name varchar(255) not null,
   package_version varchar(80) not null,           -- 버전 미확정 관측은 제출하지 않는다(§5-D)
   source_scope source_scope not null,
   checker_version varchar(40),
   verdict_at_scan varchar(40),                    -- 체커 verdict 사다리 값 스냅샷
+  -- 아래는 registry-bundle(gvskb-registry-bundle/1) item.result 에서 그대로 옮긴다.
+  -- 포털은 이 값을 만들지 않는다. 체커가 만든 것을 보관할 뿐이다.
+  vulnerability_count integer not null default 0,
+  max_cve varchar(20),                            -- NONE/LOW/MEDIUM/HIGH/CRITICAL
+  is_malicious_package boolean not null default false,
+  in_kev boolean,
+  kev_checked boolean not null default false,     -- false면 in_kev 는 '대조 못 함'
+  license varchar(120),
+  install_scripts varchar(20),                    -- none/present 등. 화이트리스트 심사의 주요 신호
+  deprecated boolean,
+  version_age_days integer,
+  typosquat_warning text,
+  registry_status varchar(30),                    -- ok/unreachable/unauthorized/disabled/item_failed
+  registry_decision varchar(20),                  -- 조회 시점의 기관 판정 스냅샷
   observed_at timestamptz not null default now(),
-  anonymous_client_id varchar(80),
-  unique (ecosystem, package_name, package_version, source_scope, anonymous_client_id, observed_at)
+  department_code varchar(40),                    -- 화이트리스트 근거의 핵심 지표. 부서명·개인정보 저장 금지
+  anonymous_client_id varchar(80)
 );
 -- 체커·포털이 기록한다. 사람 판정의 입력 참고자료일 뿐,
 -- 어떤 자동 로직도 이 테이블을 근거로 승인하지 않는다.
+-- 같은 패키지가 검사마다 반복 관측되는 것이 정상이다(사용 빈도의 원천이므로
+-- 중복 제거하지 않는다). 집계는 package_usage_stats 가 맡는다.
+
+-- 검사 1회에 패키지 수백 건이 쌓인다(실측: 1회 188건). 조회 성능이 곧 관리자
+-- 화면의 응답 속도이므로 집계 테이블을 따로 둔다. 검사 완료 시 증분 갱신한다.
+create table package_usage_stats (
+  ecosystem varchar(40) not null,
+  package_name varchar(255) not null,
+  observation_count integer not null default 0,   -- 총 관측 횟수
+  project_count integer not null default 0,       -- 서로 다른 검사 대상 수
+  department_count integer not null default 0,    -- 서로 다른 부서 수 ← 화이트리스트 우선순위
+  manifest_count integer not null default 0,      -- 직접 선언된 횟수(심사 대상 여부 판단)
+  latest_version varchar(80),
+  version_variants integer not null default 0,    -- 관측된 서로 다른 버전 수
+  has_vulnerable_observation boolean not null default false,
+  has_malicious_observation boolean not null default false,
+  first_observed_at timestamptz,
+  last_observed_at timestamptz,
+  primary key (ecosystem, package_name)
+);
+
+-- 화이트리스트 후보: 많이 쓰이는데 아직 사람 판정이 없고 위험 신호도 없는 패키지.
+-- 보안부서는 이 목록 위에서부터 승인하면 커버리지가 가장 빨리 올라간다.
+create view package_whitelist_candidates as
+select
+  u.ecosystem,
+  u.package_name,
+  u.latest_version,
+  u.department_count,
+  u.project_count,
+  u.observation_count,
+  u.manifest_count,
+  u.first_observed_at,
+  u.last_observed_at
+from package_usage_stats u
+where not u.has_vulnerable_observation
+  and not u.has_malicious_observation
+  and not exists (
+    select 1 from package_decisions d
+    where d.ecosystem = u.ecosystem
+      and d.package_name = u.package_name
+      and d.superseded_by is null
+  )
+order by u.department_count desc, u.project_count desc, u.observation_count desc;
 
 create table package_decisions (
   id uuid primary key default gen_random_uuid(),
@@ -307,7 +366,12 @@ create index idx_dependency_findings_job_severity on dependency_findings(scan_jo
 create index idx_scan_reports_job_type on scan_reports(scan_job_id, report_type);
 create index idx_audit_logs_admin_created_at on audit_logs(admin_account_id, created_at desc);
 create index idx_package_observations_pkg on package_observations(ecosystem, package_name, package_version);
+create index idx_package_observations_scan on package_observations(scan_job_id);
+create index idx_package_observations_dept on package_observations(department_code, observed_at desc);
+create index idx_package_observations_risk on package_observations(ecosystem, package_name)
+  where is_malicious_package or vulnerability_count > 0;
 create index idx_package_decisions_pkg on package_decisions(ecosystem, package_name, package_version, decided_at desc);
+create index idx_package_usage_priority on package_usage_stats(department_count desc, project_count desc);
 
 -- ---------- 접근 통제: DB 롤 (RLS 대신) ----------
 -- 브라우저는 DB에 직접 접근하지 않는다. 모든 접근은 포털 백엔드를 거친다.
@@ -317,15 +381,17 @@ create role portal_app noinherit login;
 grant select, insert, update on
   client_installations, scan_jobs, scan_steps, scan_reports,
   scan_findings, dependency_findings, package_observations,
-  package_review_queue, usage_events, daily_usage_stats, rule_feedback
+  package_usage_stats, package_review_queue, usage_events,
+  daily_usage_stats, rule_feedback
   to portal_app;
-grant select on package_decisions, admin_accounts to portal_app;
+grant select on package_decisions, admin_accounts, package_whitelist_candidates to portal_app;
 -- portal_app은 package_decisions에 쓸 수 없다(사람 판정 전용).
 
 -- 판정 기록 계정: 보안담당 심사 화면 전용 백엔드 경로
 create role portal_review noinherit login;
 grant select, insert on package_decisions, review_notes, audit_logs to portal_review;
 grant select, update on package_review_queue, rule_feedback to portal_review;
-grant select on package_observations, scan_jobs, scan_findings, dependency_findings, admin_accounts to portal_review;
+grant select on package_observations, package_usage_stats, package_whitelist_candidates,
+  scan_jobs, scan_findings, dependency_findings, admin_accounts to portal_review;
 
 -- 삭제 권한은 어느 서비스 롤에도 부여하지 않는다(이력 보존).
