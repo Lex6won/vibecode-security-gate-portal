@@ -1,0 +1,726 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>경기도 바이브코딩 보안 게이트 — 설계 설명서</title>
+<style>
+:root{
+  --moon:#f3f6ff; --herb:#cef26d; --harbor:#3770bf; --ice:#8dc2ff;
+  --ink:#102033; --panel:#fff; --soft:#e8f2ff; --muted:#40546f;
+  --line:#d5e5fb; --green:#1f6b5f; --warn:#a75a00; --danger:#b3261e;
+  --warn-bg:#fff4e2; --danger-bg:#fdeceb; --ok-bg:#e6f6f1;
+  --r-xl:28px; --r-lg:22px; --r-md:14px; --r-sm:10px;
+  --shadow:0 18px 45px rgba(55,112,191,.12);
+  --shadow-sm:0 6px 18px rgba(55,112,191,.10);
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  margin:0;background:var(--moon);color:var(--ink);
+  font-family:Pretendard,"Noto Sans KR","Malgun Gothic",system-ui,sans-serif;
+  word-break:keep-all;overflow-wrap:break-word;line-height:1.65;
+}
+.wrap{width:min(1100px,calc(100% - 32px));margin:0 auto;padding:20px 0 80px}
+h1,h2,h3,h4{line-height:1.3;margin:0}
+p{margin:0}
+a{color:var(--harbor)}
+
+/* ---- 상단 ---- */
+.topbar{
+  position:sticky;top:0;z-index:50;background:rgba(243,246,255,.92);
+  backdrop-filter:blur(8px);border-bottom:1px solid var(--line);
+}
+.topbar-in{
+  width:min(1100px,calc(100% - 32px));margin:0 auto;
+  display:flex;align-items:center;justify-content:space-between;gap:16px;
+  padding:12px 0;flex-wrap:wrap;
+}
+.topbar strong{font-size:17px;font-weight:900}
+.topbar .sub{font-size:13px;color:var(--muted);display:block;font-weight:500}
+.nav{display:flex;gap:6px;flex-wrap:wrap}
+.nav a{
+  font-size:13px;font-weight:700;text-decoration:none;color:var(--muted);
+  padding:6px 12px;border-radius:999px;background:var(--panel);
+  border:1px solid var(--line);white-space:nowrap;
+}
+.nav a:hover{background:var(--soft);color:var(--harbor)}
+
+/* ---- 히어로 ---- */
+.hero{
+  background:linear-gradient(135deg,#ffffff 0%,#eef4ff 100%);
+  border-radius:var(--r-xl);padding:40px 36px;box-shadow:var(--shadow);
+  margin-top:20px;border:1px solid var(--line);
+}
+.hero .eyebrow{
+  display:inline-block;font-size:12px;font-weight:800;letter-spacing:.04em;
+  color:var(--green);background:var(--herb);padding:5px 12px;border-radius:999px;
+}
+.hero h1{font-size:clamp(26px,4vw,40px);font-weight:900;margin:14px 0 10px}
+.hero .lead{font-size:clamp(15px,2vw,18px);color:var(--muted);max-width:62ch}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-top:26px}
+.kpi{background:var(--panel);border:1px solid var(--line);border-radius:var(--r-md);padding:16px 18px}
+.kpi b{display:block;font-size:26px;font-weight:900;color:var(--harbor);line-height:1.2}
+.kpi span{font-size:13px;color:var(--muted);font-weight:600}
+
+/* ---- 섹션 ---- */
+section{margin-top:52px;scroll-margin-top:80px}
+.sec-head{margin-bottom:18px}
+.sec-num{
+  display:inline-grid;place-items:center;width:28px;height:28px;border-radius:9px;
+  background:var(--harbor);color:#fff;font-size:14px;font-weight:900;margin-right:10px;
+  vertical-align:middle;
+}
+.sec-head h2{display:inline;font-size:clamp(20px,3vw,27px);font-weight:900;vertical-align:middle}
+.sec-head p{margin-top:10px;color:var(--muted);font-size:15px;max-width:70ch}
+
+.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r-lg);padding:24px;box-shadow:var(--shadow-sm)}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px}
+.grid3{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px}
+
+/* ---- 탭 ---- */
+.tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
+.tab{
+  font:inherit;font-weight:800;font-size:14px;cursor:pointer;
+  padding:10px 18px;border-radius:999px;border:1px solid var(--line);
+  background:var(--panel);color:var(--muted);transition:.15s;
+}
+.tab:hover{background:var(--soft)}
+.tab[aria-selected="true"]{background:var(--harbor);color:#fff;border-color:var(--harbor)}
+.panel[hidden]{display:none}
+
+/* ---- 3단 계층 ---- */
+.tier{
+  display:grid;grid-template-columns:auto 1fr;gap:18px;align-items:start;
+  padding:20px;border-radius:var(--r-md);border:1px solid var(--line);background:var(--panel);
+}
+.tier + .tier{margin-top:12px}
+.tier.t0{border-left:6px solid var(--green)}
+.tier.t1{border-left:6px solid var(--harbor)}
+.tier.t2{border-left:6px solid var(--ice)}
+.tier-badge{
+  display:grid;place-items:center;min-width:64px;height:64px;border-radius:16px;
+  background:var(--soft);color:var(--harbor);font-weight:900;font-size:19px;
+}
+.tier.t0 .tier-badge{background:var(--ok-bg);color:var(--green)}
+.tier h3{font-size:18px;font-weight:900}
+.tier .need{font-size:13px;font-weight:700;color:var(--muted);margin-top:2px}
+.tier ul{margin:10px 0 0;padding-left:18px;color:var(--muted);font-size:14px}
+.tier li{margin:3px 0}
+
+/* ---- 표 ---- */
+table{width:100%;border-collapse:collapse;font-size:14px}
+th,td{padding:11px 12px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top}
+th{background:var(--soft);font-weight:800;font-size:13px;color:var(--ink)}
+tbody tr:last-child td{border-bottom:none}
+.tbl-scroll{overflow-x:auto;border-radius:var(--r-md);border:1px solid var(--line)}
+.yes{color:var(--green);font-weight:900}
+.no{color:#b9c3d4;font-weight:900}
+
+/* ---- 흐름 다이어그램 ---- */
+.flow{display:grid;gap:10px}
+.flow-row{
+  display:grid;grid-template-columns:44px 1fr;gap:14px;align-items:start;
+  padding:14px 16px;border-radius:var(--r-md);border:1px solid var(--line);
+  background:var(--panel);cursor:pointer;transition:.15s;text-align:left;font:inherit;width:100%;
+}
+.flow-row:hover{background:var(--soft)}
+.flow-row[aria-expanded="true"]{border-color:var(--harbor);background:var(--soft);box-shadow:var(--shadow-sm)}
+.flow-n{
+  display:grid;place-items:center;width:44px;height:44px;border-radius:12px;
+  background:var(--soft);color:var(--harbor);font-weight:900;font-size:15px;
+}
+.flow-row[aria-expanded="true"] .flow-n{background:var(--harbor);color:#fff}
+.flow-t{font-weight:900;font-size:15px}
+.flow-who{font-size:12px;font-weight:800;color:var(--green);margin-top:2px}
+.flow-who.auto{color:var(--harbor)}
+.flow-d{margin-top:10px;font-size:14px;color:var(--muted);display:none}
+.flow-row[aria-expanded="true"] .flow-d{display:block}
+
+/* ---- 공격 시뮬레이터 ---- */
+.sim-picks{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin-bottom:20px}
+.sim-pick{
+  font:inherit;text-align:left;cursor:pointer;padding:14px 16px;border-radius:var(--r-md);
+  border:1px solid var(--line);background:var(--panel);transition:.15s;
+}
+.sim-pick:hover{background:var(--soft)}
+.sim-pick[aria-pressed="true"]{border-color:var(--danger);background:var(--danger-bg)}
+.sim-pick b{display:block;font-size:14px;font-weight:900}
+.sim-pick span{font-size:12px;color:var(--muted)}
+.chain{display:grid;gap:8px}
+.link{
+  display:grid;grid-template-columns:32px 1fr auto;gap:12px;align-items:center;
+  padding:12px 14px;border-radius:var(--r-sm);border:1px solid var(--line);
+  background:var(--panel);transition:.2s;font-size:14px;
+}
+.link .ic{display:grid;place-items:center;width:32px;height:32px;border-radius:9px;background:var(--soft);font-size:15px}
+.link .nm{font-weight:800}
+.link .st{font-size:12px;font-weight:800;color:var(--muted)}
+.link.pass{background:var(--ok-bg);border-color:#a9ddcf}
+.link.pass .ic{background:#c9ece1}
+.link.pass .st{color:var(--green)}
+.link.block{background:var(--danger-bg);border-color:#f0b9b5;box-shadow:0 0 0 3px rgba(179,38,30,.10)}
+.link.block .ic{background:#f6cbc7}
+.link.block .st{color:var(--danger)}
+.link.thin{background:var(--warn-bg);border-color:#f0d2a4}
+.link.thin .ic{background:#f8e3c2}
+.link.thin .st{color:var(--warn)}
+.link.dim{opacity:.42}
+.sim-verdict{
+  margin-top:16px;padding:16px 18px;border-radius:var(--r-md);
+  background:var(--soft);border:1px solid var(--line);font-size:14px;
+}
+.sim-verdict b{font-weight:900}
+
+/* ---- 비교 ---- */
+.vs{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px}
+.vs-box{padding:20px;border-radius:var(--r-md);border:1px solid var(--line);background:var(--panel)}
+.vs-box.before{background:#fbfcff}
+.vs-box.after{background:var(--ok-bg);border-color:#a9ddcf}
+.vs-box h4{font-size:13px;font-weight:900;color:var(--muted);letter-spacing:.03em}
+.vs-box.after h4{color:var(--green)}
+.vs-box .big{font-size:22px;font-weight:900;margin:8px 0 6px;line-height:1.35}
+.vs-box p{font-size:13px;color:var(--muted)}
+
+/* ---- 로드맵 ---- */
+.road{display:grid;gap:8px}
+.road-item{
+  display:grid;grid-template-columns:88px 1fr auto;gap:14px;align-items:center;
+  padding:14px 16px;border-radius:var(--r-md);border:1px solid var(--line);background:var(--panel);
+}
+.road-item.now{border-color:var(--green);background:var(--ok-bg);box-shadow:var(--shadow-sm)}
+.road-m{font-weight:900;font-size:14px;color:var(--harbor)}
+.road-item.now .road-m{color:var(--green)}
+.road-t{font-weight:800;font-size:14px}
+.road-t small{display:block;font-weight:600;font-size:12.5px;color:var(--muted);margin-top:2px}
+.road-b{font-size:12px;font-weight:800;padding:5px 11px;border-radius:999px;background:var(--soft);color:var(--muted);white-space:nowrap}
+.road-item.now .road-b{background:var(--green);color:#fff}
+
+/* ---- 결정 필요 ---- */
+.decide{display:grid;gap:12px}
+.decide-item{
+  padding:18px 20px;border-radius:var(--r-md);border:1px solid #f0d2a4;background:var(--warn-bg);
+}
+.decide-item b{display:block;font-size:15px;font-weight:900;color:var(--warn)}
+.decide-item p{font-size:14px;color:#6b4a1c;margin-top:5px}
+.decide-item .who{font-size:12px;font-weight:800;color:var(--warn);margin-top:8px;display:block}
+
+.note{
+  margin-top:14px;padding:14px 16px;border-radius:var(--r-md);
+  background:var(--soft);border-left:4px solid var(--harbor);font-size:14px;color:var(--muted);
+}
+.note b{color:var(--ink)}
+.foot{margin-top:60px;padding-top:22px;border-top:1px solid var(--line);font-size:13px;color:var(--muted)}
+@media print{
+  .topbar{position:static}.nav{display:none}
+  .panel[hidden]{display:block!important}
+  .flow-d{display:block!important}
+  section{page-break-inside:avoid}
+}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-in">
+    <div>
+      <strong>경기도 바이브코딩 보안 게이트</strong>
+      <span class="sub">웹 포털 + Windows 로컬 보안 에이전트 · 설계 설명서</span>
+    </div>
+    <nav class="nav">
+      <a href="#s1">무엇을</a>
+      <a href="#s2">누가</a>
+      <a href="#s3">3단계</a>
+      <a href="#s4">코드 보호</a>
+      <a href="#s5">배포 경로</a>
+      <a href="#s6">안전한 이유</a>
+      <a href="#s7">보안팀</a>
+      <a href="#s8">로드맵</a>
+    </nav>
+  </div>
+</div>
+
+<div class="wrap">
+
+  <div class="hero">
+    <span class="eyebrow">2026-08-10 설계 확정본</span>
+    <h1>공무원이 AI로 만든 코드를<br>안전하게 점검하는 도구</h1>
+    <p class="lead">
+      검사는 <b>사용자 PC 안에서만</b> 돌고, 경기도 서버는 안내와 배포·통계만 맡습니다.
+      코드는 어디로도 올라가지 않습니다.
+    </p>
+    <div class="kpis">
+      <div class="kpi"><b>0건</b><span>서버로 올라가는 소스 코드</span></div>
+      <div class="kpi"><b>설치 없이</b><span>개발 기준·규칙 열람과 체험</span></div>
+      <div class="kpi"><b>분기 1회</b><span>보안팀이 해야 하는 일</span></div>
+    </div>
+  </div>
+
+  <!-- 1 -->
+  <section id="s1">
+    <div class="sec-head">
+      <span class="sec-num">1</span><h2>무엇을 만드나</h2>
+      <p>역할이 완전히 다른 두 개를 만듭니다. 하나로 합치면 안전하지 않거나 쓸 수 없게 됩니다.</p>
+    </div>
+    <div class="grid2">
+      <div class="card">
+        <h3 style="font-size:17px;font-weight:900">① 경기도 내부 서버 웹 포털</h3>
+        <p style="color:var(--muted);font-size:14px;margin-top:6px">브라우저로 들어가는 안내 창구</p>
+        <ul style="margin:12px 0 0;padding-left:18px;color:var(--muted);font-size:14px">
+          <li>개발 기준(하네스) 열람·내려받기</li>
+          <li>체커가 무엇을 검사하는지 규칙 목록</li>
+          <li>설치 파일 배포와 최신 버전 안내</li>
+          <li>관리자 통계와 승인 화면</li>
+        </ul>
+        <div class="note" style="margin-top:14px"><b>절대 하지 않는 것</b> — 코드를 받아서 서버에서 검사하지 않습니다.</div>
+      </div>
+      <div class="card">
+        <h3 style="font-size:17px;font-weight:900">② Windows 로컬 보안 에이전트</h3>
+        <p style="color:var(--muted);font-size:14px;margin-top:6px">사용자 PC에 한 번 설치하는 프로그램</p>
+        <ul style="margin:12px 0 0;padding-left:18px;color:var(--muted);font-size:14px">
+          <li>폴더·압축파일을 실제로 검사</li>
+          <li>보고서를 원하는 폴더에 저장</li>
+          <li>체커·하네스 설치와 업데이트</li>
+          <li>AI 도구에 체커 연결(MCP)</li>
+        </ul>
+        <div class="note" style="margin-top:14px"><b>Python이 없어도 됩니다</b> — 실행 환경이 프로그램 안에 들어 있습니다.</div>
+      </div>
+    </div>
+    <div class="note" style="margin-top:16px">
+      <b>왜 나눴나?</b> 브라우저는 보안 때문에 PC의 폴더를 마음대로 읽거나 프로그램을 실행할 수 없습니다.
+      반대로 서버가 코드를 받아 검사하면 "소스를 밖으로 내보내지 않는다"는 약속이 깨집니다.
+      그래서 <b>안내는 웹이, 검사는 PC가</b> 맡습니다.
+    </div>
+  </section>
+
+  <!-- 2 -->
+  <section id="s2">
+    <div class="sec-head">
+      <span class="sec-num">2</span><h2>누가 무엇을 하나</h2>
+      <p>본인에게 해당하는 것만 보세요.</p>
+    </div>
+    <div class="tabs" role="tablist">
+      <button class="tab" role="tab" aria-selected="true" data-t="r1">👩‍💼 일반 공무원</button>
+      <button class="tab" role="tab" aria-selected="false" data-t="r2">👨‍💻 개발자 (나)</button>
+      <button class="tab" role="tab" aria-selected="false" data-t="r3">🛡️ 정보보안팀</button>
+    </div>
+
+    <div class="panel card" id="r1">
+      <h3 style="font-size:18px;font-weight:900">브라우저를 열고 필요한 것만 하면 됩니다</h3>
+      <div class="flow" style="margin-top:16px">
+        <div class="flow-row" style="cursor:default"><div class="flow-n">1</div><div>
+          <div class="flow-t">개발 기준 받기</div>
+          <div class="flow-who">설치 필요 없음</div>
+          <p style="font-size:14px;color:var(--muted);margin-top:6px">웹에서 압축파일을 받아 프로젝트 폴더에 풀면 끝입니다.</p>
+        </div></div>
+        <div class="flow-row" style="cursor:default"><div class="flow-n">2</div><div>
+          <div class="flow-t">내 코드 점검하기</div>
+          <div class="flow-who">보안 에이전트 1회 설치</div>
+          <p style="font-size:14px;color:var(--muted);margin-top:6px">폴더를 고르고 버튼을 누르면 검사하고 보고서를 만들어 줍니다. 그대로 인쇄하면 결재 문서가 됩니다.</p>
+        </div></div>
+        <div class="flow-row" style="cursor:default"><div class="flow-n">3</div><div>
+          <div class="flow-t">AI 도구에 연결하기</div>
+          <div class="flow-who">AI 도구를 쓰는 경우에만</div>
+          <p style="font-size:14px;color:var(--muted);margin-top:6px">코딩하는 도중에 AI가 자동으로 위험을 알려줍니다. <b>AI 도구가 없으면 이 단계는 건너뛰어도 됩니다.</b></p>
+        </div></div>
+      </div>
+      <div class="note"><b>알아야 할 것</b> — Python·Node.js·Git을 따로 깔 필요가 없고, 터미널을 열 일도 없습니다.</div>
+    </div>
+
+    <div class="panel card" id="r2" hidden>
+      <h3 style="font-size:18px;font-weight:900">개발 방식은 지금과 똑같습니다</h3>
+      <p style="color:var(--muted);font-size:14px;margin-top:8px">
+        인터넷망 PC에서 AI 도구를 쓰며 GitHub에 계속 push합니다. <b>달라지는 건 "배포"뿐입니다.</b>
+      </p>
+      <div class="tbl-scroll" style="margin-top:16px"><table>
+        <thead><tr><th>구간</th><th>어디서</th><th>AI 도구</th><th>하는 일</th></tr></thead>
+        <tbody>
+          <tr><td><b>개발</b></td><td>인터넷망 개발 PC</td><td class="yes">자유롭게 사용</td><td>코딩·테스트·GitHub push</td></tr>
+          <tr><td><b>릴리스</b></td><td>CI + 개발 PC</td><td>사용 안 함</td><td><code>gg-release 1.2.0</code> 명령 1회</td></tr>
+          <tr><td><b>운영</b></td><td>행정망 내부 서버</td><td>무관</td><td>승인·배포 (개발자 관여 없음)</td></tr>
+        </tbody>
+      </table></div>
+      <div class="note"><b>새로 늘어나는 일</b> — 명령 하나 실행, 자동 생성된 변경 요약 한 줄 확인, 하드웨어 키 터치. 이게 전부입니다.</div>
+      <div class="note" style="border-left-color:var(--danger)"><b>지켜야 할 원칙</b> — 행정망에서는 코드를 고치지 않습니다. 급한 수정도 인터넷망에서 하고 긴급 채널로 보냅니다. 안 그러면 소스가 두 갈래로 갈라집니다.</div>
+    </div>
+
+    <div class="panel card" id="r3" hidden>
+      <h3 style="font-size:18px;font-weight:900">개별 릴리스가 아니라 <u>규칙</u>을 승인합니다</h3>
+      <p style="color:var(--muted);font-size:14px;margin-top:8px">
+        매번 눌러야 하는 승인 버튼은 결국 읽지 않고 눌립니다. 그래서 부담을 줄이는 것이 곧 통제를 지키는 방법입니다.
+      </p>
+      <div class="tbl-scroll" style="margin-top:16px"><table>
+        <thead><tr><th>하는 일</th><th>빈도</th><th>내용</th></tr></thead>
+        <tbody>
+          <tr><td><b>정책 승인</b></td><td><b>분기 1회</b></td><td>"어떤 조건이면 자동 승인해도 되는가"를 정하고 서명</td></tr>
+          <tr><td>이상 알림 대응</td><td>연 몇 회</td><td>의존성 추가·취약점 발견·자동 회수 발생 시에만</td></tr>
+          <tr><td>사후 감사</td><td>분기 1회</td><td>자동 승인 이력이 정책대로 적용됐는지 열람</td></tr>
+          <tr><td>사고 대응</td><td>발생 시</td><td>번들 회수(revoke)</td></tr>
+        </tbody>
+      </table></div>
+      <div class="note"><b>평소에는 알림이 오지 않습니다.</b> "승인해 주세요"를 반복하지 않고, 이상 신호가 있을 때만 연락합니다.</div>
+    </div>
+  </section>
+
+  <!-- 3 -->
+  <section id="s3">
+    <div class="sec-head">
+      <span class="sec-num">3</span><h2>설치하지 않아도 쓸 수 있습니다</h2>
+      <p>설치를 첫 관문으로 두면 대부분 거기서 멈춥니다. 아래 단계는 위 단계 없이 독립적으로 쓸 수 있습니다.</p>
+    </div>
+
+    <div class="tier t0">
+      <div class="tier-badge">T0</div>
+      <div>
+        <h3>설치 없음 · 브라우저만</h3>
+        <div class="need">필요한 것: 없음</div>
+        <ul>
+          <li><b>개발 기준(하네스) 받기</b> — 그냥 파일이라 압축만 풀면 적용됩니다</li>
+          <li>체커가 무엇을 검사하는지 규칙 목록 보기</li>
+          <li>샘플 보고서로 결과물 미리 확인</li>
+          <li><b>맛보기 점검</b> — 브라우저 안에서만 돌고 코드가 전송되지 않습니다</li>
+        </ul>
+        <div class="note" style="margin-top:12px">제출용 보고서는 발급되지 않습니다. 참고용입니다.</div>
+      </div>
+    </div>
+
+    <div class="tier t1">
+      <div class="tier-badge">T1</div>
+      <div>
+        <h3>보안 에이전트 설치</h3>
+        <div class="need">필요한 것: 설치 파일 1회 실행 (40MB부터)</div>
+        <ul>
+          <li>폴더·압축파일 정식 점검</li>
+          <li>HTML·JSON·Markdown 보고서 발급 → <b>제출 판단에 사용 가능</b></li>
+          <li>체커·하네스 설치와 업데이트</li>
+          <li>터미널을 쓰는 사람을 위한 명령어 모드도 함께 제공</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="tier t2">
+      <div class="tier-badge">T2</div>
+      <div>
+        <h3>AI 도구 연동 <span style="font-size:13px;color:var(--muted);font-weight:700">(선택)</span></h3>
+        <div class="need">필요한 것: Codex · Claude Code · Claude Desktop 중 사용 중인 것</div>
+        <ul>
+          <li>코딩하는 도중에 AI가 체커를 자동 호출</li>
+          <li><b>AI 도구가 없으면 이 단계는 아예 필요 없습니다.</b> T0·T1만으로 서비스가 완결됩니다</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="tbl-scroll" style="margin-top:20px"><table>
+      <thead><tr><th>할 수 있는 일</th><th style="text-align:center">아무것도 없음</th><th style="text-align:center">에이전트만</th><th style="text-align:center">에이전트+AI도구</th></tr></thead>
+      <tbody>
+        <tr><td>개발 기준 받아서 적용</td><td style="text-align:center" class="yes">●</td><td style="text-align:center" class="yes">●</td><td style="text-align:center" class="yes">●</td></tr>
+        <tr><td>규칙·샘플 보고서 열람</td><td style="text-align:center" class="yes">●</td><td style="text-align:center" class="yes">●</td><td style="text-align:center" class="yes">●</td></tr>
+        <tr><td>맛보기 점검</td><td style="text-align:center" class="yes">●</td><td style="text-align:center" class="yes">●</td><td style="text-align:center" class="yes">●</td></tr>
+        <tr><td><b>정식 점검 + 제출용 보고서</b></td><td style="text-align:center" class="no">○</td><td style="text-align:center" class="yes">●</td><td style="text-align:center" class="yes">●</td></tr>
+        <tr><td>코딩 중 AI 자동 점검</td><td style="text-align:center" class="no">○</td><td style="text-align:center" class="no">○</td><td style="text-align:center" class="yes">●</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <!-- 4 -->
+  <section id="s4">
+    <div class="sec-head">
+      <span class="sec-num">4</span><h2>코드는 PC를 떠나지 않습니다</h2>
+      <p>서비스의 존재 이유입니다. 이 약속이 깨지면 공공기관 도입 명분이 사라집니다.</p>
+    </div>
+    <div class="tbl-scroll"><table>
+      <thead><tr><th>데이터</th><th>사용자 PC</th><th>경기도 서버</th></tr></thead>
+      <tbody>
+        <tr><td>원본 소스·압축파일</td><td>검사 중 임시 보관 후 삭제</td><td><b style="color:var(--danger)">전송·저장 금지</b></td></tr>
+        <tr><td>보고서 본문</td><td>사용자가 고른 폴더에 저장</td><td><b style="color:var(--danger)">전송·저장 금지</b></td></tr>
+        <tr><td>전체 파일 경로</td><td>화면에만 표시</td><td><b style="color:var(--danger)">전송·저장 금지</b></td></tr>
+        <tr><td>검사 결과 요약(건수·규칙 ID)</td><td>로컬 이력</td><td>동의한 경우에만 익명으로</td></tr>
+        <tr><td>담당자·부서명</td><td>수집 안 함</td><td>수집 안 함</td></tr>
+      </tbody>
+    </table></div>
+    <div class="grid2" style="margin-top:16px">
+      <div class="note" style="margin-top:0"><b>맛보기 점검은 어떻게 안전한가?</b><br>
+        그 페이지는 브라우저가 <b>네트워크 전송 자체를 차단</b>하도록 설정해 제공합니다.
+        "우리를 믿어 달라"가 아니라 <b>기술적으로 보낼 수 없는 상태</b>입니다.</div>
+      <div class="note" style="margin-top:0;border-left-color:var(--warn)"><b>솔직히 밝히는 예외</b><br>
+        인터넷망에서 취약점 정보를 조회할 때는 <b>패키지 이름과 버전</b>이 외부로 나갑니다.
+        행정망에서는 이 조회 자체가 없습니다. 화면에도 안내합니다.</div>
+    </div>
+  </section>
+
+  <!-- 5 -->
+  <section id="s5">
+    <div class="sec-head">
+      <span class="sec-num">5</span><h2>새 버전이 사용자에게 도달하는 길</h2>
+      <p>단계를 눌러 자세히 보세요. <b>GitHub에 올린 코드가 곧바로 사용자 PC로 가지 않습니다.</b></p>
+    </div>
+    <div class="flow" id="flow">
+      <button class="flow-row" aria-expanded="false"><div class="flow-n">0</div><div>
+        <div class="flow-t">평소 개발</div><div class="flow-who">개발자 · 인터넷망</div>
+        <div class="flow-d">GitHub <code>main</code>에 계속 push합니다. <b>아무 일도 일어나지 않습니다.</b> 사용자에게 가지 않고 보안팀도 관여하지 않습니다. 지금과 완전히 동일합니다.</div>
+      </div></button>
+      <button class="flow-row" aria-expanded="false"><div class="flow-n">1</div><div>
+        <div class="flow-t">릴리스 — 명령 하나</div><div class="flow-who">개발자 · 약 15분</div>
+        <div class="flow-d">
+          <code>gg-release 1.2.0</code> 하나로 태그 push → 자동 검증(테스트·게이트·체커 자기검사·적대적 검증) → 빌드 → <b>변경 요약·영향 범위·의존성 변경 자동 작성</b> → 서명 → 제출까지 진행됩니다.<br><br>
+          사람이 하는 일은 <b>자동 작성된 요약 한 줄 확인</b>과 <b>하드웨어 키 터치</b> 두 가지뿐입니다.
+          검증이 하나라도 실패하면 여기서 멈추고 산출물이 만들어지지 않습니다.
+        </div>
+      </div></button>
+      <button class="flow-row" aria-expanded="false"><div class="flow-n">2</div><div>
+        <div class="flow-t">망연계 반입</div><div class="flow-who auto">자동 · 검역 통과</div>
+        <div class="flow-d">경기도는 논리적 망분리라 망연계 서버로 파일을 들여올 수 있습니다.
+        <b>"릴리스 파일"을 반복 반입 건으로 최초 1회만 등록</b>해 두면, 이후에는 개별 신청 없이 검역만 통과합니다.
+        매번 신청·승인을 받으면 통제 지점이 둘로 갈라져 양쪽 다 형식화됩니다.</div>
+      </div></button>
+      <button class="flow-row" aria-expanded="false"><div class="flow-n">3</div><div>
+        <div class="flow-t">내부 서버 자동 검증</div><div class="flow-who auto">자동 · 즉시</div>
+        <div class="flow-d"><b>망연계를 통과했다는 사실을 신뢰하지 않습니다.</b> 검역은 악성코드를 거를 뿐 출처를 증명하지 않기 때문입니다.
+        서명·해시를 다시 검증하고, 통과하면 <b>대기 상태</b>로 등록됩니다. 이 시점에도 아직 배포되지 않습니다.</div>
+      </div></button>
+      <button class="flow-row" aria-expanded="false"><div class="flow-n">4</div><div>
+        <div class="flow-t">승인</div><div class="flow-who">정책 자동 또는 사람 · 5분</div>
+        <div class="flow-d">미리 정한 정책에 맞으면 <b>자동 승인</b>되고, 벗어나면 사람이 확인합니다.
+        승인하는 순간 <b>경기도 배포 키로 서명</b>되어 비로소 배포 대상이 됩니다.
+        누가·언제·무엇을 승인했는지 기록이 남습니다.</div>
+      </div></button>
+      <button class="flow-row" aria-expanded="false"><div class="flow-n">5</div><div>
+        <div class="flow-t">배포 · 관측</div><div class="flow-who auto">자동</div>
+        <div class="flow-d">사용자 에이전트가 감지하고 <b>사용자 승인을 받아</b> 교체합니다. 실패하면 이전 버전으로 자동 복구합니다.<br><br>
+        자동 승인된 것은 <b>먼저 일부 PC에만 배포</b>하고, 문제가 없을 때 전체로 넓힙니다. 실패율이 높으면 <b>사람 없이 자동 회수</b>됩니다.</div>
+      </div></button>
+    </div>
+    <div class="note"><b>핵심</b> — GitHub과 사용자 PC 사이에 <b>서명 검증이 두 번, 승인이 두 번</b> 있습니다. 서버가 GitHub을 직접 바라보고 최신을 당겨오는 구조가 아닙니다.</div>
+  </section>
+
+  <!-- 6 -->
+  <section id="s6">
+    <div class="sec-head">
+      <span class="sec-num">6</span><h2>왜 안전한가 — 직접 공격해 보세요</h2>
+      <p>공격 상황을 골라 보세요. 어디서 막히는지 보여줍니다. 막지 못하는 구간도 솔직히 표시합니다.</p>
+    </div>
+    <div class="card">
+      <div class="sim-picks" id="simPicks">
+        <button class="sim-pick" aria-pressed="true" data-s="0"><b>정상 릴리스</b><span>아무 문제 없는 경우</span></button>
+        <button class="sim-pick" aria-pressed="false" data-s="1"><b>GitHub 계정 탈취</b><span>공격자가 악성 코드를 push</span></button>
+        <button class="sim-pick" aria-pressed="false" data-s="2"><b>CI 침해</b><span>빌드 산출물이 바꿔치기됨</span></button>
+        <button class="sim-pick" aria-pressed="false" data-s="3"><b>망연계 구간 변조</b><span>전달 중 파일이 바뀜</span></button>
+        <button class="sim-pick" aria-pressed="false" data-s="4"><b>개발자 키 탈취</b><span>서명까지 위조 가능</span></button>
+        <button class="sim-pick" aria-pressed="false" data-s="5"><b>취약한 옛 버전 강제</b><span>고쳐진 취약점을 되살림</span></button>
+      </div>
+      <div class="chain" id="chain"></div>
+      <div class="sim-verdict" id="verdict"></div>
+    </div>
+    <div class="grid3" style="margin-top:16px">
+      <div class="card" style="padding:18px">
+        <h4 style="font-size:14px;font-weight:900">🔑 개발자 릴리스 키</h4>
+        <p style="font-size:13px;color:var(--muted);margin-top:6px">개발 PC의 하드웨어 키. <b>"내가 만든 게 맞다"</b>를 증명합니다. 사용자 PC는 이 키를 신뢰하지 않습니다.</p>
+      </div>
+      <div class="card" style="padding:18px;border-color:var(--green);background:var(--ok-bg)">
+        <h4 style="font-size:14px;font-weight:900;color:var(--green)">🏛️ 경기도 배포 키</h4>
+        <p style="font-size:13px;color:#2c5a51;margin-top:6px"><b>행정망 안에만</b> 존재합니다. <b>"경기도가 배포를 허가했다"</b>는 뜻이고, <b>사용자 PC가 신뢰하는 유일한 키</b>입니다.</p>
+      </div>
+      <div class="card" style="padding:18px">
+        <h4 style="font-size:14px;font-weight:900">🚫 CI에는 키가 없습니다</h4>
+        <p style="font-size:13px;color:var(--muted);margin-top:6px">빌드 서버가 뚫려도 서명을 만들 수 없습니다. 키를 CI에 두면 나머지 방어가 전부 무의미해집니다.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 7 -->
+  <section id="s7">
+    <div class="sec-head">
+      <span class="sec-num">7</span><h2>보안팀 부담을 이렇게 줄였습니다</h2>
+      <p>부담이 큰 절차는 반드시 형식화됩니다. 줄이는 것이 곧 통제를 지키는 방법입니다.</p>
+    </div>
+    <div class="vs">
+      <div class="vs-box before">
+        <h4>그냥 만들었다면</h4>
+        <div class="big">릴리스마다 승인<br><span style="color:var(--danger)">월 4~8회</span></div>
+        <p>망연계 신청 승인 + 배포 승인 이중. 결국 읽지 않고 누르게 됩니다.</p>
+      </div>
+      <div class="vs-box after">
+        <h4>이번 설계</h4>
+        <div class="big">정책만 승인<br><span style="color:var(--green)">분기 1회</span></div>
+        <p>규칙을 한 번 정하면 그 안의 릴리스는 자동 처리됩니다. 벗어난 것만 올라옵니다.</p>
+      </div>
+    </div>
+
+    <h3 style="font-size:17px;font-weight:900;margin-top:26px">무엇을 자동으로 하고, 무엇을 사람이 보나</h3>
+    <p style="color:var(--muted);font-size:14px;margin-top:6px">기준은 "어떤 컴포넌트냐"가 아니라 <b>"변경의 방향"</b>입니다.</p>
+    <div class="grid2" style="margin-top:14px">
+      <div class="card" style="background:var(--ok-bg);border-color:#a9ddcf">
+        <h4 style="font-size:15px;font-weight:900;color:var(--green)">✅ 자동 승인 — 검사를 <u>강화</u>하는 변경</h4>
+        <p style="font-size:13.5px;color:#2c5a51;margin-top:8px">잘못되어도 <b>오탐이 늘 뿐</b>입니다. 불편하지만 안전합니다.</p>
+        <ul style="margin:10px 0 0;padding-left:18px;font-size:14px;color:#2c5a51">
+          <li>취약점 정보 갱신</li>
+          <li>규칙 <b>추가만</b> 있는 경우</li>
+          <li>체커 자잘한 수정 + 새 패키지 0건</li>
+        </ul>
+      </div>
+      <div class="card" style="background:var(--warn-bg);border-color:#f0d2a4">
+        <h4 style="font-size:15px;font-weight:900;color:var(--warn)">👤 사람 승인 — 검사를 <u>완화</u>하는 변경</h4>
+        <p style="font-size:13.5px;color:#6b4a1c;margin-top:8px">잘못되면 <b>위험이 그대로 통과</b>합니다.</p>
+        <ul style="margin:10px 0 0;padding-left:18px;font-size:14px;color:#6b4a1c">
+          <li>규칙 삭제·심각도 하향·예외 추가</li>
+          <li>새 패키지가 추가된 경우</li>
+          <li>개발 기준(하네스) 변경</li>
+          <li>에이전트 본체 새 버전</li>
+        </ul>
+      </div>
+    </div>
+
+    <h3 style="font-size:17px;font-weight:900;margin-top:26px">자동 승인이 위험하지 않은 이유</h3>
+    <div class="grid3" style="margin-top:12px">
+      <div class="card" style="padding:18px"><h4 style="font-size:14px;font-weight:900">🐤 일부에만 먼저</h4>
+        <p style="font-size:13px;color:var(--muted);margin-top:6px">자동 승인된 것은 소수 PC에 먼저 배포하고, 문제가 없을 때 전체로 넓힙니다.</p></div>
+      <div class="card" style="padding:18px"><h4 style="font-size:14px;font-weight:900">⏪ 자동 회수</h4>
+        <p style="font-size:13px;color:var(--muted);margin-top:6px">실패율이 높으면 사람을 기다리지 않고 즉시 되돌립니다.</p></div>
+      <div class="card" style="padding:18px"><h4 style="font-size:14px;font-weight:900">🔍 사후 감사</h4>
+        <p style="font-size:13px;color:var(--muted);margin-top:6px">자동 승인 건도 어떤 정책으로 통과했는지 기록이 남아 분기마다 확인할 수 있습니다.</p></div>
+    </div>
+    <div class="note" style="border-left-color:var(--danger)">
+      <b>양보하지 않은 것</b> — 개발자가 자기 릴리스를 스스로 승인하는 경로는 어떤 경우에도 만들지 않습니다. 한 번 열린 우회로는 상시 사용됩니다.
+    </div>
+  </section>
+
+  <!-- 8 -->
+  <section id="s8">
+    <div class="sec-head">
+      <span class="sec-num">8</span><h2>언제 무엇을 만드나</h2>
+      <p>맨 위 단계는 <b>아무것도 정해지지 않아도 지금 시작할 수 있습니다.</b></p>
+    </div>
+    <div class="road">
+      <div class="road-item now"><div class="road-m">M0.5</div>
+        <div class="road-t">웹 계층 (설치 없이 쓰는 부분)<small>하네스 열람·내려받기, 규칙 목록, 맛보기 점검</small></div>
+        <div class="road-b">지금 착수 가능</div></div>
+      <div class="road-item"><div class="road-m">M0</div>
+        <div class="road-t">3가지 전제 확정<small>망연계 반입 규격 · 코드서명 인증서 · 관리자 인증</small></div>
+        <div class="road-b">협의</div></div>
+      <div class="road-item"><div class="road-m">M1</div>
+        <div class="road-t">에이전트 핵심 기능<small>폴더·압축파일 점검, 보고서 저장, 진행률</small></div>
+        <div class="road-b">전제 불필요</div></div>
+      <div class="road-item"><div class="road-m">M2</div>
+        <div class="road-t">신뢰 체인<small>서명 검증, 옛 버전 차단, 자동 복구</small></div>
+        <div class="road-b">코드서명 필요</div></div>
+      <div class="road-item"><div class="road-m">M3</div>
+        <div class="road-t">설치 패키지 3종<small>경량 · 전체포함 · 무설치</small></div>
+        <div class="road-b">M2 이후</div></div>
+      <div class="road-item"><div class="road-m">M4</div>
+        <div class="road-t">중앙 포털<small>번들 관리, 통계, 관리자 화면</small></div>
+        <div class="road-b">인증 연계 필요</div></div>
+      <div class="road-item"><div class="road-m">M5~7</div>
+        <div class="road-t">망연계 자동화 · MCP 등록 · 운영 절차<small></small></div>
+        <div class="road-b">이후</div></div>
+    </div>
+    <div class="note"><b>M2를 건너뛰고 M3로 가지 않습니다.</b> 서명 검증 없는 자동 업데이트는 모든 사용자 PC를 하나의 공격 표면으로 만듭니다.</div>
+  </section>
+
+  <!-- 9 -->
+  <section id="s9">
+    <div class="sec-head">
+      <span class="sec-num">9</span><h2>지금 정해야 할 3가지</h2>
+      <p>설계 선택이 아니라 <b>전제</b>입니다. 정해지기 전에 해당 단계를 시작하면 다시 만들게 됩니다.</p>
+    </div>
+    <div class="decide">
+      <div class="decide-item">
+        <b>① 망연계 반입 규격</b>
+        <p>어떤 파일 형식·크기까지 들어올 수 있는지, 반복 반입으로 등록할 수 있는지. 압축파일이나 실행파일이 검역에서 막히면 형식을 협의해야 합니다.</p>
+        <span class="who">확인처 — 정보보안담당관 · 망연계 운영부서</span>
+      </div>
+      <div class="decide-item">
+        <b>② Windows 코드서명 인증서</b>
+        <p><b>GPKI 기관 인증서로는 프로그램 서명이 되지 않습니다</b>(용도가 다릅니다). 상용 인증서를 따로 확보해야 하며, 없으면 설치할 때 경고창이 뜹니다.</p>
+        <span class="who">확인처 — 정보보안담당관 · 계약부서</span>
+      </div>
+      <div class="decide-item">
+        <b>③ 관리자 인증 연계</b>
+        <p>행정망은 인증을 직접 구현하는 것이 금지되어 있습니다. 기관 SSO나 Keycloak 같은 기존 인증에 연결해야 합니다.</p>
+        <span class="who">확인처 — 정보보안담당관 · AI국</span>
+      </div>
+    </div>
+  </section>
+
+  <div class="foot">
+    경기도 바이브코딩 보안 게이트 설계 설명서 · 2026-08-10<br>
+    상세 기술 설계는 <code>docs/18_gg_portal_agent_target_architecture.md</code>, 화면 시안은 <code>design/html-prototype-v2/</code> 를 참고하세요.
+  </div>
+</div>
+
+<script>
+// 역할 탭
+document.querySelectorAll('.tab').forEach(function(btn){
+  btn.addEventListener('click', function(){
+    document.querySelectorAll('.tab').forEach(function(b){ b.setAttribute('aria-selected','false'); });
+    btn.setAttribute('aria-selected','true');
+    ['r1','r2','r3'].forEach(function(id){ document.getElementById(id).hidden = (id !== btn.dataset.t); });
+  });
+});
+
+// 릴리스 흐름 아코디언
+document.querySelectorAll('#flow .flow-row').forEach(function(row){
+  row.addEventListener('click', function(){
+    var open = row.getAttribute('aria-expanded') === 'true';
+    document.querySelectorAll('#flow .flow-row').forEach(function(r){ r.setAttribute('aria-expanded','false'); });
+    row.setAttribute('aria-expanded', open ? 'false' : 'true');
+  });
+});
+
+// 공격 시뮬레이터
+var STAGES = [
+  {ic:'📦', nm:'GitHub 저장소'},
+  {ic:'⚙️', nm:'자동 검증·빌드 (CI)'},
+  {ic:'🔑', nm:'개발자 서명'},
+  {ic:'🚧', nm:'망연계 검역'},
+  {ic:'🔍', nm:'내부 서버 서명 재검증'},
+  {ic:'👤', nm:'승인 (정책 또는 사람)'},
+  {ic:'🏛️', nm:'경기도 배포 키로 서명'},
+  {ic:'💻', nm:'사용자 PC 최종 검증'}
+];
+var SCEN = [
+  { // 0 정상
+    st:['pass','pass','pass','pass','pass','pass','pass','pass'],
+    v:'<b>정상 배포됩니다.</b> 모든 관문을 통과했고, 사용자 PC에서 마지막으로 한 번 더 서명과 해시를 확인한 뒤 설치됩니다.'
+  },
+  { // 1 GitHub 탈취
+    st:['pass','thin','block','dim','dim','dim','dim','dim'],
+    v:'<b>개발자 서명 단계에서 막힙니다.</b> 공격자는 저장소에 코드를 넣을 수 있어도 개발 PC의 하드웨어 키가 없어 유효한 릴리스를 만들 수 없습니다.<br><span style="color:var(--warn)">주황 구간</span> — 자동 검증은 교묘한 악성 코드를 놓칠 수 있어 완전한 방어로 치지 않습니다.'
+  },
+  { // 2 CI 침해
+    st:['pass','block','dim','dim','dim','dim','dim','dim'],
+    v:'<b>빌드 서버가 뚫려도 배포되지 않습니다.</b> <b>CI에는 어떤 서명 키도 없기 때문</b>입니다. 개발자가 서명할 때 산출물 해시를 대조하므로 바꿔치기된 파일은 서명 대상이 되지 못합니다.'
+  },
+  { // 3 망연계 변조
+    st:['pass','pass','pass','pass','block','dim','dim','dim'],
+    v:'<b>내부 서버의 서명 재검증에서 막힙니다.</b> 검역을 통과했다는 사실을 신뢰하지 않고 서명과 해시를 다시 확인하기 때문입니다. 검역은 악성코드를 거를 뿐 출처를 증명하지 않습니다.'
+  },
+  { // 4 개발자 키 탈취
+    st:['pass','pass','pass','pass','pass','thin','thin','thin'],
+    v:'<b>가장 위험한 시나리오이고, 솔직히 말해 완전히 막지는 못합니다.</b><br>다만 ① 새 패키지가 추가되거나 규칙을 완화하면 <b>사람 승인으로 올라가 차단</b>되고, ② 자동 승인을 통과해도 <b>일부 PC에만 먼저 배포</b>되며, ③ 이상이 감지되면 <b>사람 없이 자동 회수</b>됩니다.<br>그래서 개발자 키는 반드시 하드웨어 토큰에 두고, 이 경로를 감시 대상으로 삼습니다.'
+  },
+  { // 5 다운그레이드
+    st:['pass','pass','pass','pass','pass','pass','pass','block'],
+    v:'<b>사용자 PC에서 막힙니다.</b> 에이전트는 "이 버전 아래로는 절대 설치하지 않는다"는 <b>하한선</b>을 기억합니다. 보안 패치가 나오면 이 선이 올라가고, 그 아래 버전은 되돌리기조차 거부됩니다.'
+  }
+];
+function renderSim(idx){
+  var s = SCEN[idx];
+  var html = STAGES.map(function(st, i){
+    var cls = s.st[i];
+    var label = cls==='pass' ? '통과' : cls==='block' ? '✕ 여기서 차단' : cls==='thin' ? '△ 방어 약함' : '도달 못함';
+    return '<div class="link '+cls+'"><div class="ic">'+st.ic+'</div><div class="nm">'+st.nm+'</div><div class="st">'+label+'</div></div>';
+  }).join('');
+  document.getElementById('chain').innerHTML = html;
+  document.getElementById('verdict').innerHTML = s.v;
+}
+document.querySelectorAll('#simPicks .sim-pick').forEach(function(btn){
+  btn.addEventListener('click', function(){
+    document.querySelectorAll('#simPicks .sim-pick').forEach(function(b){ b.setAttribute('aria-pressed','false'); });
+    btn.setAttribute('aria-pressed','true');
+    renderSim(Number(btn.dataset.s));
+  });
+});
+renderSim(0);
+</script>
+</body>
+</html>

@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>공공 바이브코딩 보안 게이트 — 첫 화면</title>
+<link rel="stylesheet" href="./shared.css">
+<style>
+  .hero{
+    display:grid;grid-template-columns:minmax(0,1.25fr) minmax(260px,.75fr);gap:20px;
+    background:linear-gradient(135deg,#ffffff 0%,#eef4ff 100%);
+    border:1px solid var(--line);border-radius:var(--radius-xl);padding:32px;box-shadow:var(--shadow);
+  }
+  @media(max-width:860px){.hero{grid-template-columns:minmax(0,1fr)}}
+  .hero h1{font-size:clamp(24px,3.4vw,34px);font-weight:900}
+  .hero .lead{font-size:16px;color:var(--muted);margin-top:10px;max-width:52ch}
+  .hero-art{
+    border-radius:var(--radius-lg);overflow:hidden;background:var(--panel);
+    border:1px solid var(--line);display:grid;place-items:center;padding:14px;
+  }
+  .hero-art img{width:100%;height:100%;max-height:210px;object-fit:contain}
+  .quick{display:flex;gap:10px;flex-wrap:wrap;margin-top:20px}
+  .agent-strip{
+    display:grid;grid-template-columns:auto 1fr auto;gap:16px;align-items:center;
+    padding:16px 20px;border-radius:var(--radius-lg);background:var(--panel);
+    border:1px solid var(--line);box-shadow:var(--shadow-sm);
+  }
+  @media(max-width:720px){.agent-strip{grid-template-columns:minmax(0,1fr);text-align:left}}
+  .agent-dot{width:12px;height:12px;border-radius:50%;background:#c7d5e8}
+  .agent-dot.on{background:var(--green);box-shadow:0 0 0 4px var(--ok-bg)}
+</style>
+</head>
+<body>
+<div class="screen">
+
+  <header class="topbar">
+    <a class="brand-home" href="./index.html">
+      <span class="gg-mark"><img src="../html-prototype/assets/images/gyeonggi-signature-ko.jpg" alt="경기도 로고"></span>
+      <span>
+        <strong>공공 바이브코딩 보안 게이트</strong>
+        <span>AI로 만든 개발 소스의 보안 위험을 확인합니다.</span>
+      </span>
+    </a>
+    <div class="state">
+      <span class="pill ok">✔ 검사는 내 PC에서만</span>
+      <a class="pill" href="./harness.html">개발 기준</a>
+      <a class="pill" href="#">도움말</a>
+      <a class="pill" href="./admin-approval.html">관리자</a>
+    </div>
+  </header>
+
+  <section class="hero">
+    <div>
+      <h1>오늘 할 일을 선택하세요.</h1>
+      <p class="lead">
+        아래 1번은 <b>설치 없이 지금 바로</b> 할 수 있습니다.
+        코드는 어떤 경우에도 서버로 올라가지 않습니다.
+      </p>
+      <div class="quick">
+        <a class="button" href="./harness.html">개발 기준 받기</a>
+        <a class="ghost-button" href="./precheck.html">맛보기 점검 해보기</a>
+      </div>
+    </div>
+    <div class="hero-art">
+      <img src="../html-prototype/assets/images/gg-hero-symbol-security.png" alt="공공 보안 점검 상징 이미지">
+    </div>
+  </section>
+
+  <section class="tier-grid">
+
+    <article class="tier-card t0">
+      <div class="tier-head">
+        <div>
+          <div class="tier-step">STEP 1</div>
+          <h2>개발 기준 받기</h2>
+        </div>
+        <span class="badge free">설치 필요 없음</span>
+      </div>
+      <p class="lead">경기도가 정한 개발 기준과 체커 규칙을 웹에서 바로 보고 받아갑니다.</p>
+      <ul class="tier-list">
+        <li>개발 기준 파일 열람 · 압축파일 내려받기</li>
+        <li>체커가 무엇을 검사하는지 규칙 목록</li>
+        <li>샘플 보고서로 결과물 미리 보기</li>
+        <li>맛보기 점검 — 브라우저 안에서만 실행</li>
+      </ul>
+      <div class="tier-actions">
+        <a class="button" href="./harness.html">기준 보러 가기</a>
+        <a class="ghost-button" href="./precheck.html">맛보기 점검</a>
+      </div>
+    </article>
+
+    <article class="tier-card t1">
+      <div class="tier-head">
+        <div>
+          <div class="tier-step">STEP 2</div>
+          <h2>내 코드 점검하기</h2>
+        </div>
+        <span class="badge install">1회 설치</span>
+      </div>
+      <p class="lead">보안 에이전트를 한 번 설치하면 폴더·압축파일을 정식으로 검사하고 보고서를 만듭니다.</p>
+      <ul class="tier-list">
+        <li>폴더 · 압축파일 정식 점검</li>
+        <li>HTML · JSON · Markdown 보고서 발급</li>
+        <li><b>제출·결재에 사용할 수 있는 결과</b></li>
+        <li>Python을 따로 설치할 필요 없음</li>
+      </ul>
+      <div class="tier-actions">
+        <a class="button" href="#">보안 에이전트 설치 (42MB)</a>
+        <a class="ghost-button sm" href="#">전체 포함본 · 무설치본</a>
+      </div>
+    </article>
+
+    <article class="tier-card t2 muted">
+      <div class="tier-head">
+        <div>
+          <div class="tier-step">STEP 3</div>
+          <h2>AI 도구에 연결하기</h2>
+        </div>
+        <span class="badge opt">선택 사항</span>
+      </div>
+      <p class="lead">코딩하는 도중에 AI가 위험을 바로 알려줍니다.</p>
+      <ul class="tier-list">
+        <li>Codex · Claude Code · Claude Desktop 지원</li>
+        <li>설정 파일은 변경 전 자동 백업 · 되돌리기 가능</li>
+      </ul>
+      <div class="notice" style="font-size:13.5px">
+        <b>이 PC에서 AI 도구를 찾지 못했습니다.</b><br>
+        이 기능은 위 도구를 쓰는 경우에만 필요합니다. 없어도 1·2번은 모두 사용할 수 있습니다.
+      </div>
+      <div class="tier-actions">
+        <button class="button" disabled>연결하기</button>
+      </div>
+    </article>
+
+  </section>
+
+  <section class="agent-strip">
+    <span class="agent-dot" aria-hidden="true"></span>
+    <div>
+      <b style="font-size:15px">보안 에이전트가 아직 설치되지 않았습니다.</b>
+      <div style="font-size:13.5px;color:var(--muted);margin-top:2px">
+        설치 파일을 받아 실행하면 설치가 끝난 뒤 점검 화면이 자동으로 열립니다.
+      </div>
+    </div>
+    <a class="button lime" href="#">설치 파일 받기</a>
+  </section>
+
+  <div class="g2">
+    <div class="notice ok">
+      <b>코드는 이 PC를 떠나지 않습니다.</b><br>
+      원본 소스, 압축파일, 보고서 본문, 전체 경로는 경기도 서버로 전송되지 않습니다.
+      동의한 경우에만 검사 건수 같은 익명 요약이 통계로 수집됩니다.
+    </div>
+    <div class="notice">
+      <b>현재 적용 중인 기준</b><br>
+      체커 <code>1.2.0</code> · 규칙 <code>2026-08-05</code> · 위협정보 <code>2026-08-09</code> 갱신 ·
+      개발 기준 <code>v3</code> — 모두 경기도 승인본입니다.
+    </div>
+  </div>
+
+  <p class="footnote">화면 시안 v2 · 경기도 바이브코딩 보안 게이트</p>
+</div>
+</body>
+</html>

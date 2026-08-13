@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>개발 기준 열람 · 내려받기 — 설치 없이</title>
+<link rel="stylesheet" href="./shared.css">
+<style>
+  .layout{display:grid;grid-template-columns:minmax(300px,.9fr) minmax(0,1.4fr);gap:14px;align-items:start}
+  @media(max-width:940px){.layout{grid-template-columns:minmax(0,1fr)}}
+  .dl-card{
+    display:grid;grid-template-columns:1fr auto;gap:16px;align-items:center;
+    background:linear-gradient(135deg,#ffffff,#eef4ff);border:1px solid var(--line);
+    border-radius:var(--radius-lg);padding:22px 24px;box-shadow:var(--shadow-sm);
+  }
+  @media(max-width:640px){.dl-card{grid-template-columns:minmax(0,1fr)}}
+  .hashline{font-family:"Cascadia Mono",Consolas,monospace;font-size:11.5px;color:var(--muted);margin-top:8px;word-break:break-all}
+  .file-meta{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+</style>
+</head>
+<body>
+<div class="screen">
+
+  <header class="topbar">
+    <a class="brand-home" href="./index.html">
+      <span class="gg-mark"><img src="../html-prototype/assets/images/gyeonggi-signature-ko.jpg" alt="경기도 로고"></span>
+      <span>
+        <strong>개발 기준 (하네스)</strong>
+        <span>설치 없이 웹에서 보고 받아갑니다.</span>
+      </span>
+    </a>
+    <div class="state">
+      <span class="pill ok">✔ 설치 필요 없음</span>
+      <a class="pill" href="./index.html">← 첫 화면</a>
+    </div>
+  </header>
+
+  <section class="dl-card">
+    <div>
+      <h2 class="section-title">개발 기준 v3 <span class="badge free">경기도 승인본</span></h2>
+      <p class="section-desc">
+        압축을 풀어 프로젝트 폴더에 넣기만 하면 적용됩니다.
+        <b>Python·AI 도구가 없어도 됩니다.</b> 그냥 파일이기 때문입니다.
+      </p>
+      <div class="hashline">SHA-256 a91f4c2e…7b03d5 · 2026-08-05 승인 · 24개 파일 · 186KB</div>
+    </div>
+    <a class="button lime" href="#">압축파일 내려받기</a>
+  </section>
+
+  <div class="notice">
+    <b>적용 방법</b> — 내려받은 압축을 프로젝트 폴더에 풀면 끝입니다. 별도 설치나 명령 입력이 필요 없습니다.
+  </div>
+
+  <section class="layout">
+
+    <div class="panel-card flat" style="padding:18px">
+      <h3 class="section-title" style="font-size:16px">파일 목록</h3>
+      <p class="section-desc" style="font-size:13px">역할별로 묶었습니다. 필요한 묶음만 펼쳐 보세요.</p>
+
+      <div class="tree" style="margin-top:14px">
+
+        <div class="tree-group" open-state="1">
+          <button class="tree-head">
+            <span><b>① 내가 지켜야 할 개발 기준</b><small>사람이 읽는 요약 — 여기부터 보세요</small></span>
+            <span class="chev">▾</span>
+          </button>
+          <div class="tree-body">
+            <button class="tree-file" aria-current="true" data-f="a">
+              <span>📄</span>
+              <span><span class="fn">개발기준_요약.md</span><span class="fd">금지 사항과 커밋 전 확인 목록</span></span>
+              <span class="badge free">추천</span>
+            </button>
+            <button class="tree-file" data-f="b">
+              <span>📄</span>
+              <span><span class="fn">커밋전_체크리스트.md</span><span class="fd">제출·배포 전에 확인할 8가지</span></span>
+              <span></span>
+            </button>
+          </div>
+        </div>
+
+        <div class="tree-group" open-state="0">
+          <button class="tree-head">
+            <span><b>② AI 도구가 읽는 파일</b><small>Codex·Claude가 자동으로 참고합니다</small></span>
+            <span class="chev">▸</span>
+          </button>
+          <div class="tree-body">
+            <button class="tree-file" data-f="c">
+              <span>🤖</span>
+              <span><span class="fn">AGENTS.md</span><span class="fd">AI 도구에 주는 작업 규칙</span></span>
+              <span></span>
+            </button>
+            <button class="tree-file" data-f="d">
+              <span>🤖</span>
+              <span><span class="fn">.claude/ · 템플릿 12종</span><span class="fd">화면·API·문서 표준 틀</span></span>
+              <span></span>
+            </button>
+          </div>
+        </div>
+
+        <div class="tree-group" open-state="0">
+          <button class="tree-head">
+            <span><b>③ 기관이 정한 정책</b><small>허용 언어·DB·배포 방식</small></span>
+            <span class="chev">▸</span>
+          </button>
+          <div class="tree-body">
+            <button class="tree-file" data-f="e">
+              <span>🏛️</span>
+              <span><span class="fn">institution-profile.yaml</span><span class="fd">경기도 개발 환경 규정</span></span>
+              <span></span>
+            </button>
+            <button class="tree-file" data-f="f">
+              <span>🏛️</span>
+              <span><span class="fn">network-profile.yaml</span><span class="fd">행정망·인터넷망별 제약</span></span>
+              <span></span>
+            </button>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="notice warn" style="margin-top:14px;font-size:13px">
+        <b>여기서 수정할 수 없습니다.</b> 기관 표준이 사람마다 달라지면 기준으로서 의미가 없어집니다.
+        조정이 필요하면 예외 신청 절차를 이용하세요.
+      </div>
+    </div>
+
+    <div class="panel-card flat" style="padding:18px">
+      <div class="file-meta">
+        <span class="badge install" id="vName">개발기준_요약.md</span>
+        <span class="badge opt" id="vSize">4.2KB</span>
+        <span class="badge free">읽기 전용</span>
+      </div>
+      <div class="notice" style="margin-bottom:12px;font-size:13.5px" id="vDesc">
+        <b>이 파일이 하는 일</b> — 공무원이 직접 읽는 요약본입니다. 무엇을 하면 안 되는지, 제출 전에 무엇을 확인해야 하는지가 한국어로 정리되어 있습니다.
+      </div>
+      <div class="viewer" id="vBody"><span class="cm"># 개발 기준 요약 (v3)</span>
+
+<span class="k">## 1. 반드시 지켜야 할 것</span>
+
+- 비밀번호, API 키, 인증 토큰을 <span class="s">코드 안에 직접 쓰지 않는다</span>.
+  → 환경변수나 별도 설정 파일로 분리한다.
+- 주민등록번호·연락처 등 개인정보를 <span class="s">예시 데이터로도 쓰지 않는다</span>.
+- 외부에서 받은 값을 그대로 SQL·명령어에 넣지 않는다.
+
+<span class="k">## 2. 새 패키지를 추가하기 전에</span>
+
+- 반드시 <span class="s">패키지 검사</span>를 먼저 통과시킨다.
+- 검사에서 막히면 대체 패키지를 찾거나, 패키지 없이 구현한다.
+- 이름이 비슷한 가짜 패키지가 많으므로 철자를 확인한다.
+
+<span class="k">## 3. 제출·배포 전에</span>
+
+- 표준 점검을 돌리고 <span class="s">차단(block) 항목이 0건</span>인지 확인한다.
+- 검사된 파일이 0개면 "안전"이 아니라 <span class="s">경로를 잘못 지정한 것</span>이다.
+- 판정 불가(확인 필요)는 안전을 뜻하지 않는다.
+
+<span class="cm"># 이 문서는 공식 보안적합성 검토를 대체하지 않는다.</span>
+</div>
+      <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
+        <button class="ghost-button sm">내용 복사</button>
+        <button class="ghost-button sm">이 파일만 받기</button>
+      </div>
+    </div>
+
+  </section>
+
+  <p class="footnote">화면 시안 v2 · T0 계층 (설치 없이 사용)</p>
+</div>
+
+<script>
+  document.querySelectorAll('.tree-head').forEach(function(h){
+    h.addEventListener('click', function(){
+      var g = h.parentElement;
+      var on = g.getAttribute('open-state') === '1';
+      g.setAttribute('open-state', on ? '0' : '1');
+      h.querySelector('.chev').textContent = on ? '▸' : '▾';
+    });
+  });
+
+  var FILES = {
+    a:{n:'개발기준_요약.md', s:'4.2KB', d:'<b>이 파일이 하는 일</b> — 공무원이 직접 읽는 요약본입니다. 무엇을 하면 안 되는지, 제출 전에 무엇을 확인해야 하는지가 한국어로 정리되어 있습니다.'},
+    b:{n:'커밋전_체크리스트.md', s:'2.8KB', d:'<b>이 파일이 하는 일</b> — 코드를 저장소에 올리기 직전에 눈으로 훑는 8개 항목입니다. 인쇄해서 옆에 두어도 됩니다.'},
+    c:{n:'AGENTS.md', s:'12.5KB', d:'<b>이 파일이 하는 일</b> — Codex·Claude 같은 AI 도구가 자동으로 읽는 작업 규칙입니다. 사람이 읽을 필요는 없지만 프로젝트에 함께 있어야 합니다.'},
+    d:{n:'.claude/ · 템플릿 12종', s:'86KB', d:'<b>이 파일이 하는 일</b> — 화면·API·문서를 만들 때 쓰는 표준 틀입니다. AI 도구가 이 틀을 따라 코드를 만듭니다.'},
+    e:{n:'institution-profile.yaml', s:'6.1KB', d:'<b>이 파일이 하는 일</b> — 경기도가 허용한 개발 언어·데이터베이스·배포 방식을 담고 있습니다. 담당·검토자가 확인하는 파일입니다.'},
+    f:{n:'network-profile.yaml', s:'3.4KB', d:'<b>이 파일이 하는 일</b> — 행정망과 인터넷망에서 각각 무엇이 가능하고 무엇이 금지되는지 정리되어 있습니다.'}
+  };
+  document.querySelectorAll('.tree-file').forEach(function(b){
+    b.addEventListener('click', function(){
+      document.querySelectorAll('.tree-file').forEach(function(x){ x.setAttribute('aria-current','false'); });
+      b.setAttribute('aria-current','true');
+      var f = FILES[b.dataset.f];
+      document.getElementById('vName').textContent = f.n;
+      document.getElementById('vSize').textContent = f.s;
+      document.getElementById('vDesc').innerHTML = f.d;
+    });
+  });
+</script>
+</body>
+</html>

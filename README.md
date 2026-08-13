@@ -66,11 +66,15 @@ vibecode-security-gate-portal/
 | `docs/12_harness_checker_implementation_log.md` | 하네스·체커 적용 기록과 개발 비용 기록 |
 | `docs/14_service_implementation_status.md` | 서비스 구현 상태, 미구현 범위, 하네스·체커 영향 |
 | `docs/16_local_execution_architecture.md` | 로컬 실행 경계, PC 저장, 업데이트·검사 진행률의 확정 설계와 구현 기록 |
+| `docs/17_windows_portal_local_agent_design.md` | [대체됨→18] 중앙 포털·로컬 에이전트 권장 설계 |
+| `docs/18_gg_portal_agent_target_architecture.md` | 목표설계(07·16·17 대체). 실행 형태는 `22`로 재확정됨 |
+| `docs/19_screen_spec_v2.md` | 화면 명세 v2(로컬 전제 시안, `design/html-prototype-v2/`와 짝) |
 | `db/schema.postgresql.sql` | PostgreSQL 16 확장 스키마(enum 통일·2계층 관측/판정·기관 인증 연계) |
 | `docs/20_설계검증보고_2026-08-12.md` | 전체 설계 검증 보고와 조치 이력 |
 | `docs/21_보안사고_시흥시TLS개인키.md` | 타 기관 개인키 노출 사고 대응 기록과 통보 문안 |
 | **`docs/22_서버기반_재설계.md`** | **범위·실행형태 확정본. 이전 로컬 웹앱 전제를 대체한다** |
 | **`docs/23_서버_API_계약.md`** | **구현 계약 — 이대로 만들면 착수 단계 S1~S5가 완성된다** |
+| `docs/24_화면설계검토_2026-08-13.html` | 화면 설계 검토(역할 분담·시나리오·파일선택 데모, 브라우저로 열람) |
 
 ## 하네스 적용 기준
 

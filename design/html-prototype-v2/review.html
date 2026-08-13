@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>화면 시안 v2 — 검수 목차</title>
+<link rel="stylesheet" href="./shared.css">
+<style>
+  .rv{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px}
+  .rv-card{
+    display:flex;flex-direction:column;gap:10px;background:var(--panel);border:1px solid var(--line);
+    border-radius:var(--radius-lg);padding:22px;box-shadow:var(--shadow-sm);text-decoration:none;color:inherit;transition:.18s;
+  }
+  .rv-card:hover{transform:translateY(-2px);box-shadow:var(--shadow);border-color:var(--harbor)}
+  .rv-card h3{font-size:18px;font-weight:900}
+  .rv-card p{font-size:14px;color:var(--muted)}
+  .rv-card .chk{margin:0;padding-left:18px;font-size:13px;color:var(--muted);display:grid;gap:3px}
+  .rv-card .go{margin-top:auto;font-size:13.5px;font-weight:800;color:var(--harbor)}
+</style>
+</head>
+<body>
+<div class="screen">
+
+  <header class="topbar">
+    <a class="brand-home" href="./review.html">
+      <span class="gg-mark"><img src="../html-prototype/assets/images/gyeonggi-signature-ko.jpg" alt="경기도 로고"></span>
+      <span>
+        <strong>화면 시안 v2 — 검수 목차</strong>
+        <span>기존 프로토타입의 디자인을 계승하고 새 구조를 반영했습니다.</span>
+      </span>
+    </a>
+    <div class="state">
+      <a class="pill" href="../../docs/18_design_explainer.html">설계 설명서</a>
+      <a class="pill" href="../html-prototype/main%20page.html">기존 v1 화면</a>
+    </div>
+  </header>
+
+  <div class="notice">
+    <b>무엇이 달라졌나</b> — 색·서체·둥근 모서리·그림자 등 디자인 언어는 기존 시안을 그대로 이어받았습니다.
+    구조에서 바뀐 것은 <b>①설치 없이 쓰는 단계를 앞으로 뺀 것</b>, <b>②맛보기 점검 화면 신설</b>,
+    <b>③정보보안팀 승인 화면 신설</b> 세 가지입니다.
+  </div>
+
+  <section class="rv">
+
+    <a class="rv-card" href="./index.html">
+      <span class="badge install">1 · 첫 화면</span>
+      <h3>메인 — 3단계 안내</h3>
+      <p>설치 없이 할 수 있는 것을 맨 앞에 두고, 설치가 필요한 것과 선택 사항을 뒤에 배치했습니다.</p>
+      <ul class="chk">
+        <li>STEP 1이 STEP 2보다 앞에 오는가</li>
+        <li>AI 도구가 없을 때 STEP 3이 결핍처럼 보이지 않는가</li>
+        <li>"코드는 PC를 떠나지 않는다"가 충분히 보이는가</li>
+      </ul>
+      <span class="go">화면 열기 →</span>
+    </a>
+
+    <a class="rv-card" href="./harness.html">
+      <span class="badge free">2 · 설치 없음</span>
+      <h3>개발 기준 열람 · 내려받기</h3>
+      <p>파일 24개를 그대로 나열하지 않고 역할별 3묶음으로 접었습니다. 각 파일에 "이 파일이 하는 일" 한 줄을 붙였습니다.</p>
+      <ul class="chk">
+        <li>공무원이 첫 화면에서 압도되지 않는가</li>
+        <li>"압축 풀면 끝"이라는 것이 분명한가</li>
+        <li>웹에서 수정이 안 된다는 것이 납득되는가</li>
+      </ul>
+      <span class="go">화면 열기 →</span>
+    </a>
+
+    <a class="rv-card" href="./precheck.html">
+      <span class="badge free">3 · 설치 없음</span>
+      <h3>맛보기 점검</h3>
+      <p>브라우저 안에서만 검사합니다. 전송 차단 상태를 화면 상단과 결과 옆에 계속 보여줍니다.</p>
+      <ul class="chk">
+        <li>안전하다는 것이 믿음이 아니라 사실로 읽히는가</li>
+        <li>"제출용이 아니다"가 충분히 강한가</li>
+        <li>정식 점검으로 넘어가고 싶어지는가</li>
+      </ul>
+      <span class="go">화면 열기 →</span>
+    </a>
+
+    <a class="rv-card" href="./admin-approval.html">
+      <span class="badge warn">4 · 정보보안팀</span>
+      <h3>승인 · 배포 관리</h3>
+      <p>코드를 읽지 않고 6개 항목만 확인합니다. 자동 처리된 건은 목록에 올라오지 않습니다.</p>
+      <ul class="chk">
+        <li>"오늘 할 일 1건"이 한눈에 보이는가</li>
+        <li>왜 자동 승인되지 않았는지가 명확한가</li>
+        <li>보안팀이 부담스러워하지 않을 분량인가</li>
+      </ul>
+      <span class="go">화면 열기 →</span>
+    </a>
+
+  </section>
+
+  <div class="g2">
+    <div class="panel-card flat" style="padding:20px">
+      <h3 class="section-title" style="font-size:16px">아직 만들지 않은 화면</h3>
+      <ul class="tier-list" style="margin-top:10px">
+        <li>에이전트 로컬 점검 화면 — 기존 <code>security-scan.html</code> 재사용</li>
+        <li>설치·업데이트 진행 화면 — 기존 <code>skill-harness.html</code> 재사용</li>
+        <li>규칙 카탈로그 · 샘플 보고서 — 목록형이라 우선순위 낮음</li>
+        <li>MCP 연결 화면 — 기존 화면에 해제·복원 버튼 추가 필요</li>
+      </ul>
+    </div>
+    <div class="panel-card flat" style="padding:20px">
+      <h3 class="section-title" style="font-size:16px">함께 보는 문서</h3>
+      <ul class="tier-list" style="margin-top:10px">
+        <li><code>docs/18_design_explainer.html</code> — 누구나 이해하는 설계 설명서</li>
+        <li><code>docs/18_gg_portal_agent_target_architecture.md</code> — 기술 설계 전문</li>
+        <li><code>docs/19_screen_spec_v2.md</code> — 화면 개발 명세</li>
+      </ul>
+    </div>
+  </div>
+
+  <p class="footnote">화면 시안 v2 · 2026-08-10</p>
+</div>
+</body>
+</html>
