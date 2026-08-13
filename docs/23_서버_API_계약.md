@@ -139,10 +139,76 @@
 ```
 `status`: `current` \| `update_available` \| `check_unavailable`. **GitHub 조회 실패 시 `check_unavailable`이며 "최신"으로 표시하지 않는다.**
 
-### `GET /api/tools/install-script?target=harness|checker&os=windows`
-사용자가 자기 PC에서 실행할 설치 스크립트를 내려준다(§22-7 A안). 응답 헤더에 `X-Script-SHA256`을 실어 무결성 확인이 가능하게 한다.
+`checker.server_version`은 **서버에 설치된 체커**다. 사용자 PC의 설치 버전이 아니다 — 서버는 그것을 알 수 없다.
 
-> 서버는 사용자 PC에 설치하지 않는다. 설치 여부 확인 방식(A/B/C)은 미확정 — `22_서버기반_재설계.md` §9-3.
+### `GET /api/tools/manager/latest` — 도구 관리자 배포 정보
+```json
+{ "version": "1.2.0", "released_at": "2026-08-12",
+  "download_url": "/api/tools/manager/download?os=windows",
+  "sha256": "9f3a…c71e", "size_bytes": 25165824, "signed": false }
+```
+`signed:false`이면 화면에 **"확인값으로 검증하세요"** 를 함께 띄운다. 코드서명(B2) 확보 후 `true`로 바뀐다.
+
+### `GET /api/tools/manager/download?os=windows`
+도구 관리자 설치 파일. 응답 헤더에 `X-Artifact-SHA256`.
+
+### `GET /api/tools/support-matrix` — 도구별 지원 범위
+사용자가 **"내가 쓰는 도구가 지원되나"** 를 먼저 확인하는 화면용.
+```json
+{ "tools": [
+  { "key": "codex-cli", "label": "Codex CLI · VS Code 확장", "supported": true,
+    "applies": ["하네스 지침", "MCP 연결"], "note": null },
+  { "key": "claude-code", "label": "Claude Code", "supported": true,
+    "applies": ["하네스 지침", "MCP 연결"], "note": null },
+  { "key": "codex-desktop", "label": "ChatGPT · Codex 데스크톱", "supported": true,
+    "applies": ["MCP 연결"], "note": "지침 파일 적용은 지원하지 않습니다." },
+  { "key": "claude-desktop", "label": "Claude Desktop", "supported": true,
+    "applies": ["MCP 연결"], "note": null },
+  { "key": "lovable", "label": "Lovable", "supported": false,
+    "applies": [], "note": "자동 연결을 지원하지 않습니다. 웹에서 올려 점검해 주세요." }
+] }
+```
+> 이 화면의 선택은 **안내용**이다. 실제 적용 대상은 설치기가 PC에서 **감지한 결과**로 정한다.
+
+### `POST /api/tools/enroll-token` — 일회용 등록 토큰 (로그인 필요)
+설치 파일을 내려받을 때 함께 발급한다. 설치기가 최초 1회 자기를 등록할 때 쓴다.
+```json
+{ "enroll_token": "…", "expires_in_seconds": 604800 }
+```
+
+### `POST /api/tools/clients/report` — 설치기 상태 보고
+**설치기(PC 프로그램)가 서버로 보낸다.** 브라우저는 이 경로를 부르지 않는다. 로컬→서버 아웃바운드이므로 D1 원칙에 저촉되지 않는다.
+
+최초 등록은 `enroll_token`으로, 이후 갱신은 발급받은 `client_id`로 한다.
+```json
+{ "enroll_token": "…",
+  "os_name": "Windows 11",
+  "manager_version": "1.2.0",
+  "checker_version": "0.3.0",
+  "harness_commit": "a4c19f2",
+  "tools": { "codex-cli": "connected", "claude-code": "connected",
+             "claude-desktop": "not_installed", "codex-desktop": "detected_not_connected" } }
+```
+**받는 항목은 위가 전부다.** 파일 경로·프로젝트 이름·소스·사용자 이름·PC 이름은 받지 않으며, 오면 무시한다. 저장은 `client_installations` 테이블.
+
+**201**
+```json
+{ "client_id": "uuid", "status": "enrolled",
+  "latest": { "checker": "0.3.1", "harness": "a4c19f2", "manager": "1.2.0" } }
+```
+응답에 최신 버전을 실어 설치기가 곧바로 비교할 수 있게 한다.
+
+### `GET /api/tools/my-status` — 내 PC 상태 (로그인 필요)
+설치기가 보고한 내용을 포털 화면에 보여 준다. **보고가 없으면 아무것도 모른다는 사실을 정직하게 응답한다.**
+```json
+{ "enrolled": true, "last_reported_at": "2026-08-13T01:38:00Z",
+  "checker": { "installed": "0.3.0", "latest": "0.3.1", "status": "update_available" },
+  "harness": { "installed": "a4c19f2", "latest": "a4c19f2", "status": "current" },
+  "tools": { "codex-cli": "connected", "claude-code": "connected", "claude-desktop": "not_installed" } }
+```
+미등록이면 `{ "enrolled": false, "note": "도구 관리자를 설치하면 이 자리에 내 PC 상태가 표시됩니다." }`.
+
+> **서버는 스스로 PC를 조사하지 않는다.** 여기 보이는 모든 값은 설치기가 보고한 것이며, 보고가 끊기면 `last_reported_at`이 낡은 채로 남는다. 화면은 **낡은 값을 최신인 것처럼 보여주지 않는다**(3일 이상 미보고 시 "확인된 지 오래됨" 표시).
 
 ---
 
@@ -198,11 +264,21 @@
 }
 ```
 
-### 4-5. `POST /api/admin/packages/export` — 보안부서 검토용 내보내기
+### 4-5. `POST /api/admin/packages/export` — 화이트리스트 후보 내보내기
 ```json
-{ "scope": "candidates", "ecosystem": "npm", "limit": 200 }
+{ "scope": "candidates", "ecosystem": "pypi",
+  "format": "requirements", "package_names": ["openpyxl", "python-dateutil"] }
 ```
-→ 서명된 JSON 번들. 망중계로 행정망 전달 가능한 형태. **소스·경로·개인식별자 미포함**(허용목록 스키마).
+`format`은 넷 중 하나다. 검토 목록에 그치지 않고 **기본 이미지 빌드에 바로 투입**할 수 있어야 한다.
+
+| `format` | 산출물 |
+|---|---|
+| `requirements` | `openpyxl==3.1.5` 형태의 버전 고정 목록(PyPI) |
+| `package_json` | `dependencies` 블록(npm, 버전 고정) |
+| `proxy_allowlist` | 사내 저장소 프록시 허용 규칙 |
+| `review_csv` / `review_json` | 사람이 검토·결재에 붙이는 표 |
+
+모든 형식에 **소스·파일 경로·개인식별자를 포함하지 않는다**(허용목록 스키마). 망중계로 행정망 전달 가능한 형태로 낸다.
 
 ### 4-6. `POST /api/admin/decisions/import` — 판정 반입
 보안부서가 내린 승인/차단 결과를 반입한다. **서명 검증 후에만 적용**하며, 검증 실패 시 전량 거부한다(부분 적용 금지).
