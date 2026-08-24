@@ -1,4 +1,6 @@
-# 서버 포털 API 계약 (2026-08-12)
+# 서버 포털 API 계약 (2026-08-12 · 08-24 개정)
+
+> **08-24 개정**: §1-A 인증(이메일 가입), §2-6 점검결과 제출, §2-7 보안성 검토 요청, §4-9 화이트리스트 관리가 추가되었다. §4-5 내보내기는 화이트리스트 저장으로 재해석된다.
 
 > `22_서버기반_재설계.md`의 구현 계약. 이 문서대로 만들면 S1~S5가 완성된다.
 > 공통: 모든 응답 `Content-Type: application/json; charset=utf-8`, `Cache-Control: no-store`, `X-Content-Type-Options: nosniff`.
@@ -38,6 +40,22 @@
 ```
 
 ---
+
+## 1-A. 인증 (2026-08-24 신설)
+
+### `POST /api/auth/signup` — 일반 공무원 가입
+```json
+{ "email": "gg0018@gg.go.kr", "password": "…", "org_code": "6410000", "department_code": "AI산업육성과" }
+```
+- **기관 메일 도메인 허용 목록만** 받는다(그 외 422). 메일 소유 확인 링크 발송 후 활성화.
+- 저장: 이메일 해시·기관·부서코드. 이름·연락처는 받지 않는다.
+- B3(통합인증) 확정 시 로그인 수단만 교체되는 **임시 경로**다(22번 §4-4).
+
+### `POST /api/auth/login` / `POST /api/auth/logout`
+세션 쿠키(HttpOnly·Secure·SameSite=Strict) 발급/폐기. 연속 실패 잠금.
+
+### 관리자 로그인 — 분리
+`POST /api/admin/login` (기존). **일반 계정에 관리자 권한을 얹지 않는다.** 관리자 화면·API는 관리자 세션만 통과.
 
 ## 2. 검사 (공무원)
 
@@ -114,10 +132,28 @@
 ```
 
 ### 2-5. `DELETE /api/scans/{scan_id}`
-보고서와 메타데이터를 즉시 삭제한다. 패키지 관측은 이미 익명 집계로 넘어갔으므로 남는다(그 사실을 응답에 명시).
+보고서와 메타데이터를 즉시 삭제한다. 이미 제출한 패키지 관측은 익명 집계로 남는다(그 사실을 응답에 명시).
 ```json
-{ "status": "deleted", "note": "보고서를 삭제했습니다. 패키지 사용 통계는 익명 집계로만 남습니다." }
+{ "status": "deleted", "note": "보고서를 삭제했습니다. 제출하신 패키지 통계는 익명 집계로만 남습니다." }
 ```
+
+### 2-6. `POST /api/scans/{scan_id}/submit-observations` — 점검결과 제출 (2026-08-24 신설)
+**opt-in.** 소유자만, 완료된 검사만. 서버가 보관 중인 해당 검사의 `dependency_audit.checks`에서 **허용목록 필드만** 추려 `package_observations`에 적재한다(부서코드 포함). 요청 본문 없음 — 클라이언트가 데이터를 만들지 않는다.
+```json
+{ "status": "submitted", "packages_recorded": 188,
+  "note": "라이브러리 목록과 검사 결과만 제출되었습니다. 소스 코드는 포함되지 않습니다." }
+```
+- 중복 제출은 `409 already_submitted`. 검사 미완/실패는 `409 not_submittable`.
+- **소스·경로·개인식별자는 어떤 필드로도 적재되지 않는다**(허용목록 스키마).
+
+### 2-7. `POST /api/scans/{scan_id}/review-request` — 보안성 검토 요청 (2026-08-24 신설)
+소유자만. 요청은 관리자 검토 대기열에 오른다.
+```json
+{ "note": "9월 배포 예정 민원 서비스입니다" }
+```
+**201** `{ "status": "requested", "review_id": "uuid" }`
+- 상태 흐름: `requested → in_review → completed`(관리자 의견 첨부 가능). `GET /api/scans`(내 이력)에 상태가 실린다.
+- 포털은 검토를 수행하지 않는다 — 접수와 상태 표시까지다.
 
 ---
 
@@ -279,6 +315,18 @@
 | `review_csv` / `review_json` | 사람이 검토·결재에 붙이는 표 |
 
 모든 형식에 **소스·파일 경로·개인식별자를 포함하지 않는다**(허용목록 스키마). 망중계로 행정망 전달 가능한 형태로 낸다.
+
+### 4-9. 화이트리스트 관리 (2026-08-24 신설 — 08-13 "내보내기만" 결정을 갱신)
+
+관리자(보안담당) 전용. 모든 변경은 `package_decisions`에 누가·언제·왜로 기록된다.
+
+- `POST /api/admin/whitelist/entries` — 후보를 화이트리스트에 담는다 `{ "ecosystem", "package_name", "package_version", "reason" }`
+- `DELETE /api/admin/whitelist/entries/{ecosystem}/{name}` — 제외(사유 필수, 이력은 삭제 아닌 대체 기록)
+- `GET /api/admin/whitelist` — 현재 화이트리스트 조회
+- `GET /api/admin/whitelist/export?format=requirements|package_json|proxy_allowlist|review_csv` — **저장(다운로드)**. 이 파일이 기본 이미지에 반영된다. 버전 고정, 소스·경로·개인정보 미포함.
+
+### 4-10. `GET /api/admin/review-requests` — 보안성 검토 대기열 (2026-08-24 신설)
+요청 목록(검사 메타·요청자 부서·상태). `PATCH /api/admin/review-requests/{id}` 로 `in_review`/`completed` 전환과 의견 첨부. 완료 시 요청자의 내 이력에 반영된다.
 
 ### 4-6. `POST /api/admin/decisions/import` — 판정 반입
 보안부서가 내린 승인/차단 결과를 반입한다. **서명 검증 후에만 적용**하며, 검증 실패 시 전량 거부한다(부분 적용 금지).
