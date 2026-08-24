@@ -1,7 +1,8 @@
 import { createServer } from "node:http";
 import { spawn } from "node:child_process";
 import { createReadStream, createWriteStream, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
-import { appendFile, rm, readdir, readFile } from "node:fs/promises";
+import { appendFile, rm, readdir, readFile, statfs } from "node:fs/promises";
+import { cpus } from "node:os";
 import { pipeline } from "node:stream/promises";
 import { basename, dirname, extname, isAbsolute, join, normalize, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -17,6 +18,13 @@ const PORT = Number(process.env.PORT || 8787);
 const POWERSHELL = join(process.env.SystemRoot || "C:\\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
 const MAX_BROWSER_UPLOAD_BYTES = 500 * 1024 * 1024;
 const MAX_BROWSER_UPLOAD_FILES = 10000;
+
+// S2(동시성): 체커는 CPU·메모리를 크게 쓰므로 동시 실행을 제한하고 초과분은 큐에 세운다.
+const MAX_CONCURRENT_SCANS = Math.max(1, Number(process.env.PORTAL_MAX_CONCURRENT_SCANS || Math.min(4, cpus().length - 2)) || 1);
+const SCAN_QUEUE_LIMIT = Math.max(1, Number(process.env.PORTAL_SCAN_QUEUE_LIMIT || 20));
+const SCAN_TIMEOUT_QUICK_MS = Number(process.env.PORTAL_SCAN_TIMEOUT_QUICK_MS || 5 * 60 * 1000);
+const SCAN_TIMEOUT_STANDARD_MS = Number(process.env.PORTAL_SCAN_TIMEOUT_STANDARD_MS || 20 * 60 * 1000);
+const MIN_FREE_DISK_BYTES = Number(process.env.PORTAL_MIN_FREE_DISK_BYTES || 2 * 1024 * 1024 * 1024);
 
 function runtimePath(name, fallback) {
   const value = process.env[name];
@@ -693,6 +701,17 @@ function progressForJob(job) {
   }
   const failed = [...(job.steps || [])].reverse().find((step) => step.status === "failed");
   if (failed) return { ...(scanStepProgress[failed.name] || { percent: 0 }), message: job.error || "검사 중 문제가 발생했습니다." };
+  if (job.status === "queued") {
+    const position = queuePosition(job.id);
+    if (position && position > 0) {
+      return {
+        percent: 2,
+        queue_position: position,
+        message: `앞에 ${position}건이 있습니다. 창을 닫으셔도 검사는 계속되고, 내 점검 이력에서 결과를 보실 수 있습니다.`
+      };
+    }
+    return { percent: 4, message: "곧 검사를 시작합니다." };
+  }
   return { percent: 0, message: "검사를 기다리고 있습니다." };
 }
 
@@ -807,7 +826,9 @@ async function runScanJob(job) {
     ]
   });
 
-  const scan = await runCommand("gvskb", args);
+  const scanTimeoutMs = job.mode === "quick" ? SCAN_TIMEOUT_QUICK_MS : SCAN_TIMEOUT_STANDARD_MS;
+  const scan = await runCommand("gvskb", args, { timeout_ms: scanTimeoutMs });
+  const scanTimedOut = !scan.ok && /command timed out/.test(scan.stderr);
   const jsonCandidates = [jsonOutput];
   let parsed = null;
   let jsonPath = "";
@@ -832,7 +853,7 @@ async function runScanJob(job) {
         { name: "render_report", status: "running" }
       ]
     });
-    await runCommand("gvskb", ["report", jsonPath, "--format", "html", "--output", outputBase]);
+    await runCommand("gvskb", ["report", jsonPath, "--format", "html", "--output", outputBase], { timeout_ms: 120000 });
   }
 
   const findingCount = parsed?.summary?.finding_count ?? parsed?.findings?.length ?? 0;
@@ -846,7 +867,13 @@ async function runScanJob(job) {
     : parsed?.decision || (
       scannedFileCount === 0 ? "needs_review" : parsed?.summary?.blocked ? "blocked" : findingCount > 0 ? "needs_review" : "allow"
     );
-  const decision = job.mode === "quick" && baseDecision === "allow" ? "quick_complete" : baseDecision;
+  const decision = scanTimedOut
+    ? "incomplete"
+    : job.mode === "quick" && baseDecision === "allow" ? "quick_complete" : baseDecision;
+  if (scanTimedOut) {
+    const limitMinutes = Math.round(scanTimeoutMs / 60000);
+    job.error = `검사 시간이 ${limitMinutes}분을 넘어 중단했습니다. 대상을 나누어 올리거나, 불필요한 폴더(node_modules 등)를 빼고 다시 시도해 주세요.`;
+  }
   const finalReportFiles = await readdir(REPORT_DIR).catch(() => []);
   const finalReportItems = [];
   for (const file of finalReportFiles) {
@@ -954,6 +981,56 @@ function publicJob(job) {
   };
 }
 
+// S2(동시성): 큐. 슬롯이 빌 때만 실행하고, 나머지는 접수 순서대로 기다린다.
+const scanQueue = [];
+let runningScans = 0;
+
+function queuePosition(jobId) {
+  const index = scanQueue.indexOf(jobId);
+  return index < 0 ? null : index + 1;
+}
+
+function pumpScanQueue() {
+  while (runningScans < MAX_CONCURRENT_SCANS && scanQueue.length > 0) {
+    const jobId = scanQueue.shift();
+    const job = jobs.get(jobId);
+    if (!job || job.status !== "queued") continue;
+    runningScans += 1;
+    runScanJob(job)
+      .catch(async (error) => {
+        updateJob(job, {
+          status: "failed",
+          decision: "incomplete",
+          error: String(error.message || error)
+        });
+        await cleanupJobTargets(job);
+        await persistJob(job);
+      })
+      .finally(() => {
+        runningScans -= 1;
+        pumpScanQueue();
+      });
+  }
+}
+
+// S2(워터마크): 디스크 여유가 임계 미만이면 받아 놓고 실패시키지 않고 접수 자체를 막는다.
+async function hasDiskCapacity() {
+  try {
+    const stats = await statfs(ROOT);
+    return stats.bavail * stats.bsize >= MIN_FREE_DISK_BYTES;
+  } catch {
+    // 확인 실패가 서비스 중단이 되어선 안 된다. 실제 부족은 검사 단계에서 드러난다.
+    return true;
+  }
+}
+
+function capacityExhausted(response) {
+  json(response, 503, {
+    error: "capacity_exhausted",
+    message: "지금은 접수가 어렵습니다. 잠시 후 다시 시도해 주세요."
+  });
+}
+
 async function startScan(request, response) {
   const body = await readJson(request);
   const mode = ["quick", "standard"].includes(body.scan_mode) ? body.scan_mode : "standard";
@@ -962,21 +1039,22 @@ async function startScan(request, response) {
     json(response, 400, { error: "invalid_target_type", message: "폴더나 ZIP을 올리거나 GitHub 주소로 검사할 수 있습니다." });
     return;
   }
+  if (scanQueue.length >= SCAN_QUEUE_LIMIT) {
+    capacityExhausted(response);
+    return;
+  }
+  if (!(await hasDiskCapacity())) {
+    capacityExhausted(response);
+    return;
+  }
   const job = createJob(mode, targetType, body.target_ref, body.target_label);
-
-  runScanJob(job).catch(async (error) => {
-    updateJob(job, {
-      status: "failed",
-      decision: "blocked",
-      error: String(error.message || error)
-    });
-    await cleanupJobTargets(job);
-    await persistJob(job);
-  });
+  scanQueue.push(job.id);
+  pumpScanQueue();
 
   json(response, 202, {
     scan_id: job.id,
     status: job.status,
+    queue_position: queuePosition(job.id),
     progress_url: `/api/scan/${job.id}/progress`,
     result_url: `/api/scan/${job.id}/result`
   });
@@ -1052,6 +1130,10 @@ async function handleApi(request, response, pathname) {
   }
 
   if (request.method === "POST" && pathname === "/api/local/upload-target") {
+    if (!(await hasDiskCapacity())) {
+      capacityExhausted(response);
+      return;
+    }
     try {
       const uploaded = await receiveBrowserTarget(request);
       json(response, 201, { status: "selected", ...uploaded });

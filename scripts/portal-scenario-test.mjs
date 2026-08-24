@@ -239,6 +239,79 @@ async function scenarioRemovedLocalSurfaces() {
   }
 }
 
+// S2: 동시 상한 1인 별도 서버에서 큐 순번과 워터마크 접수 중단을 검증한다.
+async function scenarioQueueAndCapacity(fixture) {
+  const queuePort = Number(process.env.PORTAL_QUEUE_TEST_PORT || 8794);
+  const queueBase = `http://127.0.0.1:${queuePort}`;
+  const spawnServer = (extraEnv) => spawn(process.execPath, ["src/server.js"], {
+    cwd: process.cwd(),
+    env: {
+      ...process.env,
+      PORT: String(queuePort),
+      ADMIN_INITIAL_PASSWORD: adminPassword,
+      ADMIN_AUTH_FILE: join(fixture.fixtureDir, "queue-admin.json"),
+      PORTAL_SCAN_HISTORY_FILE: join(fixture.fixtureDir, "queue-history.jsonl"),
+      PORTAL_LOCAL_API_TOKEN: localApiToken,
+      PYTHONUTF8: "1",
+      PYTHONIOENCODING: "utf-8",
+      ...extraEnv
+    },
+    stdio: ["ignore", "ignore", "ignore"],
+    windowsHide: true
+  });
+  const request = async (path, options) => {
+    const headers = localHeaders(options?.headers);
+    return fetch(`${queueBase}${path}`, { ...options, headers });
+  };
+  const waitReady = async (server) => {
+    for (let attempt = 0; attempt < 40; attempt += 1) {
+      if (server.exitCode !== null) throw new Error("queue test server died");
+      try {
+        const health = await fetch(`${queueBase}/health`);
+        if (health.ok) return;
+      } catch {
+        await wait(250);
+      }
+    }
+    throw new Error("queue test server not ready");
+  };
+  const startBody = (label) => JSON.stringify({
+    scan_mode: "quick", target_type: "github_url",
+    target_ref: `https://github.com/Lex6won/${label}`, target_label: label
+  });
+
+  // 1) 동시 상한 1: 두 번째 접수는 반드시 대기열에 선다.
+  const limited = spawnServer({ PORTAL_MAX_CONCURRENT_SCANS: "1" });
+  try {
+    await waitReady(limited);
+    const first = await (await request("/api/scan/start", { method: "POST", headers: { "Content-Type": "application/json" }, body: startBody("queue-a") })).json();
+    const second = await (await request("/api/scan/start", { method: "POST", headers: { "Content-Type": "application/json" }, body: startBody("queue-b") })).json();
+    assert.equal(second.status, "queued", "second scan must wait when the concurrency limit is 1");
+    assert.equal(second.queue_position, 1, "queued scan must expose its position");
+    const progress = await (await request(`/api/scan/${second.scan_id}/progress`)).json();
+    assert.ok(String(progress.message || "").includes("창을 닫으셔도"), "queued progress must tell users they can close the window");
+    assert.ok(first.scan_id, "first scan must be accepted");
+  } finally {
+    limited.kill();
+    await Promise.race([once(limited, "exit"), wait(2000)]);
+  }
+
+  // 2) 디스크 워터마크: 여유가 부족하면 접수 자체가 503으로 막힌다.
+  const exhausted = spawnServer({ PORTAL_MIN_FREE_DISK_BYTES: "999999999999999" });
+  try {
+    await waitReady(exhausted);
+    const rejectedScan = await request("/api/scan/start", { method: "POST", headers: { "Content-Type": "application/json" }, body: startBody("full-disk") });
+    assert.equal(rejectedScan.status, 503, "scan intake must stop when disk capacity is low");
+    const rejectedUpload = await request("/api/local/upload-target", { method: "POST" });
+    assert.equal(rejectedUpload.status, 503, "upload intake must stop when disk capacity is low");
+    const body = await rejectedScan.json();
+    assert.equal(body.error, "capacity_exhausted");
+  } finally {
+    exhausted.kill();
+    await Promise.race([once(exhausted, "exit"), wait(2000)]);
+  }
+}
+
 async function scenarioToolsSurface() {
   const versions = await fetchJson("/api/tools/versions");
   assert.equal(versions.checker.installed, true, "the server checker must be installed for the portal to be useful");
@@ -330,6 +403,7 @@ try {
 
   await scenarioToolsSurface();
   await scenarioAdmin();
+  await scenarioQueueAndCapacity(fixture);
   console.log(JSON.stringify({
     status: "passed",
     base_url: baseUrl,
@@ -340,7 +414,8 @@ try {
       uploaded_zip_scan: archiveResult.id,
       removed_local_surfaces: true,
       tools_surface: true,
-      admin: true
+      admin: true,
+      queue_and_capacity: true
     }
   }, null, 2));
 } catch (error) {
