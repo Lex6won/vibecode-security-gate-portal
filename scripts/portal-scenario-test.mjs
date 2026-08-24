@@ -239,6 +239,31 @@ async function scenarioRemovedLocalSurfaces() {
   }
 }
 
+// P2: 점검결과 제출(opt-in) — 매니페스트 있는 검사에서 관측이 적재되고, 중복 제출은 거부된다.
+async function scenarioObservationSubmission(fixture) {
+  const packageJsonPath = join(fixture.fixtureDir, "package.json");
+  await writeFile(packageJsonPath, `${JSON.stringify({ name: "obs-fixture", version: "1.0.0", dependencies: { busboy: "1.6.0" } }, null, 2)}\n`, "utf8");
+  const uploaded = await uploadBrowserTarget("folder", [
+    { source: fixture.sourceFile, path: "obs-fixture/safe-source.js", name: "safe-source.js" },
+    { source: packageJsonPath, path: "obs-fixture/package.json", name: "package.json" }
+  ]);
+  const result = await startScan("quick", uploaded.target_type, uploaded.path, uploaded.label);
+  assert.equal(result.status, "completed");
+
+  const submitted = await fetchJson(`/api/scan/${result.id}/submit-observations`, { method: "POST" });
+  assert.equal(submitted.status, "submitted");
+  assert.ok(submitted.packages_recorded >= 1, "manifest-based scan must record package observations");
+  assert.ok(String(submitted.note).includes("소스 코드는 포함되지"), "submission response must state that source is excluded");
+
+  const duplicate = await fetch(`${baseUrl}/api/scan/${result.id}/submit-observations`, { method: "POST", headers: localHeaders() });
+  assert.equal(duplicate.status, 409, "duplicate submission must be rejected");
+  assert.equal((await duplicate.json()).reason, "already_submitted");
+
+  const after = await fetchJson(`/api/scan/${result.id}/result`);
+  assert.ok(after.observations_submitted_at, "scan result must show when observations were submitted");
+  return result;
+}
+
 // S2: 동시 상한 1인 별도 서버에서 큐 순번과 워터마크 접수 중단을 검증한다.
 async function scenarioQueueAndCapacity(fixture) {
   const queuePort = Number(process.env.PORTAL_QUEUE_TEST_PORT || 8794);
@@ -251,6 +276,7 @@ async function scenarioQueueAndCapacity(fixture) {
       ADMIN_INITIAL_PASSWORD: adminPassword,
       ADMIN_AUTH_FILE: join(fixture.fixtureDir, "queue-admin.json"),
       PORTAL_SCAN_HISTORY_FILE: join(fixture.fixtureDir, "queue-history.jsonl"),
+      PORTAL_OBSERVATION_DIR: join(fixture.fixtureDir, "queue-observations"),
       PORTAL_LOCAL_API_TOKEN: localApiToken,
       PYTHONUTF8: "1",
       PYTHONIOENCODING: "utf-8",
@@ -338,6 +364,8 @@ async function scenarioAdmin() {
 
   const summary = await fetchJson("/api/admin/summary");
   assert.ok(summary.total >= 2, "admin total should include scenario scans");
+  assert.ok(summary.observations?.observed_packages >= 1, "admin summary must expose accumulated package observations");
+  assert.ok(summary.observations?.submitted_scan_count >= 1, "admin summary must count observation submissions");
   assert.ok(summary.allow >= 1, "admin allow count should include successful standard scans");
   assert.ok(summary.quick_complete >= 1, "admin summary must count completed quick scans separately from standard scans");
 
@@ -366,6 +394,7 @@ const child = spawn(process.execPath, ["src/server.js"], {
     ADMIN_INITIAL_PASSWORD: adminPassword,
     ADMIN_AUTH_FILE: join(process.env.TEMP || process.env.TMP || ".", "vibecode-portal-scenario-admin-auth.json"),
     PORTAL_SCAN_HISTORY_FILE: join(fixture.fixtureDir, "scan-history.jsonl"),
+    PORTAL_OBSERVATION_DIR: join(fixture.fixtureDir, "observations"),
     PORTAL_LOCAL_API_TOKEN: localApiToken,
     PYTHONUTF8: "1",
     PYTHONIOENCODING: "utf-8"
@@ -401,6 +430,7 @@ try {
   assert.equal(archiveResult.status, "completed");
   assert.equal(archiveResult.summary.scanned_file_count, 1, "uploaded ZIP must reach the checker");
 
+  const observation = await scenarioObservationSubmission(fixture);
   await scenarioToolsSurface();
   await scenarioAdmin();
   await scenarioQueueAndCapacity(fixture);
@@ -412,6 +442,7 @@ try {
       quick_scan: quick.id,
       standard_scan: standard.id,
       uploaded_zip_scan: archiveResult.id,
+      observation_submission: observation.id,
       removed_local_surfaces: true,
       tools_surface: true,
       admin: true,

@@ -8,6 +8,7 @@ import { basename, dirname, extname, isAbsolute, join, normalize, resolve } from
 import { fileURLToPath } from "node:url";
 import { randomBytes, randomUUID, scryptSync, timingSafeEqual } from "node:crypto";
 import Busboy from "busboy";
+import { initObservationStore, toObservationRecord, hasSubmission, recordSubmission, observationSummary } from "./observation-store.mjs";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 const ROOT = resolve(__dirname, "..");
@@ -114,6 +115,7 @@ function persistedJobRecord(job) {
     steps: job.steps || [],
     reports: (job.reports || []).map(({ file_name, path, url }) => ({ file_name, path, url })),
     report_stem: job.report_stem || null,
+    observations_submitted_at: job.observations_submitted_at || null,
     created_at: job.created_at,
     updated_at: job.updated_at || null,
     error: job.error || null
@@ -147,6 +149,7 @@ function loadScanHistory() {
 }
 
 loadScanHistory();
+initObservationStore(runtimePath("PORTAL_OBSERVATION_DIR", join(ROOT, ".local", "observations")));
 
 // Scan targets are copies of someone else's project and may hold credentials or keys.
 // A crashed or interrupted job leaves its copy behind, so every startup clears the
@@ -926,6 +929,7 @@ function adminSummary() {
     quick_complete: quickComplete,
     needs_review: needsReview,
     blocked,
+    observations: observationSummary(),
     generated_at: new Date().toISOString()
   };
 }
@@ -975,6 +979,7 @@ function publicJob(job) {
     summary: job.summary || null,
     steps: job.steps || [],
     reports: (job.reports || []).map(({ file_name, url }) => ({ file_name, url })),
+    observations_submitted_at: job.observations_submitted_at || null,
     created_at: job.created_at,
     updated_at: job.updated_at || null,
     error: job.error || null
@@ -1028,6 +1033,52 @@ function capacityExhausted(response) {
   json(response, 503, {
     error: "capacity_exhausted",
     message: "지금은 접수가 어렵습니다. 잠시 후 다시 시도해 주세요."
+  });
+}
+
+// P2: 점검결과 제출 (opt-in) — 서버가 몰래 축적하지 않는다. 공무원이 버튼으로 제출한다.
+// 서버가 보관 중인 검사 JSON에서 허용목록 필드만 추려 적재한다. 클라이언트가 데이터를 만들지 않는다.
+async function submitObservations(job, response) {
+  if (job.status !== "completed") {
+    json(response, 409, { status: "blocked", reason: "not_submittable", message: "완료된 검사만 제출할 수 있습니다." });
+    return;
+  }
+  if (hasSubmission(job.id)) {
+    json(response, 409, { status: "blocked", reason: "already_submitted", message: "이미 제출한 검사입니다." });
+    return;
+  }
+  const jsonReport = (job.reports || []).find((report) => report.file_name?.endsWith(".json"));
+  let audits = [];
+  if (jsonReport?.path && existsSync(jsonReport.path)) {
+    try {
+      const parsed = JSON.parse(await readFile(jsonReport.path, "utf8"));
+      audits = parsed?.dependency_audit?.audits || [];
+    } catch {
+      audits = [];
+    }
+  }
+  const records = [];
+  for (const audit of audits) {
+    for (const check of audit.checks || []) {
+      if (!check?.name || !check?.version) continue; // 버전 미확정 관측은 제출하지 않는다(§5-D)
+      records.push(toObservationRecord(check, {
+        scanId: job.id,
+        ecosystem: audit.ecosystem,
+        sourceScope: audit.source_kind,
+        projectLabel: job.target_label || "",
+        departmentCode: null // P3(가입·부서)에서 채운다
+      }));
+    }
+  }
+  const recorded = await recordSubmission(job.id, records);
+  updateJob(job, { observations_submitted_at: new Date().toISOString() });
+  await persistJob(job);
+  json(response, 200, {
+    status: "submitted",
+    packages_recorded: recorded,
+    note: recorded > 0
+      ? "라이브러리 목록과 검사 결과만 제출되었습니다. 소스 코드는 포함되지 않습니다."
+      : "이 검사에는 제출할 라이브러리 정보가 없습니다. 제출은 기록되었습니다."
   });
 }
 
@@ -1173,6 +1224,14 @@ async function handleApi(request, response, pathname) {
       "Content-Disposition": `attachment; filename="admin-export.json"; filename*=UTF-8''${encodeURIComponent(fileName)}`
     });
     response.end(payload);
+    return;
+  }
+
+  const submitMatch = pathname.match(/^\/api\/scan\/([^/]+)\/submit-observations$/);
+  if (request.method === "POST" && submitMatch) {
+    const job = jobs.get(submitMatch[1]);
+    if (!job) return notFound(response);
+    await submitObservations(job, response);
     return;
   }
 

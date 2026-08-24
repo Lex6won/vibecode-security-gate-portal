@@ -1072,6 +1072,11 @@
             <li><span>HTML 보고서</span><b id="resultHtml">생성 대기</b></li>
             <li><span>JSON 증거 보고서</span><b id="resultJson">생성 대기</b></li>
           </ul>
+          <div class="save-row" id="observationSubmitRow" hidden>
+            <div class="flow-title"><span class="sequence">4</span><span>점검결과 제출 (선택)</span></div>
+            <span id="observationSubmitNote">사용한 라이브러리 목록과 검사 결과만 제출되어 경기도 화이트리스트 만들기에 쓰입니다. 소스 코드는 포함되지 않습니다.</span>
+            <button class="save-button" id="submitObservations" type="button">점검결과 제출</button>
+          </div>
         </aside>
       </section>
 
@@ -1422,7 +1427,58 @@
       });
     }
 
+    const observationSubmitRow = document.querySelector("#observationSubmitRow");
+    const observationSubmitNote = document.querySelector("#observationSubmitNote");
+    const submitObservations = document.querySelector("#submitObservations");
+    let lastCompletedScanId = null;
+
+    function showObservationSubmit(job) {
+      if (job.status !== "completed") {
+        observationSubmitRow.hidden = true;
+        return;
+      }
+      lastCompletedScanId = job.id;
+      observationSubmitRow.hidden = false;
+      if (job.observations_submitted_at) {
+        submitObservations.disabled = true;
+        submitObservations.textContent = "제출 완료";
+        observationSubmitNote.textContent = "이 점검의 결과는 이미 제출되었습니다. 화이트리스트 만들기에 반영됩니다.";
+      } else {
+        submitObservations.disabled = false;
+        submitObservations.textContent = "점검결과 제출";
+        observationSubmitNote.textContent = "사용한 라이브러리 목록과 검사 결과만 제출되어 경기도 화이트리스트 만들기에 쓰입니다. 소스 코드는 포함되지 않습니다.";
+      }
+    }
+
+    submitObservations.addEventListener("click", async () => {
+      if (!lastCompletedScanId) return;
+      submitObservations.disabled = true;
+      submitObservations.textContent = "제출 중";
+      try {
+        const response = await fetch(`/api/scan/${lastCompletedScanId}/submit-observations`, { method: "POST" });
+        const result = await response.json();
+        if (response.ok) {
+          submitObservations.textContent = "제출 완료";
+          observationSubmitNote.textContent = result.packages_recorded > 0
+            ? `라이브러리 ${result.packages_recorded}건이 제출되었습니다. 소스 코드는 포함되지 않았습니다.`
+            : "제출이 기록되었습니다. 이 점검에는 라이브러리 정보가 없습니다.";
+        } else if (result.reason === "already_submitted") {
+          submitObservations.textContent = "제출 완료";
+          observationSubmitNote.textContent = "이 점검의 결과는 이미 제출되었습니다.";
+        } else {
+          submitObservations.disabled = false;
+          submitObservations.textContent = "점검결과 제출";
+          observationSubmitNote.textContent = result.message || "제출하지 못했습니다. 잠시 후 다시 시도해 주세요.";
+        }
+      } catch {
+        submitObservations.disabled = false;
+        submitObservations.textContent = "점검결과 제출";
+        observationSubmitNote.textContent = "제출하지 못했습니다. 연결을 확인한 뒤 다시 시도해 주세요.";
+      }
+    });
+
     function setResultDone(job, saveError = null) {
+      showObservationSubmit(job);
       const findingCount = job.summary?.finding_count ?? 0;
       const dependencyCount = job.summary?.dependency_finding_count ?? 0;
       const reportNames = (job.reports || []).map((item) => item.file_name);

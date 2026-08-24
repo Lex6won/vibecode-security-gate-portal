@@ -489,3 +489,15 @@ DB·문서 변경:
 - 검증: `npm run guard` 전체 통과(시나리오 8종·보안스캔 0건) + 수동 스모크(상한 1 큐, 워터마크 503).
 
 남은 것: 계약(23번)의 "사용자당 동시 1건"은 사용자 개념이 생기는 P3(S4)에서 함께 건다. 관리자 현황의 큐·디스크 표시는 P4에서.
+
+## 2026-08-24 P2 구현 — 점검결과 제출(opt-in)과 관측 축적 (파일 기반, C안)
+
+화이트리스트 근거 축적의 파이프를 놓았다. DB 인스턴스가 아직 없어 **파일 기반 저장층 + 어댑터 분리(C안)** 로 구현 — PostgreSQL이 준비되면 `src/observation-store.mjs`의 함수 구현만 교체한다(호출부는 인터페이스만 안다).
+
+- **제출 API** `POST /api/scan/{id}/submit-observations`: 완료된 검사만, 중복 409. 서버가 보관 중인 검사 JSON의 `dependency_audit.audits[].checks`에서 **허용목록 필드만** 추려 적재한다 — 클라이언트가 데이터를 만들지 않는다. 버전 미확정 관측은 제출하지 않는다(연동합의 §5-D). `audit.manifest`는 로컬 경로이므로 적재 금지 필드로 명시.
+- **저장층** `.local/observations/`(동기화 밖, `PORTAL_OBSERVATION_DIR`): `package-observations.jsonl`(관측 원장, 반복 관측=사용 빈도이므로 중복 제거 안 함) + `package-usage-stats.json`(패키지별 집계 — 관측 수·manifest 수·프로젝트/부서 목록·버전 변형·위험 신호·최초/최근 관측) + `submitted-scans.json`(중복 방지).
+- **프런트**: 결과 카드에 "점검결과 제출 (선택)" 블록 — "라이브러리 목록과 검사 결과만 제출, 소스 코드는 포함되지 않습니다" 명시, 제출 후 상태 고정. 결과 API에 `observations_submitted_at` 노출.
+- **관리자 초석**: `/api/admin/summary`에 `observations`(관측 패키지 수·총 관측·위험 신호·제출 건수) — P4 화면의 데이터 소스.
+- department_code는 사용자 개념이 생기는 P3에서 채운다(현재 null).
+- **적대적 검증**: 실데이터(응소ON 검사 JSON)의 check를 넣어 추출 레코드에 경로·소스 문자열이 없음을 확인. 시나리오에 매니페스트 픽스처(busboy 1.6.0) → 제출 → `packages_recorded≥1` → 중복 409 → 결과 표시 → 관리자 요약 반영까지 회귀 검사 추가. 테스트 서버들은 `PORTAL_OBSERVATION_DIR` 격리로 실데이터 오염 방지.
+- 검증: guard 전체 통과(시나리오 9종).
