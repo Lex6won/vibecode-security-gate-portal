@@ -961,32 +961,31 @@
       }
     }
 
+    // 서버 기반 전환: 서버 폴더에 저장하지 않고 브라우저 다운로드로 받는다.
     adminExportButton.addEventListener("click", async () => {
       adminExportButton.disabled = true;
-      adminExportButton.textContent = "저장 위치 선택 중";
+      adminExportButton.textContent = "관리자 보고서 준비 중";
       try {
-        const pickerResponse = await fetch("/api/local/pick-target", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ kind: "save_dir" })
-        });
-        const picker = await readResponseJson(pickerResponse);
-        if (!pickerResponse.ok || picker.status === "cancelled") {
-          adminExportButton.textContent = "저장 위치 선택 취소";
-          return;
+        const exportResponse = await fetch("/api/admin/export", { cache: "no-store" });
+        if (!exportResponse.ok) {
+          const failed = await readResponseJson(exportResponse);
+          throw new Error(failed.message || "관리자 보고서를 만들지 못했습니다.");
         }
-
-        adminExportButton.textContent = "관리자 보고서 저장 중";
-        const exportResponse = await fetch("/api/admin/export", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ save_dir: picker.path })
-        });
-        const saved = await readResponseJson(exportResponse);
-        if (!exportResponse.ok) throw new Error(saved.message || "관리자 보고서를 저장하지 못했습니다.");
-        adminExportButton.textContent = `${saved.saved_location_label}에 저장 완료`;
+        const disposition = String(exportResponse.headers.get("content-disposition") || "");
+        const encodedName = disposition.match(/filename\*=UTF-8''([^;]+)/);
+        const fileName = encodedName ? decodeURIComponent(encodedName[1]) : "관리자점검현황.json";
+        const blob = await exportResponse.blob();
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = fileName;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(url);
+        adminExportButton.textContent = "다운로드 완료";
       } catch (error) {
-        adminExportButton.textContent = "관리자 보고서 저장 다시 시도";
+        adminExportButton.textContent = "관리자 보고서 다시 시도";
       } finally {
         adminExportButton.disabled = false;
       }

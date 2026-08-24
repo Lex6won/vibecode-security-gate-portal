@@ -1513,7 +1513,7 @@
             const job = await resultResponse.json();
             if (!resultResponse.ok) throw new Error(job.error || "점검 결과를 불러오지 못했습니다.");
             if (progress.status === "failed" || job.status === "failed") {
-              setResultBlocked(job.report_save_error || job.error || "점검을 완료하지 못했습니다. 다시 확인해 주세요.");
+              setResultBlocked(job.error || "점검을 완료하지 못했습니다. 다시 확인해 주세요.");
               return;
             }
             let saveError = null;
@@ -1553,8 +1553,7 @@
           scan_mode: scanMode,
           target_type: targetType,
           target_ref: targetRef,
-          target_label: targetInput.value.trim(),
-          save_dir: ""
+          target_label: targetInput.value.trim()
         })
       });
       const started = await response.json();

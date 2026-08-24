@@ -446,3 +446,33 @@ DB·문서 변경:
 - 런타임 자료(.env·.local·.check-reports)는 양쪽이 동일함을 확인. reports/는 홈 쪽에 병합.
 
 주의: `docs/18`은 3단 접근계층(T0/T1/T2)과 로컬 에이전트 전제를 담고 있으나, 실행 형태는 `docs/22`(서버 기반)로 재확정되었다. 18의 원칙(D1 브라우저-로컬 분리, D4 LLM 미호출, 2층 서명키 등)은 유효하고, 배포 형태 부분만 22가 대체한다.
+
+## 2026-08-13 S1 구현 — 로컬 전용 요소 제거, 업로드 유일 입력화
+
+서버 기반 전환(22번 문서)의 첫 구현 단계. 다중 사용자 서버에서 성립하지 않는 요소를 걷어냈다.
+
+제거(서버에서):
+
+- 네이티브 파일 선택창(`pickLocalPath`·`folderPickerScript`·`/api/local/pick-target`) — 서버에서 실행하면 대화상자가 서버 콘솔에 떠서 아무도 누를 수 없다.
+- 로컬 절대경로 검사(`target_type: folder/archive`) — 입력은 `browser_folder`·`browser_archive`·`github_url` 셋뿐. 그 외는 400.
+- 결과 저장 폴더(`save_dir`)와 `save_reports` 단계 — 결과는 다운로드로 받는다. 화면의 PC 저장은 브라우저 File System Access API가 담당하므로 유지.
+- 관리자 내보내기의 서버 폴더 저장 — `GET /api/admin/export`가 attachment 다운로드로 반환.
+
+이관(폐기 아님):
+
+- 설치·업데이트·MCP 등록·버전 비교 로직(`gitSummary`~`applyUpdates`, 577줄)을 **`tool-manager/core.mjs`로 이관**. 일회용 승인 토큰 체계도 함께 넘어감. 구 `/harness` 화면은 `tool-manager/ui-prototype.html`로 보존(도구 관리자 창 UI 원형). 경위와 S8 계획은 `tool-manager/README.md`.
+- `/harness`(`/tools`)는 **안내형 화면**으로 교체 — AI 도구 지원 범위 표, 도구 관리자 다운로드 자리(준비 중 표시), 서버 체커 버전(`GET /api/tools/versions` 신설), "왜 웹에서 바로 설치해 주지 않는가" 설명.
+
+보강(적대적 점검에서 나온 것):
+
+- **업로드 경로 검증(`assertUploadedPath`)**: 기존 코드는 `browser_folder`의 `target_ref`로 임의 서버 경로를 넘기면 **서버 파일시스템을 스캔**시킬 수 있었다. 업로드 영역(`tmp/scan-targets`) 밖 경로는 거부한다. 시나리오 테스트에 회귀 검사 추가(`src` 경로를 넘겨 failed 확인).
+
+테스트 재작성:
+
+- quick·standard 시나리오를 업로드 기반으로 전환. 픽커 시나리오는 **제거 확인 시나리오**(`scenarioRemovedLocalSurfaces`)로 대체 — 픽커 라우트 404, folder/archive 400, 이관 라우트 3종 404, 업로드 영역 탈출 거부.
+- folder-picker-test는 역할이 반전됨: "네이티브 픽커가 동작하는가"에서 **"되살아나지 않았는가"**로. 브라우저 픽커(webkitdirectory·showDirectoryPicker) 사용을 함께 강제.
+- button-contract-test의 /harness 계약을 안내형 화면 계약으로 교체(설치·업데이트 버튼이 **없어야** 통과).
+
+검증: `npm run guard` 전체 통과(시나리오 7종·보안스캔 0건). 수동 스모크로 `/api/tools/versions` 응답과 제거 라우트 404 확인.
+
+남은 것: S2(큐·동시 실행 상한·타임아웃·디스크 워터마크)가 다음 단계다. 소유자 검증(S4) 전까지는 `scan_id`를 아는 사람이 결과를 볼 수 있는 단일 사용자 시절 동작이 남아 있다 — 서버 공개 배포 전 필수.

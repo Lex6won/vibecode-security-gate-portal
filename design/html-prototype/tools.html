@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>도구 설치 안내 · 공공 바이브코딩 보안 체커</title>
+  <style>
+    :root {
+      --moon: #f3f6ff;
+      --harbor: #3770bf;
+      --ink: #102033;
+      --panel: #ffffff;
+      --soft: #e8f2ff;
+      --muted: #40546f;
+      --line: #d5e5fb;
+      --green: #1f6b5f;
+      --amber: #8a5a06;
+      --amber-soft: #fdf3df;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Malgun Gothic", "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+      background: var(--moon);
+      color: var(--ink);
+      line-height: 1.65;
+    }
+    .wrap { max-width: 880px; margin: 0 auto; padding: 28px 20px 80px; }
+    header.top { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 26px; }
+    header.top h1 { font-size: 22px; margin: 0; }
+    header.top a.back { font-size: 14px; color: var(--harbor); text-decoration: none; font-weight: 700; }
+    .lede { color: var(--muted); font-size: 15px; max-width: 62ch; margin: 0 0 24px; }
+    section.card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 22px 24px;
+      margin-bottom: 18px;
+    }
+    section.card h2 { font-size: 17px; margin: 0 0 8px; }
+    section.card p { font-size: 14px; color: var(--muted); margin: 0 0 12px; max-width: 66ch; }
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+    thead th { font-size: 12px; color: var(--muted); background: var(--soft); white-space: nowrap; }
+    tbody tr:last-child td { border-bottom: none; }
+    .pill { display: inline-block; font-size: 12px; font-weight: 700; padding: 2px 10px; border-radius: 999px; white-space: nowrap; }
+    .pill.ok { background: #e2f3ea; color: var(--green); }
+    .pill.na { background: var(--soft); color: var(--muted); }
+    .pill.warn { background: var(--amber-soft); color: var(--amber); }
+    .callout {
+      background: var(--soft);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 13px 16px;
+      font-size: 13.5px;
+      color: var(--muted);
+    }
+    .callout b { color: var(--ink); }
+    .server-version { display: flex; gap: 18px; flex-wrap: wrap; font-size: 14px; }
+    .server-version .item b { display: block; font-size: 13px; color: var(--muted); font-weight: 700; }
+    .server-version .item span { font-family: Consolas, monospace; font-size: 13.5px; }
+    .coming {
+      border: 1.5px dashed var(--line);
+      border-radius: 12px;
+      padding: 14px 16px;
+      font-size: 14px;
+      color: var(--muted);
+      background: #fbfdff;
+    }
+    footer { margin-top: 30px; font-size: 12.5px; color: var(--muted); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header class="top">
+      <h1>내 PC에 도구 설치하기</h1>
+      <a class="back" href="/">← 처음으로</a>
+    </header>
+    <p class="lede">
+      AI로 코딩하면서 <b>만드는 중에</b> 바로 점검받고 싶을 때 설치합니다.
+      웹에서 폴더를 올려 점검만 하실 거면 <b>설치하지 않으셔도 됩니다</b> — 결과는 같습니다.
+    </p>
+
+    <section class="card">
+      <h2>① 내가 쓰는 AI 도구가 되는지 보기</h2>
+      <p>고르지 않으셔도 됩니다. 설치할 때 PC에 깔린 도구를 알아서 찾고, <b>있는 것에만</b> 연결합니다.</p>
+      <table>
+        <thead><tr><th>AI 도구</th><th>지원</th><th>해 주는 것</th></tr></thead>
+        <tbody>
+          <tr><td><b>Codex CLI · VS Code 확장</b></td><td><span class="pill ok">지원</span></td><td>하네스 지침 · 체커 MCP 연결</td></tr>
+          <tr><td><b>Claude Code</b></td><td><span class="pill ok">지원</span></td><td>하네스 지침 · 체커 MCP 연결</td></tr>
+          <tr><td><b>ChatGPT · Codex 데스크톱</b></td><td><span class="pill ok">지원</span></td><td>체커 MCP 연결</td></tr>
+          <tr><td><b>Claude Desktop</b></td><td><span class="pill ok">지원</span></td><td>체커 MCP 연결</td></tr>
+          <tr><td><b>Lovable</b></td><td><span class="pill na">해당 없음</span></td><td>자동 연결이 없습니다 · 웹에 올려 점검해 주세요</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="card">
+      <h2>② 도구 관리자 내려받기</h2>
+      <p>한 번만 설치하면 됩니다. 실행하면 체커와 하네스를 깔아 주고, 최신인지 확인하고, 업데이트까지 해 줍니다.</p>
+      <div class="coming" id="managerDownload">
+        도구 관리자 설치 파일을 준비하고 있습니다. 준비되면 이 자리에서 내려받으실 수 있습니다.
+        그 전까지는 아래 서버 점검(웹 업로드)을 이용해 주세요 — 점검 결과는 동일합니다.
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>③ 지금 최신 버전</h2>
+      <p>이 포털 서버가 쓰는 체커입니다. 도구 관리자가 설치되면 내 PC 버전과 자동 비교합니다.</p>
+      <div class="server-version" id="serverVersion" aria-live="polite">
+        <div class="item"><b>서버 체커</b><span id="serverChecker">확인 중…</span></div>
+        <div class="item"><b>상태</b><span id="serverDoctor">확인 중…</span></div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>왜 이 화면에서 바로 설치해 주지 않나요?</h2>
+      <p>
+        웹페이지는 사용자 PC에 무엇이 깔려 있는지 볼 수도, 설정 파일을 바꿀 수도 없습니다.
+        브라우저가 그렇게 막아 두었고, 열려 있다면 아무 웹사이트나 방문자 PC를 조작할 수 있다는 뜻입니다.
+      </p>
+      <div class="callout">
+        그래서 역할을 나눕니다 — <b>이 화면</b>은 안내와 설치 파일 배포까지,
+        <b>도구 관리자</b>(PC 프로그램)가 버전 비교와 업데이트를,
+        실제 도구 감지와 설정 변경은 <b>하네스</b>가 합니다.
+      </div>
+    </section>
+
+    <footer>설치 없이 점검만 하시려면 <a href="/scan">보안 점검</a>으로 이동하세요.</footer>
+  </div>
+
+  <script>
+    (async function loadServerVersion() {
+      const checker = document.getElementById("serverChecker");
+      const doctor = document.getElementById("serverDoctor");
+      try {
+        const response = await fetch("/api/tools/versions", { cache: "no-store" });
+        if (!response.ok) throw new Error("unavailable");
+        const data = await response.json();
+        checker.textContent = data.checker?.version || "확인할 수 없습니다";
+        const status = data.checker?.doctor_status;
+        doctor.textContent = status === "ok" ? "정상" : status === "warn" ? "주의 항목 있음" : status === "error" ? "오류" : "확인할 수 없습니다";
+      } catch {
+        checker.textContent = "확인할 수 없습니다";
+        doctor.textContent = "확인할 수 없습니다";
+      }
+    })();
+  </script>
+</body>
+</html>

@@ -157,11 +157,9 @@ async function assertPageControls(pagePath) {
 }
 
 async function assertApiBackedButtons() {
-  await fetchText("/api/local/status");
-  await fetchText("/api/local/version-status?target=harness");
-  await fetchText("/api/local/version-status?target=checker");
-  await fetchText("/api/local/update/preview", { method: "POST" });
-  await fetchText("/api/local/mcp/register", { method: "POST" });
+  // S1(서버 전환): 화면이 의존하는 서버 API는 도구 버전 안내뿐이다.
+  // 설치·업데이트·MCP 라우트는 도구 관리자로 이관되어 서버에 없어야 한다.
+  await fetchText("/api/tools/versions");
   const html = await fetchText("/");
   assert.ok(html.includes("X-VibeCode-Local-Token"), "HTML pages must attach the local request token to same-origin API calls");
 }
@@ -199,17 +197,16 @@ async function assertLocalPickerContract() {
   assert.ok(html.includes('targetSelectionInFlight'), "native target picker must prevent duplicate picker windows");
 }
 
-async function assertInstallActionsPerComponent() {
+async function assertToolsGuidePage() {
+  // S1(서버 전환): /harness 는 안내형 화면이다. 웹에서 설치·업데이트 버튼을 제공하지 않는다.
   const html = await fetchText("/harness");
-  for (const target of ["harness", "checker"]) {
-    const actions = [...html.matchAll(new RegExp(`data-action="${target}-(install|update)"`, "g"))];
-    assert.equal(actions.length, 2, `${target} must expose exactly install and update actions`);
-  }
-  assert.ok(html.includes('class="component-state"'), "version status must be shown as read-only guidance, not a function button");
-  assert.ok(html.includes('title: "공식 설치"'), "unofficial or development installs must offer official installation with no extra action");
-  assert.ok(html.includes('id="operationActions"') && html.includes('id="actionResultClose"'), "installation progress must have dedicated final-state controls");
-  assert.ok(html.includes('operationActions.hidden = true;') && html.includes('actionResultClose.hidden = true;'), "installation progress must hide confirmation controls while work is running");
-  assert.ok(html.includes('operationActions.hidden = false;') && html.includes('actionResultClose.hidden = false;'), "installation completion must reveal confirmation controls");
+  assert.ok(html.includes("내 PC에 도구 설치하기"), "tools page must present install guidance");
+  assert.ok(html.includes("Codex CLI") && html.includes("Claude Code") && html.includes("Claude Desktop"), "tools page must show the AI tool support matrix");
+  assert.ok(html.includes("Lovable"), "unsupported tools must be listed honestly instead of hidden");
+  assert.ok(html.includes('fetch("/api/tools/versions"'), "tools page must load the server checker version");
+  assert.ok(html.includes("확인할 수 없습니다"), "version load failure must be shown honestly, never as up-to-date");
+  assert.ok(!/data-action="(harness|checker)-(install|update)"/.test(html), "web page must not expose PC install/update actions after the tool-manager split");
+  assert.ok(html.includes("웹페이지는 사용자 PC에"), "tools page must explain why the browser cannot inspect the PC");
 }
 
 const child = spawn(process.execPath, ["src/server.js"], {
@@ -237,7 +234,7 @@ try {
   await fetchText("/first-screen-gg-v2-1.html");
   await assertApiBackedButtons();
   await assertLocalPickerContract();
-  await assertInstallActionsPerComponent();
+  await assertToolsGuidePage();
   console.log(JSON.stringify({ status: "passed", base_url: baseUrl, pages: results }, null, 2));
 } catch (error) {
   console.error(stdout);
