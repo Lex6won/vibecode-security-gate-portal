@@ -4,44 +4,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>개발소스 보안 점검</title>
+  <meta name="description" content="공공 바이브코딩 보안 체커로 폴더, 압축파일, GitHub URL을 점검하고 보고서를 생성합니다.">
+  <link rel="stylesheet" href="/shared.css">
   <style>
-    :root {
-      --moon: #f3f6ff;
-      --herb: #cef26d;
-      --harbor: #3770bf;
-      --ice: #8dc2ff;
-      --ink: #102033;
-      --panel: #ffffff;
-      --soft: #e8f2ff;
-      --muted: #40546f;
-      --line: #d5e5fb;
-      --green: #1f6b5f;
-      --warn: #8a5b00;
-    }
-
-    * {
-      box-sizing: border-box;
-    }
-
-    body {
-      margin: 0;
-      min-width: 320px;
-      min-height: 100vh;
-      background: var(--moon);
-      color: var(--ink);
-      font-family: Pretendard, "Noto Sans KR", "Malgun Gothic", system-ui, sans-serif;
-      word-break: keep-all;
-      overflow-wrap: break-word;
-      line-break: strict;
-      letter-spacing: 0;
-    }
-
-    a,
-    button,
-    input {
-      font: inherit;
-    }
-
     .screen {
       width: min(1180px, calc(100% - 32px));
       height: 100vh;
@@ -49,562 +14,80 @@
       display: grid;
       grid-template-columns: minmax(0, 1fr);
       padding: 8px 0 10px;
-      background: var(--moon);
       overflow: hidden;
     }
-
     .workspace {
       min-width: 0;
       min-height: 100%;
       display: grid;
-      grid-template-columns: minmax(0, 1.58fr) minmax(360px, .82fr);
-      grid-template-rows: auto minmax(128px, auto) minmax(0, 1fr) auto;
-      gap: 12px;
+      grid-template-columns: minmax(0, 1fr);
+      grid-template-rows: auto auto minmax(0, 1fr) auto;
+      gap: 14px;
+      align-content: start;
     }
-
-    .topbar,
-    .panel,
-    .result-card {
-      border-radius: 24px;
-      background: var(--panel);
-      box-shadow: 0 18px 45px rgba(55, 112, 191, 0.12);
-    }
-
-    .topbar {
-      grid-column: 1 / -1;
-      min-height: 68px;
-      padding: 8px 20px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 16px;
-    }
-
-    .brand-home {
-      min-width: 0;
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      color: inherit;
-      text-decoration: none;
-    }
-
-    .gg-mark {
-      width: 70px;
-      height: 50px;
-      flex: 0 0 auto;
-      display: grid;
-      place-items: center;
-      overflow: hidden;
-      border-radius: 8px;
-      background: #ffffff;
-      box-shadow: 0 0 0 1px rgba(55,112,191,.16);
-    }
-
-    .gg-mark img {
-      width: 100%;
-      height: 100%;
-      display: block;
-      object-fit: contain;
-      object-position: center;
-      transform: none;
-    }
-
-    .brand-copy {
-      min-width: 0;
-      display: block;
-    }
-
-    .brand-home strong {
-      display: block;
-      font-size: 24px;
-      line-height: 30px;
-      font-weight: 900;
-    }
-
-    .brand-copy > span {
-      display: block;
-      margin-top: 1px;
-      color: var(--muted);
-      font-size: 13px;
-      line-height: 18px;
-      font-weight: 800;
-    }
-
-    .pill {
-      min-height: 34px;
-      padding: 0 13px;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      border-radius: 999px;
-      background: var(--soft);
-      color: #244d85;
-      font-size: 12px;
-      line-height: 16px;
-      font-weight: 900;
-      white-space: nowrap;
-      text-decoration: none;
-      transition: transform .14s ease, box-shadow .14s ease, background-color .14s ease;
-    }
-
-    .pill:hover,
-    .pill:focus-visible {
-      transform: translateY(-1px);
-      box-shadow: 0 8px 18px rgba(55,112,191,.16);
-    }
-
-    .pill:focus-visible,
-    .tab:focus-visible,
-    .scan-button:focus-visible,
-    .save-button:focus-visible,
-    .mode:focus-visible {
-      outline: 3px solid rgba(55,112,191,.28);
-      outline-offset: 3px;
-    }
-
-    .pill.ok {
-      background: var(--herb);
-      color: var(--ink);
-    }
-
+    .topbar { grid-column: 1 / -1; }
     .hero {
-      grid-column: 1;
-      grid-row: 2;
-      min-height: 132px;
+      grid-column: 1 / -1;
+      min-height: 120px;
       padding: 20px 24px;
       display: grid;
-      gap: 10px;
+      gap: 8px;
       align-content: center;
-      border-radius: 28px;
-      background: var(--panel);
-      box-shadow: 0 18px 45px rgba(55, 112, 191, 0.12);
     }
-
-    .eyebrow {
-      width: fit-content;
-      min-height: 30px;
-      padding: 0 12px;
-      display: inline-flex;
-      align-items: center;
-      border-radius: 999px;
-      background: var(--soft);
-      color: #244d85;
-      font-size: 12px;
-      font-weight: 900;
-    }
-
-    h1 {
-      margin: 0;
-      font-size: 29px;
-      line-height: 1.22;
-      font-weight: 900;
-    }
-
-    .hero p {
-      max-width: 760px;
-      margin: 0;
-      color: var(--muted);
-      font-size: 15px;
-      line-height: 1.55;
-      font-weight: 700;
-    }
-
-    .steps {
+    .scan-grid {
       grid-column: 1 / -1;
       display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 12px;
+      grid-template-columns: minmax(0, 1.45fr) minmax(320px, .55fr);
+      gap: 14px;
+      align-items: start;
     }
-
-    .steps[hidden] {
-      display: none;
-    }
-
-    .step {
-      min-height: 66px;
-      padding: 12px;
+    .panel {
+      padding: 16px;
       display: grid;
-      grid-template-columns: 34px minmax(0, 1fr);
-      gap: 10px;
-      align-items: center;
-      border-radius: 18px;
-      background: var(--soft);
+      gap: 14px;
+      align-content: start;
     }
-
-    .step b {
-      width: 32px;
-      height: 32px;
-      display: grid;
-      place-items: center;
-      border-radius: 999px;
-      background: var(--panel);
-      color: #244d85;
-      font-size: 13px;
-    }
-
-    .step strong {
-      display: block;
-      font-size: 15px;
-      line-height: 22px;
-      font-weight: 900;
-    }
-
-    .step span {
-      display: block;
-      color: var(--muted);
-      font-size: 12px;
-      line-height: 18px;
-      font-weight: 800;
-    }
-
-    .modal {
-      position: fixed;
-      inset: 0;
-      z-index: 20;
-      padding: 24px;
-      display: grid;
-      place-items: center;
-      background: rgba(16,32,51,.34);
-      backdrop-filter: blur(6px);
-    }
-
-    .modal[hidden] {
-      display: none;
-    }
-
-    .modal-card {
-      width: min(720px, 100%);
-      max-height: min(640px, calc(100vh - 48px));
-      overflow: auto;
-      padding: 24px;
-      border-radius: 26px;
-      background: var(--panel);
-      box-shadow: 0 28px 80px rgba(16,32,51,.28);
-    }
-
-    .modal-card .steps {
-      margin-top: 18px;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
-    }
-
-    .progress-summary {
-      margin-top: 18px;
-      display: grid;
-      gap: 9px;
-      align-items: center;
-      color: var(--muted);
-      font-size: 13px;
-      font-weight: 900;
-    }
-
-    .progress-overview {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      color: var(--ink);
-      font-size: 15px;
-    }
-
-    .progress-overview strong {
-      margin-left: auto;
-      color: var(--harbor);
-      font-size: 22px;
-      line-height: 1;
-    }
-
-    .progress-detail {
-      margin: 0;
-      color: var(--muted);
-      font-size: 13px;
-      font-weight: 800;
-    }
-
-    .progress-spinner {
-      width: 18px;
-      height: 18px;
-      border: 3px solid var(--soft);
-      border-top-color: var(--harbor);
-      border-radius: 999px;
-      animation: scan-spin .8s linear infinite;
-    }
-
-    .progress-track {
-      width: 100%;
-      height: 10px;
-      overflow: hidden;
-      border-radius: 999px;
-      background: var(--soft);
-    }
-
-    .progress-track span {
-      display: block;
-      width: 0;
-      height: 100%;
-      border-radius: inherit;
-      background: linear-gradient(90deg, var(--harbor), var(--ice), var(--herb));
-      background-size: 180% 100%;
-      transition: width .45s ease;
-      animation: progress-shimmer 1.2s linear infinite;
-    }
-
-    .progress-summary[data-state="completed"] .progress-spinner,
-    .progress-summary[data-state="failed"] .progress-spinner {
-      animation: none;
-    }
-
-    .modal-card .step[data-state="skipped"] {
-      opacity: .58;
-    }
-
-    .progress-summary[data-state="completed"] .progress-spinner {
-      border-color: var(--green);
-      background: var(--green);
-    }
-
-    .progress-summary[data-state="failed"] .progress-spinner {
-      border-color: var(--warn);
-      background: var(--warn);
-    }
-
-    .modal-card .step[data-state="running"] {
-      outline: 2px solid var(--harbor);
-      background: #fbfdff;
-      box-shadow: 0 10px 24px rgba(55,112,191,.16);
-    }
-
-    .modal-card .step[data-state="completed"] b {
-      background: var(--green);
-      color: #ffffff;
-    }
-
-    .modal-card .step[data-state="failed"] {
-      outline: 2px solid var(--warn);
-      background: #fffaf0;
-    }
-
-    .selection-progress {
-      margin-top: 20px;
+    .step-section {
       padding: 18px;
       border-radius: 18px;
-      background: var(--soft);
+      background: var(--panel);
+      box-shadow: var(--shadow-sm);
+      outline: 1px solid var(--soft);
     }
-
-    .selection-progress strong {
-      display: block;
-      color: var(--ink);
-      font-size: 17px;
-      line-height: 1.35;
-      font-weight: 900;
-    }
-
-    .selection-progress p {
-      margin: 7px 0 0;
-      color: var(--muted);
-      font-size: 14px;
-      line-height: 1.55;
-      font-weight: 800;
-    }
-
-    .selection-progress .progress-track {
-      margin-top: 16px;
-    }
-
-    @keyframes scan-spin {
-      to { transform: rotate(360deg); }
-    }
-
-    @keyframes progress-shimmer {
-      to { background-position: -180% 0; }
-    }
-
-    .modal-head {
-      display: flex;
-      align-items: flex-start;
-      justify-content: space-between;
-      gap: 16px;
-    }
-
-    .modal-head h2 {
-      margin: 0;
-      font-size: 24px;
-      line-height: 1.35;
-      font-weight: 900;
-    }
-
-    .modal-head p {
-      margin: 6px 0 0;
-      color: var(--muted);
-      font-size: 14px;
-      line-height: 1.55;
-      font-weight: 800;
-    }
-
-    .modal-close {
-      width: 40px;
-      height: 40px;
-      flex: 0 0 auto;
-      border: 0;
-      border-radius: 999px;
-      background: var(--soft);
-      color: #244d85;
-      font-size: 18px;
-      font-weight: 900;
-      cursor: pointer;
-    }
-
-    .modal-actions {
-      margin-top: 22px;
-      display: flex;
-      justify-content: flex-end;
-      align-items: center;
-      gap: 10px;
-    }
-
-    .button {
-      min-height: 44px;
-      padding: 0 18px;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      border: 0;
-      border-radius: 999px;
-      background: var(--green);
-      color: #ffffff;
-      font-size: 14px;
-      line-height: 20px;
-      font-weight: 900;
-      letter-spacing: 0;
-      cursor: pointer;
-      box-shadow: 0 8px 18px rgba(31,107,95,.18);
-      transition: transform .14s ease, box-shadow .14s ease, background-color .14s ease;
-    }
-
-    .button.primary {
-      background: var(--green);
-      color: #ffffff;
-    }
-
-    .button.secondary {
-      border: 1px solid #9ab9e8;
-      background: var(--soft);
-      color: #244d85;
-      box-shadow: none;
-    }
-
-    .button:hover,
-    .button:focus-visible {
-      transform: translateY(-2px);
-      box-shadow: 0 12px 22px rgba(55,112,191,.22);
-    }
-
-    .button:active {
-      transform: translateY(1px) scale(.99);
-      box-shadow: inset 0 0 0 2px rgba(255,255,255,.32);
-    }
-
-    .button:focus-visible,
-    .modal-close:focus-visible {
-      outline: 3px solid rgba(55,112,191,.3);
-      outline-offset: 3px;
-    }
-
-    .button:disabled {
-      cursor: not-allowed;
-      opacity: .58;
-      transform: none;
-      box-shadow: none;
-    }
-
-    .scan-grid {
-      display: contents;
-    }
-
-    .panel {
-      padding: 20px;
-    }
-
-    .scan-grid > .panel:first-child {
-      grid-column: 1;
-      grid-row: 3;
-      outline: 3px solid var(--green);
-      box-shadow: 0 22px 54px rgba(31,107,95,.16);
-    }
-
-    .panel h2,
-    .result-card h2 {
-      margin: 0;
-      font-size: 21px;
-      line-height: 28px;
-      font-weight: 900;
-    }
-
     .flow-title {
       display: flex;
       align-items: center;
       gap: 10px;
       margin: 0;
-      font-size: 22px;
-      line-height: 30px;
+      font-size: 19px;
       font-weight: 900;
+      line-height: 28px;
     }
-
     .flow-title .sequence {
-      width: 34px;
-      height: 34px;
+      width: 30px;
+      height: 30px;
       flex: 0 0 auto;
       display: grid;
       place-items: center;
       border-radius: 999px;
       background: var(--soft);
-      color: #244d85;
-      font-size: 15px;
+      color: var(--info);
+      font-size: 14px;
       font-weight: 900;
     }
-
-    .panel p {
+    .step-section > p {
       margin: 8px 0 0;
       color: var(--muted);
       font-size: 14px;
       line-height: 1.55;
       font-weight: 700;
     }
-
     .source-tabs {
-      margin-top: 16px;
+      margin-top: 14px;
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
       gap: 8px;
     }
-
-    .tab {
-      min-height: 44px;
-      border: 0;
-      border-radius: 999px;
-      background: var(--soft);
-      color: #244d85;
-      font-weight: 900;
-      cursor: pointer;
-      transition: transform .14s ease, box-shadow .14s ease, background-color .14s ease;
-    }
-
-    .tab.active {
-      background: var(--herb);
-      color: var(--ink);
-      box-shadow: inset 0 0 0 2px var(--ink), 0 12px 24px rgba(206,242,109,.34);
-    }
-
-    .tab:hover,
-    .tab:focus-visible {
-      transform: translateY(-1px);
-      box-shadow: 0 10px 20px rgba(55,112,191,.14);
-    }
-
-    .tab:active {
-      transform: translateY(1px) scale(.99);
-      box-shadow: inset 0 0 0 2px var(--ink);
-    }
-
     .target-help {
       margin-top: 10px;
       color: var(--muted);
@@ -612,72 +95,22 @@
       line-height: 1.55;
       font-weight: 800;
     }
-
     .input-row {
       margin-top: 12px;
-      display: grid;
-      grid-template-columns: 1fr auto;
+      display: flex;
       gap: 10px;
-      align-items: center;
-      min-height: 54px;
-      padding: 8px 8px 8px 18px;
-      border-radius: 20px;
-      background: var(--moon);
+      flex-wrap: wrap;
     }
-
-    input {
-      min-width: 0;
-      border: 0;
-      outline: 0;
-      background: transparent;
-      color: var(--ink);
-      font-size: 15px;
-      font-weight: 800;
-      word-break: break-all;
-    }
-
-    input::placeholder {
-      color: #7a8aa1;
-    }
-
-    .scan-button {
-      min-height: 42px;
-      padding: 0 18px;
-      border: 0;
-      border-radius: 999px;
-      background: var(--green);
-      color: white;
-      font-weight: 900;
-      cursor: pointer;
-      transition: transform .14s ease, box-shadow .14s ease, background-color .14s ease;
-    }
-
-    .scan-button:hover,
-    .scan-button:focus-visible {
-      transform: translateY(-2px);
-      box-shadow: 0 10px 20px rgba(31,107,95,.22);
-    }
-
-    .scan-button:active {
-      transform: translateY(1px) scale(.99);
-      background: #155347;
-      box-shadow: inset 0 0 0 2px rgba(255,255,255,.45);
-    }
-
+    .input-row input { flex: 1 1 220px; }
+    .scan-button { min-height: 44px; padding: 0 18px; white-space: nowrap; }
     .save-row {
       margin-top: 12px;
-      padding: 18px;
+      padding: 16px;
       display: grid;
-      gap: 11px;
-      border-radius: 20px;
+      gap: 10px;
+      border-radius: 18px;
       background: var(--moon);
     }
-
-    .result-card > .save-row:first-child {
-      margin-top: 0;
-      margin-bottom: 16px;
-    }
-
     .save-row span {
       color: var(--muted);
       font-size: 14px;
@@ -686,88 +119,39 @@
       word-break: keep-all;
       overflow-wrap: break-word;
     }
-
-    .save-button {
-      width: fit-content;
-      min-height: 46px;
-      padding: 0 18px;
-      border: 0;
-      border-radius: 999px;
-      background: var(--harbor);
-      color: #ffffff;
-      font-size: 15px;
-      font-weight: 900;
-      cursor: pointer;
-      transition: transform .14s ease, box-shadow .14s ease, background-color .14s ease;
-    }
-
-    .save-button:hover,
-    .save-button:focus-visible {
-      transform: translateY(-1px);
-      box-shadow: 0 8px 18px rgba(55,112,191,.18);
-      background: #244d85;
-    }
-
-    .save-button:active {
-      transform: translateY(1px) scale(.99);
-      box-shadow: inset 0 0 0 2px rgba(255,255,255,.35);
-    }
-
+    .save-button { width: fit-content; min-height: 44px; padding: 0 18px; }
     .mode-grid {
-      margin-top: 12px;
+      margin-top: 14px;
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 18px;
+      gap: 12px;
       max-width: 760px;
     }
-
     .mode {
-      min-height: 136px;
+      min-height: 120px;
       padding: 16px;
       border: 0;
-      border-radius: 18px;
+      border-radius: 16px;
       background: var(--moon);
       color: inherit;
       cursor: pointer;
       text-align: left;
       outline: 2px solid transparent;
-      transition: transform .14s ease, outline-color .14s ease, background-color .14s ease, box-shadow .14s ease;
+      transition: transform var(--duration-fast) var(--ease-out), outline-color var(--duration-fast) var(--ease-out), background-color var(--duration-fast) var(--ease-out), box-shadow var(--duration-fast) var(--ease-out);
     }
-
     .mode.active {
       outline: 2px solid var(--harbor);
       background: #fbfdff;
-      box-shadow: 0 16px 36px rgba(55,112,191,.18);
+      box-shadow: 0 12px 28px rgba(55,112,191,.14);
     }
-
-    .mode:hover,
-    .mode:focus-visible {
+    .mode:hover, .mode:focus-visible {
       transform: translateY(-2px);
       background: #fbfdff;
       outline-color: var(--ice);
     }
-
-    .mode:active {
-      transform: translateY(1px) scale(.99);
-      outline-color: var(--ink);
-    }
-
-    .mode strong {
-      display: block;
-      font-size: 16px;
-      line-height: 22px;
-      font-weight: 900;
-    }
-
-    .mode span {
-      display: block;
-      margin-top: 7px;
-      color: var(--muted);
-      font-size: 13px;
-      line-height: 19px;
-      font-weight: 700;
-    }
-
+    .mode:active { transform: translateY(1px) scale(.99); outline-color: var(--ink); }
+    .mode strong { display: block; font-size: 16px; line-height: 22px; font-weight: 900; }
+    .mode span { display: block; margin-top: 6px; color: var(--muted); font-size: 13px; line-height: 19px; font-weight: 700; }
     .mode em {
       display: inline-flex;
       min-height: 24px;
@@ -775,41 +159,27 @@
       padding: 0 9px;
       align-items: center;
       border-radius: 999px;
-      background: #ffffff;
-      color: #244d85;
+      background: #fff;
+      color: var(--info);
       font-size: 12px;
       font-style: normal;
       font-weight: 900;
     }
-
-    .mode.active em {
-      background: var(--herb);
-      color: var(--ink);
-      box-shadow: inset 0 0 0 1px rgba(16,32,51,.18);
-    }
-
-    .mode-section {
-      margin-top: 24px;
-    }
-
+    .mode.active em { background: var(--green-soft); color: var(--green); box-shadow: inset 0 0 0 1px var(--green-line); }
     .result-card {
-      grid-column: 2;
-      grid-row: 2 / 4;
-      padding: 20px;
+      padding: 18px;
+      display: grid;
+      gap: 14px;
+      align-content: start;
     }
-
-    .result-card > h2 {
-      margin-top: 22px;
-    }
-
+    .result-card > h2 { margin: 0; font-size: 18px; font-weight: 900; line-height: 26px; }
     .result-list {
       display: grid;
       gap: 7px;
-      margin: 12px 0 0;
+      margin: 0;
       padding: 0;
       list-style: none;
     }
-
     .result-list li {
       min-height: 38px;
       padding: 8px 12px;
@@ -822,188 +192,90 @@
       font-size: 13px;
       font-weight: 800;
     }
-
-    .result-list b {
-      color: var(--ink);
-      white-space: nowrap;
-    }
-
+    .result-list b { color: var(--ink); white-space: nowrap; }
     .mode-note {
       margin-top: 10px;
       padding: 10px 12px;
       border-radius: 16px;
-      background: #fff4d6;
+      background: var(--warn-soft);
       color: var(--warn);
       font-size: 13px;
       line-height: 1.5;
       font-weight: 900;
     }
 
-    .step.active {
-      outline: 2px solid var(--harbor);
-      background: #fbfdff;
+    /* 모달 진행 단계 — 페이지별 .step 재정의 */
+    .modal-card .steps {
+      margin-top: 18px;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
     }
+    .modal-card .step {
+      min-height: 66px;
+      padding: 12px;
+      grid-template-columns: 34px minmax(0, 1fr);
+      gap: 10px;
+      align-items: center;
+      border-radius: 18px;
+      background: var(--soft);
+    }
+    .modal-card .step b {
+      width: 32px;
+      height: 32px;
+      display: grid;
+      place-items: center;
+      border-radius: 999px;
+      background: var(--panel);
+      color: var(--info);
+      font-size: 13px;
+    }
+    .modal-card .step strong { display: block; font-size: 15px; line-height: 22px; font-weight: 900; }
+    .modal-card .step span { display: block; color: var(--muted); font-size: 12px; line-height: 18px; font-weight: 800; }
+    .modal-card .step[data-state="skipped"] { opacity: .58; }
+    .modal-card .step[data-state="running"] { outline: 2px solid var(--harbor); background: #fbfdff; box-shadow: var(--shadow-sm); }
+    .modal-card .step[data-state="completed"] b { background: var(--green); color: #fff; }
+    .modal-card .step[data-state="failed"] { outline: 2px solid var(--warn); background: var(--warn-soft); }
+
+    .progress-detail { margin: 0; color: var(--muted); font-size: 13px; font-weight: 800; }
+    .selection-progress {
+      margin-top: 20px;
+      padding: 18px;
+      border-radius: 18px;
+      background: var(--soft);
+    }
+    .selection-progress strong { display: block; color: var(--ink); font-size: 17px; line-height: 1.35; font-weight: 900; }
+    .selection-progress p { margin: 7px 0 0; color: var(--muted); font-size: 14px; line-height: 1.55; font-weight: 800; }
+    .selection-progress .progress-track { margin-top: 16px; }
 
     @media (max-width: 960px) {
-      .screen,
-      .steps,
-      .mode-grid {
-        grid-template-columns: 1fr;
-      }
-
-      .screen {
-        width: calc(100% - 28px);
-        padding: 8px 0 12px;
-      }
-
-      .workspace {
-        min-height: auto;
-        grid-template-columns: 1fr;
-        grid-template-rows: auto;
-      }
-
-      .hero,
-      .scan-grid > .panel:first-child,
-      .result-card,
-      .steps {
-        grid-column: 1;
-        grid-row: auto;
-      }
-
-      .topbar {
-        align-items: stretch;
-        flex-direction: column;
-        padding: 16px;
-      }
-
-      h1 {
-        font-size: 28px;
-      }
+      .screen, .steps, .mode-grid { grid-template-columns: 1fr; }
+      .screen { width: calc(100% - 28px); padding: 8px 0 12px; height: auto; min-height: 100vh; overflow: visible; }
+      .workspace { min-height: auto; grid-template-columns: 1fr; grid-template-rows: auto; }
+      .hero, .scan-grid, .panel, .result-card { grid-column: 1; grid-row: auto; }
+      .scan-grid { grid-template-columns: 1fr; }
+      .result-card { grid-row: auto; }
+      .topbar { align-items: stretch; flex-direction: column; padding: 16px; }
     }
-
-    /* A short browser window must never hide the source or scan-mode controls. */
     @media (max-height: 720px) {
-      .screen {
-        height: auto;
-        min-height: 100vh;
-        overflow-x: hidden;
-        overflow-y: auto;
-        scrollbar-gutter: stable;
-      }
-
-      .workspace {
-        min-height: 0;
-        grid-template-rows: auto 112px auto;
-        align-content: start;
-      }
-
-      .topbar {
-        min-height: 60px;
-        padding: 6px 16px;
-      }
-
-      .gg-mark {
-        width: 62px;
-        height: 46px;
-      }
-
-      .brand-home strong {
-        font-size: 21px;
-        line-height: 27px;
-      }
-
-      .hero {
-        min-height: 112px;
-        padding: 14px 20px;
-        gap: 6px;
-      }
-
-      .eyebrow {
-        min-height: 26px;
-      }
-
-      h1 {
-        font-size: 26px;
-      }
-
-      .hero p {
-        font-size: 14px;
-        line-height: 1.45;
-      }
-
-      .panel,
-      .result-card {
-        padding: 16px;
-      }
-
-      .source-tabs {
-        margin-top: 12px;
-      }
-
-      .tab {
-        min-height: 40px;
-      }
-
-      .target-help {
-        margin-top: 8px;
-      }
-
-      .input-row {
-        min-height: 48px;
-        margin-top: 10px;
-      }
-
-      .mode-section {
-        margin-top: 16px;
-      }
-
-      .mode-grid {
-        margin-top: 10px;
-        gap: 12px;
-      }
-
-      .mode {
-        min-height: 114px;
-        padding: 14px;
-      }
-
-      .mode span {
-        margin-top: 5px;
-        line-height: 18px;
-      }
-
-      .result-card > .save-row:first-child {
-        margin-bottom: 12px;
-      }
-
-      .save-row {
-        padding: 14px;
-        gap: 8px;
-      }
-
-      .result-card > h2 {
-        margin-top: 16px;
-      }
-
-      .result-list {
-        gap: 5px;
-        margin-top: 10px;
-      }
-
-      .result-list li {
-        min-height: 34px;
-        padding: 7px 10px;
-      }
-    }
-
-    @media (prefers-reduced-motion: reduce) {
-      .pill,
-      .tab,
-      .scan-button,
-      .save-button,
-      .mode {
-        transition: none;
-      }
+      .screen { height: auto; min-height: 100vh; overflow-x: hidden; overflow-y: auto; scrollbar-gutter: stable; }
+      .workspace { min-height: 0; grid-template-rows: auto auto auto; align-content: start; }
+      .topbar { min-height: 60px; padding: 6px 16px; }
+      .gg-mark { width: 62px; height: 46px; }
+      .brand-home strong { font-size: 21px; line-height: 27px; }
+      .hero { min-height: 100px; padding: 14px 20px; gap: 6px; }
+      .eyebrow { min-height: 26px; }
+      h1 { font-size: 26px; }
+      .hero p { font-size: 14px; line-height: 1.45; }
+      .panel, .result-card { padding: 14px; }
+      .step-section { padding: 14px; }
+      .source-tabs { margin-top: 12px; }
+      .target-help { margin-top: 8px; }
+      .input-row { min-height: 48px; margin-top: 10px; }
+      .mode-grid { margin-top: 10px; gap: 10px; }
+      .mode { min-height: 108px; padding: 14px; }
+      .mode span { margin-top: 5px; line-height: 18px; }
+      .result-card > h2 { margin-top: 0; }
+      .result-list { gap: 5px; margin-top: 0; }
+      .result-list li { min-height: 34px; padding: 7px 10px; }
     }
   </style>
 </head>
@@ -1012,7 +284,7 @@
     <main class="workspace">
       <header class="topbar">
         <a class="brand-home" href="/" aria-label="홈으로 이동">
-        <span class="gg-mark" aria-hidden="true"><img src="/assets/images/gyeonggi-signature-ko.jpg" alt="경기도 로고"></span>
+          <span class="gg-mark" aria-hidden="true"><img src="/assets/images/gyeonggi-signature-ko.jpg" alt="경기도 로고"></span>
           <span class="brand-copy">
             <strong>공공 바이브코딩 보안 체커</strong>
             <span>AI로 만든 개발 소스의 보안 위험을 빠르게 확인합니다.</span>
@@ -1025,31 +297,45 @@
         </div>
       </header>
 
-      <section class="hero" aria-labelledby="scan-title">
-        <span class="eyebrow">개발소스 보안 점검</span>
-        <h1 id="scan-title">대상을 선택하고 점검하세요.</h1>
-        <p>폴더, 압축파일, GitHub URL을 검사하고 HTML·JSON 보고서를 만듭니다.</p>
+      <section class="hero panel-card" aria-labelledby="scan-title">
+        <div>
+          <div class="eyebrow">개발소스 보안 점검</div>
+          <h1 id="scan-title">3단계로 소스를 점검하세요.</h1>
+          <p class="lead">저장 위치 → 검사 대상 → 점검 방식을 선택하면 바로 시작합니다.</p>
+        </div>
       </section>
 
       <section class="scan-grid">
-        <div class="panel">
-          <h2 class="flow-title"><span class="sequence">2</span><span>검사 대상 선택</span></h2>
-          <p>검사할 소스를 선택하세요. 원본 소스는 이 PC에서만 처리합니다.</p>
-          <div class="source-tabs" role="tablist" aria-label="검사 대상 유형">
-            <button class="tab active" type="button" data-target="folder">폴더 선택</button>
-            <button class="tab" type="button" data-target="zip">압축파일 선택</button>
-            <button class="tab" type="button" data-target="url">GitHub URL</button>
-          </div>
-          <input id="folderPickerInput" type="file" webkitdirectory multiple hidden>
-          <input id="archivePickerInput" type="file" accept=".zip,application/zip" hidden>
-          <div class="target-help" id="targetHelp">클릭하면 Windows 탐색기에서 검사할 프로젝트 폴더를 선택합니다.</div>
-          <div class="input-row">
-            <input id="targetInput" aria-label="검사 대상 경로 또는 URL" value="선택된 폴더 없음" placeholder="https://github.com/organization/project" readonly>
-            <button class="scan-button" id="scanButton" type="button">폴더 선택</button>
-          </div>
+        <div class="panel panel-card">
+          <section class="step-section" aria-labelledby="save-step-title">
+            <h2 class="flow-title" id="save-step-title"><span class="sequence">1</span><span>결과 저장 위치 선택</span></h2>
+            <p>점검 보고서를 저장할 폴더를 먼저 선택하세요.</p>
+            <div class="save-row">
+              <span id="savePath">저장 위치를 선택하면 HTML, JSON, ZIP 결과물을 해당 위치에 저장합니다.</span>
+              <button class="button save-button" id="saveButton" type="button">저장 위치 선택</button>
+            </div>
+          </section>
 
-          <section class="mode-section" aria-labelledby="scan-mode-title">
+          <section class="step-section" aria-labelledby="target-step-title">
+            <h2 class="flow-title" id="target-step-title"><span class="sequence">2</span><span>검사 대상 선택</span></h2>
+            <p>검사할 소스를 선택하세요. 원본 소스는 이 PC에서만 처리합니다.</p>
+            <div class="source-tabs" role="tablist" aria-label="검사 대상 유형">
+              <button class="tab active" type="button" data-target="folder">폴더 선택</button>
+              <button class="tab" type="button" data-target="zip">압축파일 선택</button>
+              <button class="tab" type="button" data-target="url">GitHub URL</button>
+            </div>
+            <input id="folderPickerInput" type="file" webkitdirectory multiple hidden>
+            <input id="archivePickerInput" type="file" accept=".zip,application/zip" hidden>
+            <div class="target-help" id="targetHelp">클릭하면 Windows 탐색기에서 검사할 프로젝트 폴더를 선택합니다.</div>
+            <div class="input-row">
+              <input id="targetInput" aria-label="검사 대상 경로 또는 URL" value="선택된 폴더 없음" placeholder="https://github.com/organization/project" readonly>
+              <button class="button scan-button" id="scanButton" type="button">폴더 선택</button>
+            </div>
+          </section>
+
+          <section class="step-section" aria-labelledby="scan-mode-title">
             <h2 class="flow-title" id="scan-mode-title"><span class="sequence">3</span><span>점검 방식 선택</span></h2>
+            <p>소스 상태에 맞는 점검 방식을 선택하면 즉시 점검이 시작됩니다.</p>
             <div class="mode-grid" aria-label="검사 방식">
               <button class="mode" type="button" data-mode="quick" data-mode-title="간편 점검"><strong>간편 점검</strong><span>개발 중 변경한 소스의 고위험 규칙과 의존성을 빠르게 확인합니다.</span><em>개발 중</em></button>
               <button class="mode active" type="button" data-mode="standard" data-mode-title="표준 점검"><strong>표준 점검</strong><span>개발이 끝난 소스 전체와 의존성을 검사하고 HTML·JSON 보고서를 저장합니다.</span><em>제출 전</em></button>
@@ -1057,12 +343,7 @@
           </section>
         </div>
 
-        <aside class="result-card">
-          <div class="save-row">
-            <div class="flow-title"><span class="sequence">1</span><span>결과 저장 위치 선택</span></div>
-            <span id="savePath">저장 위치를 선택하면 HTML, JSON, ZIP 결과물을<br>해당 위치에 저장합니다.</span>
-            <button class="save-button" id="saveButton" type="button">저장 위치 선택</button>
-          </div>
+        <aside class="result-card panel-card">
           <h2>점검 후 확인</h2>
           <ul class="result-list">
             <li><span>제출 가능 여부</span><b id="resultDecision">대기</b></li>
@@ -1075,13 +356,11 @@
           <div class="save-row" id="observationSubmitRow" hidden>
             <div class="flow-title"><span class="sequence">4</span><span>점검결과 제출 (선택)</span></div>
             <span id="observationSubmitNote">사용한 라이브러리 목록과 검사 결과만 제출되어 경기도 화이트리스트 만들기에 쓰입니다. 소스 코드는 포함되지 않습니다.</span>
-            <button class="save-button" id="submitObservations" type="button">점검결과 제출</button>
+            <button class="button save-button" id="submitObservations" type="button">점검결과 제출</button>
           </div>
         </aside>
       </section>
-
     </main>
-
   </div>
 
   <section class="modal" id="scanProgress" aria-label="검사 진행상황" aria-live="polite" hidden>
@@ -1212,27 +491,9 @@
     let browserSavedReports = [];
     let lastScanMode = null;
     const targetText = {
-      folder: {
-        help: "클릭하면 Windows 탐색기에서 검사할 프로젝트 폴더를 선택합니다.",
-        value: "선택된 폴더 없음",
-        button: "폴더 선택",
-        readOnly: true,
-        placeholder: ""
-      },
-      zip: {
-        help: "클릭하면 Windows 탐색기에서 검사할 ZIP 파일을 선택합니다.",
-        value: "선택된 압축파일 없음",
-        button: "압축파일 선택",
-        readOnly: true,
-        placeholder: ""
-      },
-      url: {
-        help: "GitHub 저장소 URL을 입력한 뒤 원하는 점검 방식을 누르면 바로 시작합니다.",
-        value: "",
-        button: "URL 입력",
-        readOnly: false,
-        placeholder: "https://github.com/organization/project"
-      }
+      folder: { help: "클릭하면 Windows 탐색기에서 검사할 프로젝트 폴더를 선택합니다.", value: "선택된 폴더 없음", button: "폴더 선택", readOnly: true, placeholder: "" },
+      zip: { help: "클릭하면 Windows 탐색기에서 검사할 ZIP 파일을 선택합니다.", value: "선택된 압축파일 없음", button: "압축파일 선택", readOnly: true, placeholder: "" },
+      url: { help: "GitHub 저장소 URL을 입력한 뒤 원하는 점검 방식을 누르면 바로 시작합니다.", value: "", button: "URL 입력", readOnly: false, placeholder: "https://github.com/organization/project" }
     };
 
     function updateTarget(target, openPicker = true) {
@@ -1249,7 +510,6 @@
       targetInput.placeholder = next.placeholder;
       targetInput.readOnly = next.readOnly;
       scanButton.textContent = next.button;
-
       if (!openPicker) return;
       openTargetPicker();
     }
@@ -1276,7 +536,6 @@
         return;
       }
       if (targetSelectionInFlight) return;
-
       targetSelectionInFlight = true;
       scanButton.disabled = true;
       scanButton.textContent = "선택 창 여는 중";
@@ -1369,7 +628,6 @@
       progressPercent.textContent = `${percent}%`;
       progressBar.style.width = `${percent}%`;
       progressMessage.textContent = progress.message || "검사를 준비하고 있습니다.";
-
       const statusByStep = new Map((progress.steps || []).map((step) => [step.name, step.status]));
       progressSteps.forEach((step) => {
         const stepName = step.dataset.progressStep;
@@ -1492,10 +750,9 @@
             ? "수정 필요"
             : job.decision === "quick_complete"
               ? "고위험 없음"
-            : job.decision === "needs_review" || findingCount > 0
-              ? "검토 필요"
-              : "제출 가능";
-
+              : job.decision === "needs_review" || findingCount > 0
+                ? "검토 필요"
+                : "제출 가능";
       resultDecision.textContent = decision;
       resultFindings.textContent = `${findingCount}건`;
       resultReview.textContent = job.decision === "needs_review" ? "필요" : "0건";
@@ -1557,7 +814,6 @@
           const response = await fetch(`/api/scan/${scanId}/progress`, { cache: "no-store" });
           const progress = await response.json();
           if (!response.ok) throw new Error(progress.error || "진행상황을 확인하지 못했습니다.");
-
           consecutiveFailures = 0;
           renderProgress(progress);
           if (progress.error) {
@@ -1613,9 +869,7 @@
         })
       });
       const started = await response.json();
-      if (!response.ok) {
-        throw new Error(started.error || "점검을 시작하지 못했습니다.");
-      }
+      if (!response.ok) throw new Error(started.error || "점검을 시작하지 못했습니다.");
       await pollResult(started.scan_id);
     }
 
@@ -1629,7 +883,6 @@
         await openTargetPicker();
         return;
       }
-
       activateMode(mode);
       lastScanMode = mode;
       setScanRunning(mode);
@@ -1643,7 +896,6 @@
       });
       scanProgress.hidden = false;
       setResultPending(`${mode.dataset.modeTitle}을 시작했습니다.`);
-
       try {
         await startApiScan(mode);
       } catch (error) {
@@ -1652,9 +904,7 @@
     }
 
     document.querySelectorAll("[data-target]").forEach((tab) => {
-      tab.addEventListener("click", () => {
-        updateTarget(tab.dataset.target);
-      });
+      tab.addEventListener("click", () => updateTarget(tab.dataset.target));
     });
 
     function resetTargetPickerAfterCancel() {
@@ -1695,22 +945,16 @@
 
     modeButtons.forEach((mode) => {
       mode.addEventListener("click", () => {
-        if (activeTarget === "url") {
-          selectedReady = targetInput.value.trim().length > 0;
-        }
+        if (activeTarget === "url") selectedReady = targetInput.value.trim().length > 0;
         runScan(mode);
       });
     });
 
     const requestedMode = new URLSearchParams(window.location.search).get("mode");
     const initialMode = modeButtons.find((mode) => mode.dataset.mode === requestedMode);
-    if (initialMode) {
-      activateMode(initialMode);
-    }
+    if (initialMode) activateMode(initialMode);
 
-    scanButton.addEventListener("click", () => {
-      openTargetPicker();
-    });
+    scanButton.addEventListener("click", () => openTargetPicker());
 
     async function chooseSaveLocation() {
       if (saveLocationSelectionInFlight) return false;
@@ -1720,7 +964,6 @@
       savePath.textContent = "점검결과를 저장할 위치를 선택해 주세요.";
       try {
         if (!window.showDirectoryPicker) throw new Error("이 기능은 Chrome 또는 Edge에서 사용할 수 있습니다.");
-        // Browser security policy does not allow a web page to customize the native picker title.
         selectedSaveDirectoryHandle = await window.showDirectoryPicker({ mode: "readwrite" });
         selectedSaveDir = selectedSaveDirectoryHandle.name;
         savePath.textContent = `${selectedSaveDir} 폴더에 결과물을 저장합니다.`;
@@ -1768,9 +1011,7 @@
     }
 
     saveButton.addEventListener("click", () => requestSaveLocation());
-    selectSaveLocation.addEventListener("click", async () => {
-      await chooseSaveLocation();
-    });
+    selectSaveLocation.addEventListener("click", async () => { await chooseSaveLocation(); });
     confirmSaveLocation.addEventListener("click", async () => {
       const queuedMode = pendingMode;
       pendingMode = null;
@@ -1780,21 +1021,16 @@
     closeSaveLocationPrompt.addEventListener("click", closeSavePrompt);
     cancelSaveLocation.addEventListener("click", closeSavePrompt);
 
-    closeScanProgress.addEventListener("click", () => {
-      scanProgress.hidden = true;
-    });
-
+    closeScanProgress.addEventListener("click", () => { scanProgress.hidden = true; });
     closeCompletedScan.addEventListener("click", () => {
       scanProgress.hidden = true;
       document.querySelector(".result-card").scrollIntoView({ behavior: "smooth", block: "nearest" });
     });
-
     retryScan.addEventListener("click", async () => {
       const mode = lastScanMode;
       scanProgress.hidden = true;
       if (mode) await runScan(mode);
     });
-
 
     window.addEventListener("keydown", (event) => {
       if (event.key === "Escape") {

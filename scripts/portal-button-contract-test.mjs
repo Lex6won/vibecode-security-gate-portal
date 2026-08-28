@@ -187,11 +187,13 @@ async function assertLocalPickerContract() {
   assert.ok(html.includes('id="retryScan"') && html.includes('retryScan.addEventListener("click"'), "failed scans must offer a clear retry action");
   assert.ok(html.includes('id="saveLocationCompleteActions"') && html.includes('id="confirmSaveLocation"'), "save-location selection must show a completion confirmation before advancing");
   assert.ok(html.includes('confirmSaveLocation.addEventListener("click", async () =>'), "save-location completion confirmation must advance the queued scan deliberately");
-  assert.ok(html.includes('class="flow-title"><span class="sequence">1</span>') && html.includes('class="flow-title"><span class="sequence">2</span>') && html.includes('class="flow-title" id="scan-mode-title"><span class="sequence">3</span>'), "scan flow must visibly order save location, source selection, and scan mode");
+  assert.ok(html.includes('class="flow-title" id="save-step-title"><span class="sequence">1</span>') && html.includes('class="flow-title" id="target-step-title"><span class="sequence">2</span>') && html.includes('class="flow-title" id="scan-mode-title"><span class="sequence">3</span>'), "scan flow must visibly order save location, source selection, and scan mode");
   assert.ok(html.includes('function showScanCompleted(job, progress, saveError = null)') && html.includes('점검과 파일 저장이 완료되었습니다.'), "completed scan must visibly confirm local report saving");
   assert.ok(html.includes('showScanCompleted(job, progress, saveError)') && html.includes('결과 파일 저장을 확인하세요.'), "scan completion must remain visible when local report saving fails");
   assert.ok(html.includes('progress.status === "failed" || job.status === "failed"'), "checker failures must not be treated as local save or connection retries");
-  assert.ok(html.includes('.modal-actions {') && html.includes('.button.primary {'), "modal confirmation buttons must use the shared portal button design");
+  assert.ok(html.includes('href="/shared.css"'), "scan page must load the shared portal stylesheet");
+  const sharedCss = await fetchText("/shared.css");
+  assert.ok(sharedCss.includes('.modal-actions {') && sharedCss.includes('.button.primary {'), "modal confirmation buttons must use the shared portal button design");
   assert.ok(html.includes('window.showDirectoryPicker'), "report save location must use the browser directory picker");
   assert.ok(html.includes('error.name === "AbortError"') && html.includes('저장 위치 선택을 취소했습니다.'), "save-location cancellation must be shown as guidance, not a browser error");
   assert.ok(html.includes('targetSelectionInFlight'), "native target picker must prevent duplicate picker windows");
@@ -200,13 +202,12 @@ async function assertLocalPickerContract() {
 async function assertToolsGuidePage() {
   // S1(서버 전환): /harness 는 안내형 화면이다. 웹에서 설치·업데이트 버튼을 제공하지 않는다.
   const html = await fetchText("/harness");
-  assert.ok(html.includes("내 PC에 도구 설치하기"), "tools page must present install guidance");
-  assert.ok(html.includes("Codex CLI") && html.includes("Claude Code") && html.includes("Claude Desktop"), "tools page must show the AI tool support matrix");
-  assert.ok(html.includes("Lovable"), "unsupported tools must be listed honestly instead of hidden");
+  assert.ok(html.includes("하네스 내려받기") && html.includes("install.ps1"), "tools page must present install guidance");
+  assert.ok(html.includes("Codex") && html.includes("Claude Code"), "tools page must state which AI tools the harness supports");
+  assert.ok(html.includes("Python, JavaScript, TypeScript 외"), "tools page must state the allowed-language boundary honestly");
   assert.ok(html.includes('fetch("/api/tools/versions"'), "tools page must load the server checker version");
   assert.ok(html.includes("확인할 수 없습니다"), "version load failure must be shown honestly, never as up-to-date");
   assert.ok(!/data-action="(harness|checker)-(install|update)"/.test(html), "web page must not expose PC install/update actions after the tool-manager split");
-  assert.ok(html.includes("웹페이지는 사용자 PC에"), "tools page must explain why the browser cannot inspect the PC");
 }
 
 const child = spawn(process.execPath, ["src/server.js"], {

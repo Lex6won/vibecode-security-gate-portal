@@ -3,132 +3,185 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>도구 설치 안내 · 공공 바이브코딩 보안 체커</title>
+  <title>하네스 설치 · 공공 바이브코딩 보안 게이트</title>
+  <meta name="description" content="바이브코드 하네스를 내려받아 설치하고 프로젝트에 적용하는 방법을 안내합니다.">
+  <link rel="stylesheet" href="/shared.css">
   <style>
-    :root {
-      --moon: #f3f6ff;
-      --harbor: #3770bf;
-      --ink: #102033;
-      --panel: #ffffff;
-      --soft: #e8f2ff;
-      --muted: #40546f;
-      --line: #d5e5fb;
-      --green: #1f6b5f;
-      --amber: #8a5a06;
-      --amber-soft: #fdf3df;
-    }
-    * { box-sizing: border-box; }
-    body {
-      margin: 0;
-      font-family: "Malgun Gothic", "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
-      background: var(--moon);
-      color: var(--ink);
-      line-height: 1.65;
-    }
-    .wrap { max-width: 880px; margin: 0 auto; padding: 28px 20px 80px; }
-    header.top { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 26px; }
-    header.top h1 { font-size: 22px; margin: 0; }
-    header.top a.back { font-size: 14px; color: var(--harbor); text-decoration: none; font-weight: 700; }
-    .lede { color: var(--muted); font-size: 15px; max-width: 62ch; margin: 0 0 24px; }
-    section.card {
-      background: var(--panel);
-      border: 1px solid var(--line);
-      border-radius: 18px;
-      padding: 22px 24px;
-      margin-bottom: 18px;
-    }
-    section.card h2 { font-size: 17px; margin: 0 0 8px; }
-    section.card p { font-size: 14px; color: var(--muted); margin: 0 0 12px; max-width: 66ch; }
-    table { width: 100%; border-collapse: collapse; font-size: 14px; }
-    th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
-    thead th { font-size: 12px; color: var(--muted); background: var(--soft); white-space: nowrap; }
-    tbody tr:last-child td { border-bottom: none; }
-    .pill { display: inline-block; font-size: 12px; font-weight: 700; padding: 2px 10px; border-radius: 999px; white-space: nowrap; }
-    .pill.ok { background: #e2f3ea; color: var(--green); }
-    .pill.na { background: var(--soft); color: var(--muted); }
-    .pill.warn { background: var(--amber-soft); color: var(--amber); }
-    .callout {
-      background: var(--soft);
-      border: 1px solid var(--line);
-      border-radius: 12px;
-      padding: 13px 16px;
-      font-size: 13.5px;
-      color: var(--muted);
-    }
-    .callout b { color: var(--ink); }
-    .server-version { display: flex; gap: 18px; flex-wrap: wrap; font-size: 14px; }
-    .server-version .item b { display: block; font-size: 13px; color: var(--muted); font-weight: 700; }
-    .server-version .item span { font-family: Consolas, monospace; font-size: 13.5px; }
-    .coming {
-      border: 1.5px dashed var(--line);
-      border-radius: 12px;
-      padding: 14px 16px;
-      font-size: 14px;
-      color: var(--muted);
-      background: #fbfdff;
-    }
-    footer { margin-top: 30px; font-size: 12.5px; color: var(--muted); }
+    .lead-card { padding: 22px; border-radius: var(--radius-lg); background: var(--panel); border: 1px solid var(--line); }
+    .lead-card h2 { font-size: var(--fs-h2); font-weight: 900; letter-spacing: -0.01em; }
+    .lead-card p { margin-top: 8px; font-size: var(--fs-body); color: var(--muted); font-weight: 700; line-height: 1.6; }
+
+    .download-box { margin-top: 14px; padding: 22px; border-radius: var(--radius-lg); border: 1px solid var(--line); background: var(--panel); display: grid; gap: 14px; justify-items: start; }
+    .download-box .label { font-size: 13px; font-weight: 900; color: var(--muted); }
+    .big-download { display: inline-flex; align-items: center; gap: 10px; padding: 18px 32px; font-size: 18px; font-weight: 900; border-radius: var(--radius-md); background: var(--green); color: #fff; text-decoration: none; box-shadow: var(--shadow-green); }
+    .big-download:hover { background: #17564c; }
+    .coming { width: 100%; border: 1.5px dashed var(--line); border-radius: var(--radius-md); padding: 18px; font-size: 14px; color: var(--muted); background: #fbfdff; font-weight: 700; line-height: 1.6; text-align: center; }
+
+    .steps { display: grid; gap: 14px; }
+    .step { display: grid; grid-template-columns: 40px 1fr; gap: 14px; align-items: start; }
+    .step .num { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; background: var(--soft); color: var(--info); font-size: 17px; font-weight: 900; }
+    .step .body h3 { font-size: 15px; font-weight: 900; }
+    .step .body p { margin-top: 4px; font-size: var(--fs-small); color: var(--muted); font-weight: 700; line-height: 1.6; }
+    .step .body code { font-family: var(--font-mono); font-size: 12.5px; background: var(--moon); padding: 2px 6px; border-radius: 6px; }
+
+    .section-title { margin-bottom: 12px; }
+    .section-lead { margin: -6px 0 14px; font-size: var(--fs-body); color: var(--muted); font-weight: 700; line-height: 1.6; }
+
+    .mini-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; }
+    .mini { padding: 14px 16px; border-radius: var(--radius-md); background: var(--moon); }
+    .mini b { display: block; font-size: var(--fs-body); font-weight: 900; }
+    .mini span { display: block; margin-top: 5px; font-size: var(--fs-small); color: var(--muted); font-weight: 700; line-height: 1.55; }
+
+    .why-box { padding: 18px; border-radius: var(--radius-md); background: var(--green-soft); border: 1px solid var(--green-line); }
+    .why-box b { display: block; font-size: var(--fs-body); font-weight: 900; color: var(--green); margin-bottom: 6px; }
+    .why-box p { font-size: var(--fs-small); color: var(--muted); font-weight: 700; line-height: 1.6; }
+
+    details.more { border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--panel); padding: 14px 16px; }
+    details.more summary { font-size: var(--fs-body); font-weight: 900; cursor: pointer; }
+    details.more p { margin-top: 10px; font-size: var(--fs-small); color: var(--muted); font-weight: 700; line-height: 1.65; }
+
+    .server-version { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
+    .server-version .item { padding: 12px 14px; border-radius: var(--radius-md); background: var(--moon); }
+    .server-version .item b { display: block; font-size: 12px; color: var(--muted); font-weight: 900; margin-bottom: 4px; }
+    .server-version .item span { font-family: var(--font-mono); font-size: 14px; font-weight: 800; }
+
+    .cmd { display: block; padding: 12px 14px; border-radius: var(--radius-md); background: var(--ink); color: #fff; font-family: var(--font-mono); font-size: 12.5px; line-height: 1.55; overflow-x: auto; white-space: pre-wrap; word-break: break-all; }
   </style>
 </head>
 <body>
-  <div class="wrap">
-    <header class="top">
-      <h1>내 PC에 도구 설치하기</h1>
-      <a class="back" href="/">← 처음으로</a>
+  <main class="screen">
+    <header class="topbar">
+      <a class="brand-home" href="/" aria-label="홈으로 이동">
+        <span class="gg-mark" aria-hidden="true"><img src="/assets/images/gyeonggi-signature-ko.jpg" alt="경기도 로고"></span>
+        <span class="brand-copy">
+          <strong>하네스 설치</strong>
+          <span>내려받아 프로젝트에 적용하기</span>
+        </span>
+      </a>
+      <a class="back" href="/" aria-label="처음으로">←</a>
     </header>
-    <p class="lede">
-      AI로 코딩하면서 <b>만드는 중에</b> 바로 점검받고 싶을 때 설치합니다.
-      웹에서 폴더를 올려 점검만 하실 거면 <b>설치하지 않으셔도 됩니다</b> — 결과는 같습니다.
-    </p>
 
-    <section class="card">
-      <h2>① 내가 쓰는 AI 도구가 되는지 보기</h2>
-      <p>고르지 않으셔도 됩니다. 설치할 때 PC에 깔린 도구를 알아서 찾고, <b>있는 것에만</b> 연결합니다.</p>
-      <table>
-        <thead><tr><th>AI 도구</th><th>지원</th><th>해 주는 것</th></tr></thead>
-        <tbody>
-          <tr><td><b>Codex CLI · VS Code 확장</b></td><td><span class="pill ok">지원</span></td><td>하네스 지침 · 체커 MCP 연결</td></tr>
-          <tr><td><b>Claude Code</b></td><td><span class="pill ok">지원</span></td><td>하네스 지침 · 체커 MCP 연결</td></tr>
-          <tr><td><b>ChatGPT · Codex 데스크톱</b></td><td><span class="pill ok">지원</span></td><td>체커 MCP 연결</td></tr>
-          <tr><td><b>Claude Desktop</b></td><td><span class="pill ok">지원</span></td><td>체커 MCP 연결</td></tr>
-          <tr><td><b>Lovable</b></td><td><span class="pill na">해당 없음</span></td><td>자동 연결이 없습니다 · 웹에 올려 점검해 주세요</td></tr>
-        </tbody>
-      </table>
-    </section>
-
-    <section class="card">
-      <h2>② 도구 관리자 내려받기</h2>
-      <p>한 번만 설치하면 됩니다. 실행하면 체커와 하네스를 깔아 주고, 최신인지 확인하고, 업데이트까지 해 줍니다.</p>
-      <div class="coming" id="managerDownload">
-        도구 관리자 설치 파일을 준비하고 있습니다. 준비되면 이 자리에서 내려받으실 수 있습니다.
-        그 전까지는 아래 서버 점검(웹 업로드)을 이용해 주세요 — 점검 결과는 동일합니다.
+    <section class="hero panel-card" aria-labelledby="tools-title">
+      <div>
+        <span class="eyebrow">하네스 설치</span>
+        <h1 id="tools-title">AI 코딩 도구로 업무 도구를 만들 때 기준이 되는 하네스</h1>
+        <p class="lead">하네스는 기획 → 설계 → 구현 → 테스트 → 보안점검 순서를 지키도록 돕는 개발 표준 키트입니다. Python, JavaScript, TypeScript 외 언어는 차단하고, 승인된 절차대로 개발하도록 안내합니다.</p>
       </div>
     </section>
 
-    <section class="card">
-      <h2>③ 지금 최신 버전</h2>
-      <p>이 포털 서버가 쓰는 체커입니다. 도구 관리자가 설치되면 내 PC 버전과 자동 비교합니다.</p>
-      <div class="server-version" id="serverVersion" aria-live="polite">
+    <section class="lead-card" aria-labelledby="quick-title">
+      <h2 id="quick-title">바로 시작하기</h2>
+      <p>Windows PC에서 GitHub ZIP을 내려받아 설치한 뒤, 만들 프로젝트 폴더에 적용하면 됩니다. AI 코딩 도구를 열고 <b>“하네스 기준으로 시작해줘”</b>라고 말하면 순서대로 안내합니다.</p>
+    </section>
+
+    <section class="panel-card" id="download" aria-labelledby="download-title">
+      <h2 class="section-title" id="download-title">1단계 · 하네스 내려받기</h2>
+      <div class="download-box">
+        <span class="label">최신 하네스 패키지 (GitHub ZIP)</span>
+        <a class="big-download" href="https://github.com/Lex6won/vibecode-harness/archive/refs/heads/main.zip" download id="managerDownload" target="_blank" rel="noreferrer noopener">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          하네스 ZIP 내려받기
+        </a>
+        <p class="section-lead" style="margin:0;">내려받은 ZIP을 모두 푼 뒤, 그 폴더에서 PowerShell을 열고 다음 명령을 실행합니다.</p>
+        <code class="cmd">Unblock-File .\install.ps1
+.\install.ps1 -InstallPrerequisites -AllowGitHubPilotSource</code>
+        <p class="section-lead" style="margin:0;">Windows가 Node.js LTS와 Python 설치를 안내하면 안내에 따라 승인합니다. 설치가 끝나면 <code>%LOCALAPPDATA%\Gyeonggi\VibeCodeHarness\github-pilot</code>에 하네스가 준비됩니다.</p>
+      </div>
+    </section>
+
+    <section class="panel-card" aria-labelledby="apply-title">
+      <h2 class="section-title" id="apply-title">2단계 · 프로젝트에 적용하기</h2>
+      <p class="section-lead">만들 업무 도구 폴더를 준비하고, PowerShell에서 아래 명령을 실행합니다. 예시는 TypeScript 웹 도구에 Codex와 Claude Code를 함께 적용하는 경우입니다.</p>
+      <code class="cmd">$gg = "$env:LOCALAPPDATA\Gyeonggi\VibeCodeHarness\github-pilot\gg.cmd"
+
+&amp; $gg init --project C:\work\my-service --tools both --runtime typescript_web --level L2
+&amp; $gg doctor --project C:\work\my-service</code>
+      <div class="mini-grid" style="margin-top: 14px;">
+        <div class="mini"><b>AI 도구</b><span><code>codex</code>, <code>claude</code>, <code>both</code> 중 선택</span></div>
+        <div class="mini"><b>개발 방식</b><span><code>python_internal</code>, <code>node_web</code>, <code>typescript_web</code></span></div>
+        <div class="mini"><b>점검 수준</b><span><code>L1</code> 시제품, <code>L2</code> 내부 업무 도구, <code>L3</code> 엄격한 점검</span></div>
+      </div>
+    </section>
+
+    <section class="panel-card" aria-labelledby="flow-title">
+      <h2 class="section-title" id="flow-title">3단계 · 순서대로 개발하기</h2>
+      <div class="steps">
+        <div class="step">
+          <span class="num">1</span>
+          <div class="body">
+            <h3>업무를 설명합니다</h3>
+            <p><code>gg start --brief "민원 처리 현황을 확인하는 내부 웹 도구"</code></p>
+          </div>
+        </div>
+        <div class="step">
+          <span class="num">2</span>
+          <div class="body">
+            <h3>화면, DB, 관리자 기능 필요 여부를 결정합니다</h3>
+            <p><code>gg design --database no --admin no --external-api no --confirm</code></p>
+          </div>
+        </div>
+        <div class="step">
+          <span class="num">3</span>
+          <div class="body">
+            <h3>새 패키지를 쓰기 전에 확인합니다</h3>
+            <p><code>gg package check --ecosystem npm --name example-package --version 1.2.3</code></p>
+          </div>
+        </div>
+        <div class="step">
+          <span class="num">4</span>
+          <div class="body">
+            <h3>구현한 뒤 정책과 실행 환경을 확인합니다</h3>
+            <p><code>gg build</code>로 언어·런타임·정책·설계 조건을 점검합니다.</p>
+          </div>
+        </div>
+        <div class="step">
+          <span class="num">5</span>
+          <div class="body">
+            <h3>테스트와 보안 점검을 실행합니다</h3>
+            <p><code>gg verify --run-tests</code>로 테스트와 <code>vibecode-checker</code> 점검을 함께 수행합니다.</p>
+          </div>
+        </div>
+        <div class="step">
+          <span class="num">6</span>
+          <div class="body">
+            <h3>이관·배포 전 검토 자료를 만듭니다</h3>
+            <p><code>gg release</code>로 사람 검토에 필요한 자료를 생성합니다.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel-card" aria-labelledby="what-title">
+      <h2 class="section-title" id="what-title">하네스가 하는 일</h2>
+      <div class="mini-grid">
+        <div class="mini"><b>개발 순서를 안내합니다</b><span>기획·설계·구현·테스트·보안점검 순서와 서식을 프로젝트에 넣어줍니다.</span></div>
+        <div class="mini"><b>허용 언어만 사용합니다</b><span>Python, JavaScript, TypeScript 외 파일 생성과 실행을 차단합니다.</span></div>
+        <div class="mini"><b>AI 도구 지침을 적용합니다</b><span>Codex용 AGENTS.md, Claude Code용 CLAUDE.md와 Hook을 자동으로 설정합니다.</span></div>
+        <div class="mini"><b>패키지 도입 전 확인합니다</b><span>npm·PyPI 패키지 이름과 버전을 먼저 확인한 뒤 설치하도록 돕습니다.</span></div>
+        <div class="mini"><b>보안 점검을 연결합니다</b><span>vibecode-checker로 코드와 의존성 점검 보고서를 만듭니다.</span></div>
+        <div class="mini"><b>증적을 남깁니다</b><span>검토·승인에 필요한 기록을 프로젝트 폴더의 evidence에 저장합니다.</span></div>
+      </div>
+    </section>
+
+    <section class="panel-card" aria-labelledby="why-scan-title">
+      <h2 class="section-title" id="why-scan-title">이미 만든 코드가 있다면? 코드 보안 점검</h2>
+      <div class="why-box">
+        <b>왜 코드만 보안 점검이 필요한가요?</b>
+        <p>하네스를 쓰지 않고 이미 개발한 코드도 제출·배포 전에 보안 점검이 필요합니다. 하네스 없이 만든 경우에는 개발 순서와 설계 증적이 없으므로, 최소한 코드와 의존성에 위험이 없는지 확인해야 합니다. 폴더만 업로드하면 HTML·JSON 보고서를 받을 수 있습니다.</p>
+      </div>
+      <a class="ghost-button" href="/scan" style="margin-top: 14px;">코드 보안 점검하러 가기</a>
+    </section>
+
+    <details class="more">
+      <summary>서버·버전 정보 보기</summary>
+      <div class="server-version" id="serverVersion" aria-live="polite" style="margin-top: 12px;">
         <div class="item"><b>서버 체커</b><span id="serverChecker">확인 중…</span></div>
         <div class="item"><b>상태</b><span id="serverDoctor">확인 중…</span></div>
       </div>
-    </section>
+    </details>
 
-    <section class="card">
-      <h2>왜 이 화면에서 바로 설치해 주지 않나요?</h2>
-      <p>
-        웹페이지는 사용자 PC에 무엇이 깔려 있는지 볼 수도, 설정 파일을 바꿀 수도 없습니다.
-        브라우저가 그렇게 막아 두었고, 열려 있다면 아무 웹사이트나 방문자 PC를 조작할 수 있다는 뜻입니다.
-      </p>
-      <div class="callout">
-        그래서 역할을 나눕니다 — <b>이 화면</b>은 안내와 설치 파일 배포까지,
-        <b>도구 관리자</b>(PC 프로그램)가 버전 비교와 업데이트를,
-        실제 도구 감지와 설정 변경은 <b>하네스</b>가 합니다.
-      </div>
-    </section>
-
-    <footer>설치 없이 점검만 하시려면 <a href="/scan">보안 점검</a>으로 이동하세요.</footer>
-  </div>
+    <footer class="footnote">도움이 필요하면 <a href="/help" style="color: var(--harbor); text-decoration: none; font-weight: 800;">도움말</a>을 확인하세요.</footer>
+  </main>
 
   <script>
     (async function loadServerVersion() {

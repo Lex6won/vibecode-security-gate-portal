@@ -132,10 +132,10 @@ async function uploadFixtureFolder(fixture, rootName) {
 
 async function assertPagesLoad() {
   const pages = [
-    ["/", "오늘 할 일을 선택하세요"],
-    ["/scan", "대상을 선택하고 점검하세요"],
-    ["/harness", "내 PC에 도구 설치하기"],
-    ["/tools", "내 PC에 도구 설치하기"],
+    ["/", "AI로 만든 코드, 제출 전에 보안 점검부터"],
+    ["/scan", "3단계로 소스를 점검하세요."],
+    ["/harness", "하네스 내려받기"],
+    ["/tools", "하네스 내려받기"],
     ["/admin/login", "관리자 로그인"],
     ["/help", "도움말"]
   ];

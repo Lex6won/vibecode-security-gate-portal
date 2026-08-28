@@ -4,248 +4,10 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>관리자 점검 현황</title>
+  <meta name="description" content="공공 바이브코딩 보안 게이트 포털 관리자용 점검 현황 및 이력 조회 페이지입니다.">
+  <link rel="stylesheet" href="/shared.css">
   <style>
-    :root {
-      --moon: #f3f6ff;
-      --herb: #cef26d;
-      --harbor: #3770bf;
-      --ink: #102033;
-      --panel: #ffffff;
-      --soft: #e8f2ff;
-      --muted: #40546f;
-      --line: #d5e5fb;
-      --green: #1f6b5f;
-      --danger: #b42318;
-      --warn: #8a5b00;
-    }
-
-    * { box-sizing: border-box; }
-
-    body {
-      margin: 0;
-      background: var(--moon);
-      color: var(--ink);
-      font-family: Pretendard, "Noto Sans KR", "Malgun Gothic", system-ui, sans-serif;
-      word-break: keep-all;
-      overflow-wrap: break-word;
-      line-break: strict;
-      letter-spacing: 0;
-    }
-
-    a, button, input, select { font: inherit; }
-
-    main {
-      width: min(1180px, calc(100% - 32px));
-      min-height: calc(100vh - 16px);
-      margin: 0 auto;
-      padding: 8px 0 16px;
-      display: grid;
-      gap: 12px;
-    }
-
-    .topbar,
-    .hero,
-    .filters,
-    .metric,
-    .table-panel,
-    .detail-panel {
-      border-radius: 24px;
-      background: var(--panel);
-      box-shadow: 0 18px 45px rgba(55,112,191,.12);
-    }
-
-    .topbar {
-      min-height: 68px;
-      padding: 8px 20px;
-      display: flex;
-      align-items: center;
-      justify-content: flex-start;
-      gap: 14px;
-    }
-
-    .back {
-      width: 42px;
-      height: 42px;
-      min-height: 42px;
-      padding: 0;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      border-radius: 999px;
-      background: var(--soft);
-      color: #244d85;
-      font-size: 14px;
-      font-weight: 900;
-      text-decoration: none;
-      white-space: nowrap;
-      transition: transform .14s ease, box-shadow .14s ease, background-color .14s ease;
-    }
-
-    .top-actions {
-      margin-left: auto;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      flex-wrap: wrap;
-    }
-
-    .back:hover,
-    .back:focus-visible,
-    .top-link:hover,
-    .top-link:focus-visible,
-    .export:hover,
-    .export:focus-visible,
-    .search:hover,
-    .search:focus-visible,
-    .report:hover,
-    .report:focus-visible,
-    .top-link.primary:hover,
-    .top-link.primary:focus-visible {
-      transform: translateY(-1px);
-      box-shadow: 0 10px 22px rgba(55,112,191,.18);
-    }
-
-    .back:focus-visible,
-    .top-title:focus-visible,
-    .top-link:focus-visible,
-    .export:focus-visible,
-    .search:focus-visible,
-    .report:focus-visible,
-    .metric:focus-visible {
-      outline: 3px solid rgba(55,112,191,.28);
-      outline-offset: 3px;
-    }
-
-    .back:active,
-    .top-link:active,
-    .export:active,
-    .search:active,
-    .report:active,
-    .metric:active {
-      transform: translateY(1px) scale(.99);
-      box-shadow: inset 0 0 0 2px rgba(255,255,255,.34);
-    }
-
-    .top-link {
-      min-height: 38px;
-      padding: 0 14px;
-      display: inline-flex;
-      align-items: center;
-      border-radius: 999px;
-      border: 0;
-      background: var(--soft);
-      color: #244d85;
-      font-size: 14px;
-      font-weight: 900;
-      text-decoration: none;
-      white-space: nowrap;
-      cursor: pointer;
-      transition: transform .14s ease, box-shadow .14s ease, background-color .14s ease;
-    }
-
-    .top-link.primary {
-      background: var(--green);
-      color: #ffffff;
-    }
-
-    .top-title {
-      min-width: 0;
-      display: grid;
-      grid-template-columns: 70px minmax(0, 1fr);
-      gap: 12px;
-      align-items: center;
-      flex: 1 1 auto;
-      color: inherit;
-      text-decoration: none;
-      border-radius: 16px;
-    }
-
-    .back svg {
-      width: 21px;
-      height: 21px;
-      stroke-width: 2.6;
-    }
-
-    .gg-mark {
-      width: 70px;
-      height: 50px;
-      display: grid;
-      place-items: center;
-      overflow: hidden;
-      border-radius: 8px;
-      background: #ffffff;
-      box-shadow: 0 0 0 1px rgba(55,112,191,.16);
-    }
-
-    .gg-mark img {
-      width: 100%;
-      height: 100%;
-      display: block;
-      object-fit: contain;
-      object-position: center;
-      transform: none;
-    }
-
-    .top-title strong {
-      display: block;
-      font-size: 24px;
-      line-height: 30px;
-      font-weight: 900;
-    }
-
-    .top-title span {
-      display: block;
-      margin-top: 1px;
-      color: var(--muted);
-      font-size: 13px;
-      line-height: 18px;
-      font-weight: 800;
-    }
-
-    .hero {
-      min-height: 118px;
-      padding: 22px 26px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 24px;
-    }
-
-    .hero h1 {
-      margin: 0;
-      font-size: 29px;
-      line-height: 1.22;
-      font-weight: 900;
-    }
-
-    .hero p {
-      max-width: 720px;
-      margin: 8px 0 0;
-      color: var(--muted);
-      font-size: 14px;
-      line-height: 1.55;
-      font-weight: 700;
-    }
-
-    .export {
-      min-height: 42px;
-      padding: 0 16px;
-      border: 0;
-      border-radius: 999px;
-      background: var(--harbor);
-      color: white;
-      font-weight: 900;
-      white-space: nowrap;
-      cursor: pointer;
-      transition: transform .14s ease, box-shadow .14s ease, background-color .14s ease;
-    }
-
-    .metrics {
-      display: grid;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
-      gap: 12px;
-    }
-
+    .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: var(--space-gap); }
     .metric {
       min-height: 76px;
       padding: 16px 18px;
@@ -253,43 +15,24 @@
       align-items: center;
       justify-content: space-between;
       gap: 12px;
-      border: 0;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-md);
+      background: var(--panel);
       color: inherit;
       text-align: left;
       cursor: pointer;
-      transition: transform .14s ease, box-shadow .14s ease, outline-color .14s ease;
       outline: 2px solid transparent;
+      transition: transform var(--duration-fast) var(--ease-out), box-shadow var(--duration-fast) var(--ease-out), outline-color var(--duration-fast) var(--ease-out);
     }
-
-    .metric:hover,
-    .metric:focus-visible,
-    .metric.active {
+    .metric:hover, .metric:focus-visible, .metric.active {
       transform: translateY(-2px);
       outline-color: var(--harbor);
-      box-shadow: 0 20px 46px rgba(55,112,191,.16);
+      box-shadow: var(--shadow);
     }
-
-    .metric.active {
-      background: #fbfdff;
-    }
-
-    .metric span {
-      display: block;
-      color: #244d85;
-      font-size: 13px;
-      line-height: 18px;
-      font-weight: 900;
-    }
-
-    .metric strong {
-      display: block;
-      font-size: 26px;
-      line-height: 30px;
-      font-weight: 900;
-    }
-
-    .metric.needs strong { color: var(--warn); }
-    .metric.review-metric strong { color: #244d85; }
+    .metric span { display: block; color: var(--info); font-size: 13px; font-weight: 900; }
+    .metric b { display: block; font-size: 26px; font-weight: 900; line-height: 1.2; }
+    .metric.needs b { color: var(--warn); }
+    .metric.review-metric b { color: var(--harbor); }
 
     .filters {
       min-height: 64px;
@@ -298,96 +41,20 @@
       grid-template-columns: minmax(260px, 1fr) 170px 170px auto;
       gap: 10px;
       align-items: center;
+      border-radius: var(--radius-lg);
+      background: var(--panel);
+      border: 1px solid var(--line);
+      box-shadow: var(--shadow-sm);
     }
+    .filters .field { background: var(--soft); }
 
-    .field {
-      min-width: 0;
-      min-height: 44px;
-      padding: 0 12px;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      border-radius: 16px;
-      background: var(--soft);
-    }
+    .content-grid { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: var(--space-gap); align-items: start; }
+    .table-panel { border-color: var(--ice); box-shadow: var(--shadow); }
+    .section-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+    .section-head h2 { margin: 0; font-size: 22px; font-weight: 900; }
+    .section-head span { color: var(--muted); font-size: 13px; font-weight: 800; }
 
-    .field label {
-      color: #244d85;
-      font-size: 12px;
-      font-weight: 900;
-      white-space: nowrap;
-    }
-
-    .field input,
-    .field select {
-      min-width: 0;
-      width: 100%;
-      border: 0;
-      outline: 0;
-      background: transparent;
-      color: var(--ink);
-      font-size: 14px;
-      font-weight: 800;
-    }
-
-    .search {
-      min-height: 44px;
-      padding: 0 16px;
-      border: 0;
-      border-radius: 999px;
-      background: var(--green);
-      color: white;
-      font-weight: 900;
-      cursor: pointer;
-      transition: transform .14s ease, box-shadow .14s ease, background-color .14s ease;
-    }
-
-    .content-grid {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) 320px;
-      gap: 12px;
-      align-items: start;
-    }
-
-    .table-panel,
-    .detail-panel {
-      padding: 18px;
-    }
-
-    .table-panel {
-      outline: 3px solid var(--harbor);
-      box-shadow: 0 20px 48px rgba(55,112,191,.16);
-    }
-
-    .section-head {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-      margin-bottom: 12px;
-    }
-
-    .section-head h2 {
-      margin: 0;
-      font-size: 22px;
-      line-height: 30px;
-      font-weight: 900;
-    }
-
-    .section-head span {
-      color: var(--muted);
-      font-size: 13px;
-      font-weight: 800;
-    }
-
-    .history-list {
-      display: grid;
-      gap: 10px;
-      margin: 0;
-      padding: 0;
-      list-style: none;
-    }
-
+    .history-list { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
     .history-item {
       min-height: 88px;
       padding: 14px;
@@ -396,300 +63,97 @@
       gap: 14px;
       align-items: center;
       border: 1px solid var(--line);
-      border-radius: 18px;
+      border-radius: var(--radius-md);
       background: #fbfdff;
-      transition: border-color .14s ease, box-shadow .14s ease, transform .14s ease;
       cursor: pointer;
+      transition: border-color var(--duration-fast) var(--ease-out), box-shadow var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out);
     }
-
-    .history-item:hover,
-    .history-item:focus-within,
-    .history-item.active {
+    .history-item:hover, .history-item:focus-within, .history-item.active {
       border-color: var(--harbor);
-      box-shadow: 0 14px 28px rgba(55,112,191,.14);
+      box-shadow: var(--shadow-sm);
       transform: translateY(-1px);
       outline: 2px solid var(--harbor);
     }
+    .when { color: var(--muted); font-size: 13px; font-weight: 800; line-height: 1.45; }
+    .who { display: block; margin-top: 4px; color: var(--ink); font-size: 14px; font-weight: 900; }
+    .project strong { display: block; font-size: 16px; font-weight: 900; line-height: 1.4; }
+    .project > span { display: inline-block; margin-top: 5px; color: var(--muted); font-size: 13px; font-weight: 800; }
+    .meta-line { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+    .meta-line span { min-height: 24px; padding: 3px 8px; border-radius: 999px; background: var(--soft); color: var(--info); font-size: 12px; font-weight: 900; }
+    .source { display: block; color: var(--muted); font-size: 12px; word-break: break-all; overflow-wrap: anywhere; }
+    .status { display: inline-flex; min-height: 28px; padding: 0 9px; align-items: center; border-radius: 999px; font-size: 12px; font-weight: 900; white-space: nowrap; }
+    .pass { background: var(--green-soft); color: var(--green); }
+    .fix { background: var(--warn-soft); color: var(--warn); }
+    .review { background: var(--soft); color: var(--info); }
+    .report { color: var(--harbor); font-weight: 900; text-decoration: none; transition: transform var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out); display: inline-flex; }
+    .report:hover, .report:focus-visible { transform: translateY(-1px); color: #244d85; }
 
-    .history-item:active {
-      transform: translateY(1px) scale(.997);
-    }
-
-    .when {
-      color: var(--muted);
-      font-size: 13px;
-      line-height: 1.45;
-      font-weight: 800;
-    }
-
-    .who {
-      display: block;
-      margin-top: 4px;
-      color: var(--ink);
-      font-size: 14px;
-      font-weight: 900;
-    }
-
-    .project strong {
-      display: block;
-      font-size: 16px;
-      line-height: 1.4;
-      font-weight: 900;
-    }
-
-    .project span {
-      display: inline-block;
-      margin-top: 5px;
-      color: var(--muted);
-      font-size: 13px;
-      line-height: 1.45;
-      font-weight: 800;
-    }
-
-    .meta-line {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      margin-top: 6px;
-    }
-
-    .meta-line span {
-      min-height: 24px;
-      padding: 3px 8px;
-      border-radius: 999px;
-      background: var(--soft);
-      color: #244d85;
-      font-size: 12px;
-      font-weight: 900;
-    }
-
-    .source {
-      display: block;
-      color: var(--muted);
-      font-size: 12px;
-      word-break: break-all;
-      overflow-wrap: anywhere;
-    }
-
-    .status {
-      display: inline-flex;
-      min-height: 28px;
-      padding: 0 9px;
-      align-items: center;
-      border-radius: 999px;
-      font-size: 12px;
-      font-weight: 900;
-      white-space: nowrap;
-    }
-
-    .pass { background: #def7ec; color: #05603a; }
-    .fix { background: #fff4d6; color: var(--warn); }
-    .review { background: var(--soft); color: #244d85; }
-
-    .report {
-      color: var(--harbor);
-      font-weight: 900;
-      text-decoration: none;
-      transition: transform .14s ease, color .14s ease;
-      display: inline-flex;
-    }
-
-    .result-block {
-      display: grid;
-      gap: 8px;
-      justify-items: start;
-    }
-
-    .summary {
-      color: var(--muted);
-      font-size: 12px;
-      line-height: 1.4;
-      font-weight: 800;
-    }
-
-    .detail-list {
-      display: grid;
-      gap: 10px;
-      margin: 14px 0 0;
-      padding: 0;
-      list-style: none;
-    }
-
-    .detail-list li {
-      min-height: 42px;
-      padding: 10px 12px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-      border-radius: 14px;
-      background: var(--moon);
-      color: var(--muted);
-      font-size: 13px;
-      font-weight: 800;
-    }
-
-    .detail-list b {
-      color: var(--ink);
-      white-space: nowrap;
-    }
-
-    .admin-note {
-      margin-top: 14px;
-      padding: 14px;
-      border-radius: 16px;
-      background: #fff4d6;
-      color: var(--warn);
-      font-size: 13px;
-      line-height: 1.6;
-      font-weight: 900;
-    }
+    .result-block { display: grid; gap: 8px; justify-items: start; }
+    .summary { color: var(--muted); font-size: 12px; line-height: 1.4; font-weight: 800; }
+    .detail-list { display: grid; gap: 10px; margin: 14px 0 0; padding: 0; list-style: none; }
+    .detail-list li { min-height: 42px; padding: 10px 12px; display: flex; align-items: center; justify-content: space-between; gap: 12px; border-radius: var(--radius-sm); background: var(--moon); color: var(--muted); font-size: 13px; font-weight: 800; }
+    .detail-list b { color: var(--ink); white-space: nowrap; }
+    .admin-note { margin-top: 14px; padding: 14px; border-radius: var(--radius-md); background: var(--warn-soft); color: var(--warn); font-size: 13px; line-height: 1.6; font-weight: 900; }
 
     .password-modal[hidden] { display: none; }
-
-    .password-modal {
-      position: fixed;
-      inset: 0;
-      z-index: 10;
-      padding: 20px;
-      display: grid;
-      place-items: center;
-      background: rgba(16,32,51,.38);
-    }
-
-    .password-card {
-      width: min(480px, 100%);
-      padding: 24px;
-      display: grid;
-      gap: 14px;
-      border-radius: 22px;
-      background: var(--panel);
-      box-shadow: 0 24px 60px rgba(16,32,51,.22);
-    }
-
-    .password-card h2,
-    .password-card p { margin: 0; }
-
-    .password-card h2 { font-size: 23px; line-height: 1.3; }
-
-    .password-card p {
-      color: var(--muted);
-      font-size: 13px;
-      line-height: 1.55;
-      font-weight: 750;
-    }
-
+    .password-modal { position: fixed; inset: 0; z-index: 10; padding: 20px; display: grid; place-items: center; background: rgba(16,32,51,.38); }
+    .password-card { width: min(480px, 100%); padding: 24px; display: grid; gap: 14px; border-radius: 22px; background: var(--panel); box-shadow: 0 24px 60px rgba(16,32,51,.22); }
+    .password-card h2, .password-card p { margin: 0; }
+    .password-card h2 { font-size: 23px; line-height: 1.3; font-weight: 900; }
+    .password-card p { color: var(--muted); font-size: 13px; font-weight: 700; line-height: 1.55; }
     .password-fields { display: grid; gap: 10px; }
-
-    .password-fields label {
-      display: grid;
-      gap: 5px;
-      color: #244d85;
-      font-size: 12px;
-      font-weight: 900;
-    }
-
-    .password-fields input {
-      min-height: 42px;
-      padding: 0 12px;
-      border: 1px solid var(--line);
-      border-radius: 12px;
-      color: var(--ink);
-      background: var(--moon);
-    }
-
-    .password-actions {
-      display: flex;
-      justify-content: flex-end;
-      gap: 8px;
-    }
-
-    .password-message {
-      min-height: 20px;
-      color: var(--warn);
-      font-size: 12px;
-      font-weight: 900;
-    }
-
+    .password-fields label { display: grid; gap: 5px; color: var(--info); font-size: 12px; font-weight: 900; }
+    .password-fields input { min-height: 42px; padding: 0 12px; border: 1px solid var(--line); border-radius: 12px; color: var(--ink); background: var(--moon); font: inherit; }
+    .password-actions { display: flex; justify-content: flex-end; gap: 8px; }
+    .password-message { min-height: 20px; color: var(--warn); font-size: 12px; font-weight: 900; }
     .password-message[data-tone="success"] { color: var(--green); }
 
     @media (max-width: 960px) {
-      main {
-        width: calc(100% - 28px);
-        padding: 8px 0 12px;
-      }
-
-      .hero,
-      .topbar {
-        align-items: stretch;
-        flex-direction: column;
-      }
-
-      .metrics,
-      .filters,
-      .content-grid {
-        grid-template-columns: 1fr;
-      }
-
-      .history-item {
-        grid-template-columns: 1fr;
-        align-items: start;
-      }
-    }
-
-    @media (prefers-reduced-motion: reduce) {
-      .back,
-      .top-link,
-      .export,
-      .search,
-      .report,
-      .metric,
-      .history-item {
-        transition: none;
-      }
+      .filters, .content-grid, .metrics { grid-template-columns: 1fr; }
+      .history-item { grid-template-columns: 1fr; align-items: start; }
     }
   </style>
 </head>
 <body>
-  <main>
+  <main class="screen">
     <header class="topbar">
-      <a class="top-title" href="/" aria-label="홈으로 이동">
+      <a class="brand-home" href="/" aria-label="홈으로 이동">
         <span class="gg-mark" aria-hidden="true"><img src="/assets/images/gyeonggi-signature-ko.jpg" alt="경기도 로고"></span>
-        <div>
+        <span class="brand-copy">
           <strong>관리자 점검 현황</strong>
           <span>AI로 만든 개발 소스의 보안 위험을 빠르게 확인합니다.</span>
-        </div>
+        </span>
       </a>
       <div class="top-actions">
-        <button class="top-link" id="passwordChangeButton" type="button">비밀번호 변경</button>
-        <button class="top-link primary" id="adminLogoutButton" type="button">로그아웃</button>
+        <button class="ghost-button sm" id="passwordChangeButton" type="button">비밀번호 변경</button>
+        <button class="button sm danger" id="adminLogoutButton" type="button">로그아웃</button>
       </div>
     </header>
 
-    <section class="hero">
+    <section class="hero" aria-labelledby="admin-title">
       <div>
-        <h1>사용 현황과 점검 결과를 확인하세요.</h1>
-        <p>사용량, 대상 유형, 결과, 보고서 상태를 조회합니다.</p>
+        <h1 id="admin-title">사용 현황과 점검 결과를 확인하세요.</h1>
+        <p class="lead">사용량, 대상 유형, 결과, 보고서 상태를 조회합니다.</p>
       </div>
-        <button class="export" id="adminExportButton" type="button">관리자 보고서 저장</button>
+      <button class="button" id="adminExportButton" type="button">관리자 보고서 저장</button>
     </section>
 
     <section class="metrics" aria-label="관리자 요약 지표">
-      <button class="metric" type="button" data-filter-period="오늘"><span>오늘 점검</span><strong>12건</strong></button>
-      <button class="metric" type="button" data-filter-status="제출 가능"><span>제출 가능</span><strong>8건</strong></button>
-      <button class="metric needs" type="button" data-filter-status="수정 필요"><span>수정 필요</span><strong>3건</strong></button>
-      <button class="metric review-metric" type="button" data-filter-status="사람 검토"><span>사람 검토</span><strong>1건</strong></button>
+      <button class="metric" type="button" data-filter-period="오늘"><span>오늘 점검</span><b>12건</b></button>
+      <button class="metric" type="button" data-filter-status="제출 가능"><span>제출 가능</span><b>8건</b></button>
+      <button class="metric needs" type="button" data-filter-status="수정 필요"><span>수정 필요</span><b>3건</b></button>
+      <button class="metric review-metric" type="button" data-filter-status="사람 검토"><span>사람 검토</span><b>1건</b></button>
     </section>
 
     <section class="filters" aria-label="점검 이력 필터">
       <div class="field"><label for="keyword">검색</label><input id="keyword" placeholder="GitHub URL, 프로젝트명, 파일명"></div>
       <div class="field"><label for="status">결과</label><select id="status"><option>전체 결과</option><option>제출 가능</option><option>고위험 없음</option><option>수정 필요</option><option>사람 검토</option></select></div>
       <div class="field"><label for="period">기간</label><select id="period"><option>최근 30일</option><option>오늘</option><option>이번 달</option></select></div>
-      <button class="search" type="button">조회</button>
+      <button class="button" type="button">조회</button>
     </section>
 
     <section class="content-grid">
-      <div class="table-panel">
+      <div class="panel-card table-panel">
         <div class="section-head">
           <h2>점검 이력</h2>
           <span>최근 점검 12건</span>
@@ -739,7 +203,7 @@
         </ul>
       </div>
 
-      <aside class="detail-panel">
+      <aside class="panel-card detail-panel">
         <div class="section-head">
           <h2>선택 점검 상세</h2>
         </div>
@@ -757,6 +221,7 @@
       </aside>
     </section>
   </main>
+
   <section class="password-modal" id="passwordModal" hidden aria-labelledby="passwordTitle">
     <form class="password-card" id="passwordForm">
       <h2 id="passwordTitle">관리자 비밀번호 변경</h2>
@@ -768,11 +233,12 @@
       </div>
       <p class="password-message" id="passwordMessage" role="alert" aria-live="polite"></p>
       <div class="password-actions">
-        <button class="top-link" id="passwordCloseButton" type="button">취소</button>
-        <button class="top-link primary" id="passwordSaveButton" type="submit">변경 저장</button>
+        <button class="ghost-button sm" id="passwordCloseButton" type="button">취소</button>
+        <button class="button sm" id="passwordSaveButton" type="submit">변경 저장</button>
       </div>
     </form>
   </section>
+
   <script>
     const adminExportButton = document.querySelector("#adminExportButton");
     const statusSelect = document.querySelector("#status");
@@ -780,7 +246,7 @@
     const historyList = document.querySelector(".history-list");
     const detailList = document.querySelector(".detail-list");
     const sectionCount = document.querySelector(".section-head span");
-    const metricValues = Array.from(document.querySelectorAll(".metric strong"));
+    const metricValues = Array.from(document.querySelectorAll(".metric b"));
     const passwordModal = document.querySelector("#passwordModal");
     const passwordForm = document.querySelector("#passwordForm");
     const passwordMessage = document.querySelector("#passwordMessage");
@@ -846,20 +312,12 @@
       metric.addEventListener("click", () => {
         document.querySelectorAll(".metric").forEach((item) => item.classList.remove("active"));
         metric.classList.add("active");
-
-        if (metric.dataset.filterStatus) {
-          selectOptionByText(statusSelect, metric.dataset.filterStatus);
-        }
-
-        if (metric.dataset.filterPeriod) {
-          selectOptionByText(periodSelect, metric.dataset.filterPeriod);
-        }
+        if (metric.dataset.filterStatus) selectOptionByText(statusSelect, metric.dataset.filterStatus);
+        if (metric.dataset.filterPeriod) selectOptionByText(periodSelect, metric.dataset.filterPeriod);
       });
     });
 
-    document.querySelector(".search")?.addEventListener("click", () => {
-      loadAdminData();
-    });
+    document.querySelector(".filters .button")?.addEventListener("click", () => loadAdminData());
 
     document.querySelectorAll(".history-item").forEach((item) => {
       item.addEventListener("click", () => {
@@ -961,7 +419,6 @@
       }
     }
 
-    // 서버 기반 전환: 서버 폴더에 저장하지 않고 브라우저 다운로드로 받는다.
     adminExportButton.addEventListener("click", async () => {
       adminExportButton.disabled = true;
       adminExportButton.textContent = "관리자 보고서 준비 중";
