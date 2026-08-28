@@ -402,3 +402,10 @@
 - `GET /api/admin/summary` 확장: `queue{running,waiting,limit}`·`disk_free_bytes`·`whitelist{included,excluded}`.
 - 저장층 `src/whitelist-store.mjs`(파일 어댑터, `PORTAL_WHITELIST_DIR`). **검사·판정 경로는 이 저장소를 읽지 않는다** — 역할 경계(27번) 구조적 보장.
 - 화면(admin.html): 서버 상태 줄(큐·디스크·계정·검토 대기) + 패키지 근거 표(필터: 전체/위험 신호/담김, 담기·제외·해제, 근거 저장 버튼) + 보안성검토 요청 대기열 표.
+
+## 추기 (2026-08-28) — P5 구현 확정 (신뢰 표시·보존정책)
+
+- 결과 응답에 `source_retained: false`·`report_retention_days` 추가. `GET /api/auth/session` 에도 `report_retention_days` — 시작 화면 고지가 실제 설정값을 표시.
+- 보고서 자동 삭제: 기본 90일(`PORTAL_REPORT_RETENTION_DAYS`, 0=끔). 기동 시 + 6시간마다 보존기한 경과 파일 삭제. `PORTAL_REPORT_DIR` 로 보고서 위치 분리 가능(서버 표준: 코드 밖).
+- 화면: 결과 카드에 서버 원본 소스(점검 직후 삭제됨)·서버 보고서 보관(N일 후 자동 삭제) 행 추가, 시작 고지에 보관 기간 포함.
+- `confidence` 는 체커가 종합 신뢰도를 내보내지 않아 보류 — 체커 제공 시 추가.

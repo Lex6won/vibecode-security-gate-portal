@@ -374,6 +374,8 @@
             <li><span>의존성 취약점</span><b id="resultDeps">0건</b></li>
             <li><span>HTML 보고서</span><b id="resultHtml">생성 대기</b></li>
             <li><span>JSON 증거 보고서</span><b id="resultJson">생성 대기</b></li>
+            <li><span>서버 원본 소스</span><b id="resultSource">업로드 전</b></li>
+            <li><span>서버 보고서 보관</span><b id="resultRetention">확인 중</b></li>
           </ul>
           <div class="save-row" id="scanFollowUpRow" hidden>
             <div class="flow-title"><span class="sequence">4</span><span>점검 후 처리</span></div>
@@ -792,6 +794,21 @@
       }
     }
 
+    async function loadRetentionNotice() {
+      try {
+        const session = await (await fetch("/api/auth/session", { cache: "no-store" })).json();
+        const days = session.report_retention_days;
+        if (Number.isFinite(days) && days > 0) {
+          dataNoticeElement.innerHTML = `점검 시 서버에는 점검 이력·보고서와 라이브러리 메타값(경기도 화이트리스트 구축용)만 남으며, 보고서는 <b>${days}일 보관 후 자동 삭제</b>됩니다. <b>소스 코드 원본은 서버에 남지 않으며 점검 직후 즉시 삭제됩니다.</b>`;
+          resultRetention.textContent = retentionText(days);
+        }
+      } catch {
+        // 고지 갱신 실패는 기본 문구로 둔다.
+      }
+    }
+    const dataNoticeElement = document.querySelector("#dataNotice");
+    loadRetentionNotice();
+
     requestLoginLink.addEventListener("click", async () => {
       requestLoginLink.disabled = true;
       requestLoginLink.textContent = "요청 중";
@@ -832,8 +849,18 @@
 
     loadSession();
 
+    const resultSource = document.querySelector("#resultSource");
+    const resultRetention = document.querySelector("#resultRetention");
+
+    function retentionText(days) {
+      return Number.isFinite(days) && days > 0 ? `${days}일 후 자동 삭제` : "무기한 보관 안 함";
+    }
+
     function setResultDone(job, saveError = null) {
       showScanFollowUp(job);
+      // P5(신뢰 표시): 서버가 준 사실(source_retained·retention)만 그대로 보여준다.
+      resultSource.textContent = job.source_retained === false ? "점검 직후 삭제됨" : "확인 필요";
+      resultRetention.textContent = retentionText(job.report_retention_days);
       const findingCount = job.summary?.finding_count ?? 0;
       const dependencyCount = job.summary?.dependency_finding_count ?? 0;
       const reportNames = (job.reports || []).map((item) => item.file_name);

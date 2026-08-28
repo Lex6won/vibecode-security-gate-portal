@@ -5,7 +5,8 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { mkdir, mkdtemp, readFile, rm, utimes, writeFile } from "node:fs/promises";
 import { request as httpRequest } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -192,6 +193,9 @@ async function scenarioQuickScan(fixture) {
   assert.ok(result.reports.some((report) => /_보안점검(?:_\d+)?\.html$/.test(report.file_name)), "quick scan must use the checker HTML report naming rule");
   assert.ok(result.reports.some((report) => /_보안점검(?:_\d+)?\.md$/.test(report.file_name)), "quick scan must use the checker Markdown report naming rule");
   assert.ok(result.reports.some((report) => /_보안점검(?:_\d+)?\.json$/.test(report.file_name)), "quick scan must save JSON evidence with the checker naming rule");
+  // P5: 원본 미보관·보존기한 사실이 응답에 실린다.
+  assert.equal(result.source_retained, false, "results must state that uploaded source is not retained");
+  assert.ok(Number.isFinite(result.report_retention_days) && result.report_retention_days > 0, "results must state the report retention period");
   return result;
 }
 
@@ -502,6 +506,58 @@ async function scenarioHostAllowlist(fixture) {
   }
 }
 
+// P5: 보존기한이 지난 보고서는 기동 시 삭제되고, 기한 내 보고서는 남는다.
+async function scenarioReportRetention(fixture) {
+  const retentionPort = Number(process.env.PORTAL_RETENTION_TEST_PORT || 8796);
+  const reportDir = join(fixture.fixtureDir, "retention-reports");
+  await mkdir(reportDir, { recursive: true });
+  const oldFile = join(reportDir, "old_보안점검.html");
+  const freshFile = join(reportDir, "fresh_보안점검.html");
+  await writeFile(oldFile, "expired", "utf8");
+  await writeFile(freshFile, "fresh", "utf8");
+  const oldDate = new Date(Date.now() - 200 * 24 * 60 * 60 * 1000);
+  await utimes(oldFile, oldDate, oldDate);
+
+  const server = spawn(process.execPath, ["src/server.js"], {
+    cwd: process.cwd(),
+    env: {
+      ...process.env,
+      PORT: String(retentionPort),
+      ADMIN_INITIAL_PASSWORD: adminPassword,
+      ADMIN_AUTH_FILE: join(fixture.fixtureDir, "retention-admin.json"),
+      PORTAL_SCAN_HISTORY_FILE: join(fixture.fixtureDir, "retention-history.jsonl"),
+      PORTAL_OBSERVATION_DIR: join(fixture.fixtureDir, "retention-observations"),
+      PORTAL_ACCOUNT_DIR: join(fixture.fixtureDir, "retention-accounts"),
+      PORTAL_WHITELIST_DIR: join(fixture.fixtureDir, "retention-whitelist"),
+      PORTAL_REPORT_DIR: reportDir,
+      PORTAL_REPORT_RETENTION_DAYS: "90",
+      PORTAL_LOCAL_API_TOKEN: localApiToken,
+      PYTHONUTF8: "1",
+      PYTHONIOENCODING: "utf-8"
+    },
+    stdio: ["ignore", "ignore", "ignore"],
+    windowsHide: true
+  });
+  try {
+    let ready = false;
+    for (let attempt = 0; attempt < 40 && !ready; attempt += 1) {
+      if (server.exitCode !== null) throw new Error("retention test server died");
+      try {
+        const health = await fetch(`http://127.0.0.1:${retentionPort}/health`);
+        ready = health.ok;
+      } catch {
+        await wait(250);
+      }
+    }
+    assert.ok(ready, "retention test server did not become ready");
+    assert.ok(!existsSync(oldFile), "reports past the retention period must be deleted at startup");
+    assert.ok(existsSync(freshFile), "reports within the retention period must be kept");
+  } finally {
+    server.kill();
+    await Promise.race([once(server, "exit"), wait(2000)]);
+  }
+}
+
 async function scenarioToolsSurface() {
   const versions = await fetchJson("/api/tools/versions");
   assert.equal(versions.checker.installed, true, "the server checker must be installed for the portal to be useful");
@@ -632,6 +688,7 @@ const child = spawn(process.execPath, ["src/server.js"], {
     PORTAL_OBSERVATION_DIR: join(fixture.fixtureDir, "observations"),
     PORTAL_ACCOUNT_DIR: join(fixture.fixtureDir, "accounts"),
     PORTAL_WHITELIST_DIR: join(fixture.fixtureDir, "whitelist"),
+    PORTAL_REPORT_DIR: join(fixture.fixtureDir, "reports"),
     PORTAL_LOCAL_API_TOKEN: localApiToken,
     PYTHONUTF8: "1",
     PYTHONIOENCODING: "utf-8"
@@ -676,6 +733,7 @@ try {
   await scenarioAdmin(fixture);
   await scenarioQueueAndCapacity(fixture);
   await scenarioHostAllowlist(fixture);
+  await scenarioReportRetention(fixture);
   console.log(JSON.stringify({
     status: "passed",
     base_url: baseUrl,
@@ -691,7 +749,8 @@ try {
       tools_surface: true,
       admin: true,
       queue_and_capacity: true,
-      host_allowlist: true
+      host_allowlist: true,
+      report_retention: true
     }
   }, null, 2));
 } catch (error) {

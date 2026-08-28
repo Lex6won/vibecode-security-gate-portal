@@ -206,6 +206,11 @@ async function assertLocalPickerContract() {
   assert.ok(html.includes("화이트리스트 구축용"), "scan page must disclose the automatic metadata accumulation");
   assert.ok(!html.includes("submit-observations"), "the manual observation submission must be gone from the user flow");
   assert.ok(html.includes('id="requestReview"'), "completed scans must offer a security-review request action");
+
+  // P5: 원본 삭제·보존기한이 화면에 사실대로 표시되어야 한다.
+  assert.ok(html.includes('id="resultSource"') && html.includes('id="resultRetention"'), "result card must show source deletion and retention facts");
+  assert.ok(html.includes("일 후 자동 삭제"), "retention wording must state automatic deletion");
+  assert.ok(html.includes("점검 직후 삭제됨"), "completed scans must state the uploaded source was deleted");
 }
 
 async function assertToolsGuidePage() {

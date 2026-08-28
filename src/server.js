@@ -1,7 +1,7 @@
 import { createServer } from "node:http";
 import { spawn } from "node:child_process";
 import { createReadStream, createWriteStream, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
-import { appendFile, rm, readdir, readFile, statfs } from "node:fs/promises";
+import { appendFile, rm, readdir, readFile, stat, statfs } from "node:fs/promises";
 import { cpus } from "node:os";
 import { pipeline } from "node:stream/promises";
 import { basename, dirname, extname, isAbsolute, join, normalize, resolve } from "node:path";
@@ -19,7 +19,6 @@ import {
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 const ROOT = resolve(__dirname, "..");
 const DESIGN_DIR = join(ROOT, "design", "html-prototype");
-const REPORT_DIR = join(ROOT, "reports");
 const TMP_DIR = join(ROOT, "tmp", "scan-targets");
 function loadDotEnv(filePath) {
   if (!existsSync(filePath)) return {};
@@ -49,6 +48,10 @@ const SCAN_TIMEOUT_QUICK_MS = Number(runtimeEnv.PORTAL_SCAN_TIMEOUT_QUICK_MS || 
 const SCAN_TIMEOUT_STANDARD_MS = Number(runtimeEnv.PORTAL_SCAN_TIMEOUT_STANDARD_MS || 20 * 60 * 1000);
 const MIN_FREE_DISK_BYTES = Number(runtimeEnv.PORTAL_MIN_FREE_DISK_BYTES || 2 * 1024 * 1024 * 1024);
 
+// P5(보존정책): 보고서는 기본 90일 보관 후 자동 삭제한다. 0 이면 자동 삭제 없음.
+// 기관 정책이 확정되면 이 값(PORTAL_REPORT_RETENTION_DAYS)만 바꾼다 — 화면 고지도 함께 바뀐다.
+const REPORT_RETENTION_DAYS = Math.max(0, Number(runtimeEnv.PORTAL_REPORT_RETENTION_DAYS ?? 90) || 0);
+
 function runtimePath(name, fallback) {
   const value = runtimeEnv[name];
   return value && isAbsolute(value) ? value : fallback;
@@ -70,6 +73,7 @@ const MAX_EXTRACTED_BYTES = 2 * 1024 * 1024 * 1024;
 const MAX_ARCHIVE_ENTRIES = 50000;
 const MAX_COMPRESSION_RATIO = 200;
 const SCAN_HISTORY_FILE = runtimePath("PORTAL_SCAN_HISTORY_FILE", join(ROOT, ".local", "scan-history.jsonl"));
+const REPORT_DIR = runtimePath("PORTAL_REPORT_DIR", join(ROOT, "reports"));
 const LOGIN_LOCK_THRESHOLD = 5;
 const LOGIN_LOCK_MS = 5 * 60 * 1000;
 const loginFailures = { count: 0, locked_until: 0 };
@@ -200,6 +204,32 @@ async function purgeOrphanScanTargets() {
 purgeOrphanScanTargets().catch(() => {
   // Startup hygiene is best effort; a failure here must not block the portal.
 });
+
+// P5(보존정책): 보존기한이 지난 보고서를 삭제한다. 화면 고지("N일 보관 후 자동 삭제")와
+// 실제 동작을 일치시키는 장치다 — 무기한 축적은 상시 서버에서 디스크 사고가 된다.
+async function purgeExpiredReports() {
+  if (REPORT_RETENTION_DAYS <= 0 || !existsSync(REPORT_DIR)) return;
+  const cutoff = Date.now() - REPORT_RETENTION_DAYS * 24 * 60 * 60 * 1000;
+  let removed = 0;
+  for (const entry of await readdir(REPORT_DIR)) {
+    const target = join(REPORT_DIR, entry);
+    try {
+      const info = await stat(target);
+      if (info.isFile() && info.mtimeMs < cutoff) {
+        await rm(target, { force: true });
+        removed += 1;
+      }
+    } catch {
+      // 하나가 잠겨 있어도 나머지 정리는 계속한다.
+    }
+  }
+  if (removed) console.log(`보존기한(${REPORT_RETENTION_DAYS}일)이 지난 보고서 ${removed}개를 삭제했습니다.`);
+}
+
+await purgeExpiredReports().catch(() => {});
+setInterval(() => {
+  purgeExpiredReports().catch(() => {});
+}, 6 * 60 * 60 * 1000).unref();
 
 const staticRoutes = new Map([
   ["/", "main page.html"],
@@ -1047,6 +1077,9 @@ function publicJob(job) {
     summary: job.summary || null,
     steps: job.steps || [],
     reports: (job.reports || []).map(({ file_name, url }) => ({ file_name, url })),
+    // P5(신뢰 표시): 원본 미보관과 보존기한을 응답에 실어 화면이 사실을 말하게 한다.
+    source_retained: false,
+    report_retention_days: REPORT_RETENTION_DAYS || null,
     observations_submitted_at: job.observations_submitted_at || null,
     // 소유자 검증 뒤에만 응답되므로 본인 라벨·소속 스냅샷·검토요청 상태를 보여줄 수 있다.
     target_name: job.target_label || "",
@@ -1292,14 +1325,15 @@ async function handleApi(request, response, pathname) {
   if (request.method === "GET" && pathname === "/api/auth/session") {
     const account = currentUser(request);
     if (!account) {
-      json(response, 200, { logged_in: false });
+      json(response, 200, { logged_in: false, report_retention_days: REPORT_RETENTION_DAYS || null });
       return;
     }
     json(response, 200, {
       logged_in: true,
       email: account.email,
       organization: account.organization || "",
-      department: account.department || ""
+      department: account.department || "",
+      report_retention_days: REPORT_RETENTION_DAYS || null
     });
     return;
   }
