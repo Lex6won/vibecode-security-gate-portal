@@ -442,7 +442,9 @@ function serveReport(response, filename) {
     notFound(response);
     return;
   }
-  if (!/^[\p{L}\p{N}._-]+$/u.test(decoded) || decoded.includes("..")) {
+  // 공백 허용: 보고서 파일명은 사용자가 붙인 라벨(공백 포함)로 만들어진다.
+  // 경로 문자는 여전히 불허 — 아래 resolve 경계 검사와 이중 방어.
+  if (!/^[\p{L}\p{N} ._-]+$/u.test(decoded) || decoded.includes("..")) {
     notFound(response);
     return;
   }

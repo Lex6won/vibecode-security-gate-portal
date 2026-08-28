@@ -182,7 +182,8 @@ async function assertPagesLoad() {
 
 async function scenarioQuickScan(fixture) {
   const uploaded = await uploadFixtureFolder(fixture, "quick-fixture");
-  const result = await startScan("quick", uploaded.target_type, uploaded.path, uploaded.label);
+  // 라벨에 공백을 섞는다 — 보고서 파일명·다운로드가 실사용 라벨(공백 포함)에서 깨졌던 회귀(2026-08-28).
+  const result = await startScan("quick", uploaded.target_type, uploaded.path, "민원 조회 도구");
   assert.equal(result.status, "completed");
   assert.equal(result.decision, "quick_complete");
   assert.equal(result.summary.scanned_file_count, 1);
