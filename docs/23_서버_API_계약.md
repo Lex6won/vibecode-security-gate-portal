@@ -393,3 +393,12 @@
 - 관리자: `GET /api/admin/review-requests`(대기열), summary 에 `accounts`·`pending_review_requests` 추가.
 
 **화면**: `/my`(내 점검 이력·프로필 수정), `/scan` 로그인 게이트(이메일+기관·부서, 개발 모드 링크 표시), 결과 카드 "점검 후 처리"(자동 반영 표시 + 검토 요청 버튼). 메인에 "내 점검 이력" 진입점.
+
+## 추기 (2026-08-28) — P4 구현 확정 (관리자 화이트리스트 근거)
+
+- `GET /api/admin/packages` — 관측 집계 목록(관측 수·부서 수·버전·위험 신호·목록 상태). 응답 note 에 "승인·차단이 아니다"를 명시.
+- `POST /api/admin/whitelist` `{ecosystem, package_name, action: include|exclude|reset, reason?}` — **관측 이력 있는 패키지만**(404 `package_not_observed`). 모든 변경은 이전 상태와 함께 감사 기록(whitelist-audit.jsonl). 감사 기록 실패 시 변경 자체를 중단.
+- `GET /api/admin/whitelist/export` — 다운로드(JSON). **패키지 식별 정보만** 싣는다: 부서명·이메일·프로젝트 라벨 미포함(회귀 검사로 강제). 내보내기도 감사 기록. 4형식(requirements 등)은 S6(망중계 규격 대기).
+- `GET /api/admin/summary` 확장: `queue{running,waiting,limit}`·`disk_free_bytes`·`whitelist{included,excluded}`.
+- 저장층 `src/whitelist-store.mjs`(파일 어댑터, `PORTAL_WHITELIST_DIR`). **검사·판정 경로는 이 저장소를 읽지 않는다** — 역할 경계(27번) 구조적 보장.
+- 화면(admin.html): 서버 상태 줄(큐·디스크·계정·검토 대기) + 패키지 근거 표(필터: 전체/위험 신호/담김, 담기·제외·해제, 근거 저장 버튼) + 보안성검토 요청 대기열 표.

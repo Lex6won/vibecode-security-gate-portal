@@ -8,7 +8,8 @@ import { basename, dirname, extname, isAbsolute, join, normalize, resolve } from
 import { fileURLToPath } from "node:url";
 import { randomBytes, randomUUID, scryptSync, timingSafeEqual } from "node:crypto";
 import Busboy from "busboy";
-import { initObservationStore, toObservationRecord, hasSubmission, recordSubmission, observationSummary } from "./observation-store.mjs";
+import { initObservationStore, toObservationRecord, hasSubmission, recordSubmission, observationSummary, usageStatsSnapshot } from "./observation-store.mjs";
+import { initWhitelistStore, whitelistStatus, setWhitelistEntry, whitelistSnapshot, whitelistSummary, recordWhitelistExport } from "./whitelist-store.mjs";
 import {
   initAccountStore, recordAuthAudit, normalizeEmail, isValidEmail, emailDomainAllowed,
   linkRequestAllowed, getAccount, createLoginToken, consumeLoginToken,
@@ -176,6 +177,7 @@ function loadScanHistory() {
 loadScanHistory();
 initObservationStore(runtimePath("PORTAL_OBSERVATION_DIR", join(ROOT, ".local", "observations")));
 initAccountStore(runtimePath("PORTAL_ACCOUNT_DIR", join(ROOT, ".local", "accounts")));
+initWhitelistStore(runtimePath("PORTAL_WHITELIST_DIR", join(ROOT, ".local", "whitelist")));
 
 // Scan targets are copies of someone else's project and may hold credentials or keys.
 // A crashed or interrupted job leaves its copy behind, so every startup clears the
@@ -1365,7 +1367,106 @@ async function handleApi(request, response, pathname) {
 
   if (request.method === "GET" && pathname === "/api/admin/summary") {
     if (!requireAdmin(request, response)) return;
-    json(response, 200, adminSummary());
+    // P4(현황 보강): 큐·디스크는 요약과 함께 — 화면이 서버 상태를 한 번에 본다.
+    let diskFreeBytes = null;
+    try {
+      const stats = await statfs(ROOT);
+      diskFreeBytes = stats.bavail * stats.bsize;
+    } catch {
+      diskFreeBytes = null;
+    }
+    json(response, 200, {
+      ...adminSummary(),
+      queue: { running: runningScans, waiting: scanQueue.length, limit: MAX_CONCURRENT_SCANS },
+      disk_free_bytes: diskFreeBytes,
+      whitelist: whitelistSummary()
+    });
+    return;
+  }
+
+  // P4: 관측 축적 → 화이트리스트 근거 화면. 이 데이터는 판정이 아니다(역할합의) —
+  // 담기·제외는 보안부서 제출용 목록 구성이며 검사 경로는 이 목록을 읽지 않는다.
+  if (request.method === "GET" && pathname === "/api/admin/packages") {
+    if (!requireAdmin(request, response)) return;
+    const packages = Object.values(usageStatsSnapshot())
+      .map((entry) => ({
+        ecosystem: entry.ecosystem,
+        package_name: entry.package_name,
+        observation_count: entry.observation_count,
+        manifest_count: entry.manifest_count,
+        department_count: (entry.department_codes || []).length,
+        project_count: (entry.project_labels || []).length,
+        versions: entry.versions || [],
+        latest_version: entry.latest_version,
+        has_vulnerable_observation: entry.has_vulnerable_observation === true,
+        has_malicious_observation: entry.has_malicious_observation === true,
+        first_observed_at: entry.first_observed_at,
+        last_observed_at: entry.last_observed_at,
+        whitelist_status: whitelistStatus(entry.ecosystem, entry.package_name)
+      }))
+      .sort((a, b) => b.observation_count - a.observation_count);
+    json(response, 200, {
+      packages,
+      note: "관측 축적 데이터입니다. 담기·제외는 보안부서 화이트리스트 검토를 위한 근거 구성이며 승인·차단이 아닙니다."
+    });
+    return;
+  }
+
+  if (request.method === "POST" && pathname === "/api/admin/whitelist") {
+    if (!requireAdmin(request, response)) return;
+    const body = await readJson(request);
+    const ecosystem = String(body.ecosystem || "").trim();
+    const packageName = String(body.package_name || "").trim();
+    const action = String(body.action || "");
+    if (!ecosystem || !packageName || !["include", "exclude", "reset"].includes(action)) {
+      json(response, 400, { error: "invalid_whitelist_request", message: "ecosystem, package_name, action(include/exclude/reset)을 확인하세요." });
+      return;
+    }
+    // 관측된 적 없는 패키지는 근거가 없으므로 목록에 올릴 수 없다.
+    const observed = usageStatsSnapshot()[`${ecosystem}:${packageName}`];
+    if (!observed) {
+      json(response, 404, { error: "package_not_observed", message: "관측 이력이 없는 패키지는 근거 목록에 담을 수 없습니다." });
+      return;
+    }
+    const entry = await setWhitelistEntry(ecosystem, packageName, action, body.reason, ADMIN_ID);
+    json(response, 200, { status: "recorded", action, entry });
+    return;
+  }
+
+  if (request.method === "GET" && pathname === "/api/admin/whitelist/export") {
+    if (!requireAdmin(request, response)) return;
+    // 내보내기에는 패키지 식별 정보만 싣는다 — 부서명·프로젝트명·이메일은 넣지 않는다.
+    const stats = usageStatsSnapshot();
+    const listed = Object.values(whitelistSnapshot());
+    const packageFields = (entry) => {
+      const observed = stats[`${entry.ecosystem}:${entry.package_name}`] || {};
+      return {
+        ecosystem: entry.ecosystem,
+        package_name: entry.package_name,
+        versions: observed.versions || [],
+        latest_version: observed.latest_version || null,
+        observation_count: observed.observation_count || 0,
+        reason: entry.reason || null,
+        decided_at: entry.decided_at
+      };
+    };
+    const payload = {
+      report_type: "화이트리스트 근거 목록",
+      note: "보안부서 검토·이미지 반영용 근거 자료입니다. 이 목록 자체는 승인·차단 판정이 아닙니다.",
+      generated_at: new Date().toISOString(),
+      included: listed.filter((entry) => entry.status === "included").map(packageFields),
+      excluded: listed.filter((entry) => entry.status === "excluded").map(packageFields)
+    };
+    await recordWhitelistExport("json", { included: payload.included.length, excluded: payload.excluded.length }, ADMIN_ID);
+    const timestamp = new Date().toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "");
+    const fileName = `${timestamp}_화이트리스트근거.json`;
+    response.writeHead(200, {
+      "Content-Type": "application/json; charset=utf-8",
+      "X-Content-Type-Options": "nosniff",
+      "Cache-Control": "no-store",
+      "Content-Disposition": `attachment; filename="whitelist-evidence.json"; filename*=UTF-8''${encodeURIComponent(fileName)}`
+    });
+    response.end(`${JSON.stringify(payload, null, 2)}\n`);
     return;
   }
 

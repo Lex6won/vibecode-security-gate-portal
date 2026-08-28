@@ -108,6 +108,24 @@
     .password-message { min-height: 20px; color: var(--warn); font-size: 12px; font-weight: 900; }
     .password-message[data-tone="success"] { color: var(--green); }
 
+    .ops-line { display: flex; flex-wrap: wrap; gap: 8px; }
+    .ops-line .pill b { font-weight: 900; }
+
+    .pkg-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .pkg-table th, .pkg-table td { padding: 9px 10px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: middle; }
+    .pkg-table th { font-size: 12px; color: var(--muted); font-weight: 900; white-space: nowrap; }
+    .pkg-table td b { font-weight: 900; }
+    .pkg-table .risk { color: var(--warn); font-weight: 900; }
+    .pkg-table .safe-signal { color: var(--muted); }
+    .pkg-actions { display: flex; gap: 6px; }
+    .pkg-actions button { padding: 5px 10px; font-size: 12px; font-weight: 800; border-radius: var(--radius-sm); border: 1px solid var(--line); background: var(--panel); cursor: pointer; }
+    .pkg-actions button:disabled { opacity: .5; cursor: default; }
+    .wl-pill { display: inline-flex; padding: 2px 8px; border-radius: 999px; font-size: 11.5px; font-weight: 900; }
+    .wl-included { background: var(--green-soft); color: var(--green); }
+    .wl-excluded { background: var(--warn-soft); color: var(--warn); }
+    .pkg-filter.active { outline: 2px solid var(--harbor); }
+    .table-scroll { overflow-x: auto; }
+
     @media (max-width: 960px) {
       .filters, .content-grid, .metrics { grid-template-columns: 1fr; }
       .history-item { grid-template-columns: 1fr; align-items: start; }
@@ -219,6 +237,59 @@
           다음 조치: 반복 탐지 규칙과 오탐 후보를 확인해 체커 개선 항목으로 분류하세요.
         </div>
       </aside>
+    </section>
+
+    <section class="panel-card" aria-labelledby="ops-title">
+      <div class="section-head">
+        <h2 id="ops-title">서버 상태</h2>
+        <span>큐·디스크·계정·검토 대기</span>
+      </div>
+      <div class="ops-line" id="opsLine" aria-live="polite">
+        <span class="pill">실행 중 <b id="opsRunning">-</b></span>
+        <span class="pill">대기열 <b id="opsWaiting">-</b></span>
+        <span class="pill">디스크 여유 <b id="opsDisk">-</b></span>
+        <span class="pill">가입 계정 <b id="opsAccounts">-</b></span>
+        <span class="pill">검토 요청 대기 <b id="opsReviews">-</b></span>
+      </div>
+    </section>
+
+    <section class="panel-card table-panel" aria-labelledby="packages-title">
+      <div class="section-head">
+        <h2 id="packages-title">패키지 화이트리스트 근거</h2>
+        <span id="packagesCount">불러오는 중</span>
+      </div>
+      <div class="ops-line" style="margin-bottom: 12px;">
+        <button class="ghost-button sm pkg-filter active" type="button" data-pkg-filter="all">전체</button>
+        <button class="ghost-button sm pkg-filter" type="button" data-pkg-filter="risky">위험 신호</button>
+        <button class="ghost-button sm pkg-filter" type="button" data-pkg-filter="included">담김</button>
+        <button class="button sm" id="whitelistExportButton" type="button">화이트리스트 근거 저장</button>
+      </div>
+      <div class="table-scroll">
+        <table class="pkg-table" aria-label="관측된 패키지 목록">
+          <thead>
+            <tr><th>패키지</th><th>생태계</th><th>관측</th><th>부서</th><th>최신 버전</th><th>위험 신호</th><th>목록 상태</th><th>구성</th></tr>
+          </thead>
+          <tbody id="packageBody"></tbody>
+        </table>
+      </div>
+      <div class="admin-note">
+        이 표의 담기·제외는 승인·차단이 아닙니다. 보안부서가 화이트리스트를 만들 때 쓸 근거 목록을 구성하는 것이며, 모든 변경과 저장은 감사 기록으로 남습니다.
+      </div>
+    </section>
+
+    <section class="panel-card" aria-labelledby="review-queue-title">
+      <div class="section-head">
+        <h2 id="review-queue-title">보안성검토 요청 대기열</h2>
+        <span id="reviewCount">불러오는 중</span>
+      </div>
+      <div class="table-scroll">
+        <table class="pkg-table" aria-label="보안성검토 요청 목록">
+          <thead>
+            <tr><th>요청일</th><th>대상</th><th>소속</th><th>요청자</th><th>판정</th><th>보고서</th></tr>
+          </thead>
+          <tbody id="reviewBody"></tbody>
+        </table>
+      </div>
     </section>
   </main>
 
@@ -391,6 +462,154 @@
       updateDetail(scans[0]);
     }
 
+    // ---- P4: 서버 상태·패키지 근거·검토 대기열 ----
+    const packageBody = document.querySelector("#packageBody");
+    const packagesCount = document.querySelector("#packagesCount");
+    const reviewBody = document.querySelector("#reviewBody");
+    const reviewCount = document.querySelector("#reviewCount");
+    const whitelistExportButton = document.querySelector("#whitelistExportButton");
+    let packageFilter = "all";
+    let packageCache = [];
+
+    function formatBytes(bytes) {
+      if (!Number.isFinite(bytes)) return "-";
+      const gb = bytes / (1024 ** 3);
+      return gb >= 1 ? `${gb.toFixed(1)}GB` : `${Math.round(bytes / (1024 ** 2))}MB`;
+    }
+
+    function renderOps(summary) {
+      document.querySelector("#opsRunning").textContent = `${summary.queue?.running ?? "-"}/${summary.queue?.limit ?? "-"}`;
+      document.querySelector("#opsWaiting").textContent = `${summary.queue?.waiting ?? "-"}건`;
+      document.querySelector("#opsDisk").textContent = formatBytes(summary.disk_free_bytes);
+      document.querySelector("#opsAccounts").textContent = `${summary.accounts?.total_accounts ?? "-"}명`;
+      document.querySelector("#opsReviews").textContent = `${summary.pending_review_requests ?? 0}건`;
+    }
+
+    function renderPackages() {
+      const filtered = packageCache.filter((entry) => {
+        if (packageFilter === "risky") return entry.has_vulnerable_observation || entry.has_malicious_observation;
+        if (packageFilter === "included") return entry.whitelist_status === "included";
+        return true;
+      });
+      packagesCount.textContent = `관측 ${packageCache.length}종 · 표시 ${filtered.length}종`;
+      packageBody.innerHTML = "";
+      for (const entry of filtered) {
+        const risk = entry.has_malicious_observation ? "악성 이력" : entry.has_vulnerable_observation ? "취약점 이력" : "";
+        const state = entry.whitelist_status === "included"
+          ? '<span class="wl-pill wl-included">담김</span>'
+          : entry.whitelist_status === "excluded"
+            ? '<span class="wl-pill wl-excluded">제외</span>'
+            : "<span>-</span>";
+        const row = document.createElement("tr");
+        row.innerHTML = `
+          <td><b>${escapeHtml(entry.package_name)}</b></td>
+          <td>${escapeHtml(entry.ecosystem)}</td>
+          <td>${entry.observation_count}회</td>
+          <td>${entry.department_count}곳</td>
+          <td>${escapeHtml(entry.latest_version || "-")}</td>
+          <td>${risk ? `<span class="risk">${risk}</span>` : '<span class="safe-signal">신호 없음</span>'}</td>
+          <td>${state}</td>
+          <td class="pkg-actions">
+            <button type="button" data-wl-action="include" data-eco="${escapeHtml(entry.ecosystem)}" data-name="${escapeHtml(entry.package_name)}" ${entry.whitelist_status === "included" ? "disabled" : ""}>담기</button>
+            <button type="button" data-wl-action="exclude" data-eco="${escapeHtml(entry.ecosystem)}" data-name="${escapeHtml(entry.package_name)}" ${entry.whitelist_status === "excluded" ? "disabled" : ""}>제외</button>
+            <button type="button" data-wl-action="reset" data-eco="${escapeHtml(entry.ecosystem)}" data-name="${escapeHtml(entry.package_name)}" ${entry.whitelist_status ? "" : "disabled"}>해제</button>
+          </td>`;
+        packageBody.appendChild(row);
+      }
+    }
+
+    document.querySelectorAll(".pkg-filter").forEach((button) => {
+      button.addEventListener("click", () => {
+        document.querySelectorAll(".pkg-filter").forEach((item) => item.classList.remove("active"));
+        button.classList.add("active");
+        packageFilter = button.dataset.pkgFilter;
+        renderPackages();
+      });
+    });
+
+    packageBody.addEventListener("click", async (event) => {
+      const button = event.target.closest("[data-wl-action]");
+      if (!button) return;
+      button.disabled = true;
+      try {
+        const response = await fetch("/api/admin/whitelist", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            ecosystem: button.dataset.eco,
+            package_name: button.dataset.name,
+            action: button.dataset.wlAction
+          })
+        });
+        if (!response.ok) {
+          const failed = await readResponseJson(response);
+          alert(failed.message || "변경하지 못했습니다.");
+        }
+      } catch {
+        alert("변경하지 못했습니다. 연결을 확인해 주세요.");
+      }
+      await loadPackages();
+    });
+
+    whitelistExportButton.addEventListener("click", async () => {
+      whitelistExportButton.disabled = true;
+      whitelistExportButton.textContent = "저장 준비 중";
+      try {
+        const response = await fetch("/api/admin/whitelist/export", { cache: "no-store" });
+        if (!response.ok) throw new Error("다운로드 실패");
+        const disposition = String(response.headers.get("content-disposition") || "");
+        const encodedName = disposition.match(/filename\*=UTF-8''([^;]+)/);
+        const fileName = encodedName ? decodeURIComponent(encodedName[1]) : "화이트리스트근거.json";
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = fileName;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(url);
+        whitelistExportButton.textContent = "저장 완료";
+      } catch {
+        whitelistExportButton.textContent = "다시 시도";
+      } finally {
+        whitelistExportButton.disabled = false;
+      }
+    });
+
+    async function loadPackages() {
+      try {
+        const data = await fetch("/api/admin/packages", { cache: "no-store" }).then((response) => response.json());
+        packageCache = data.packages || [];
+        renderPackages();
+      } catch {
+        packagesCount.textContent = "패키지 API 연결 필요";
+      }
+    }
+
+    async function loadReviewQueue() {
+      try {
+        const data = await fetch("/api/admin/review-requests", { cache: "no-store" }).then((response) => response.json());
+        const requests = data.requests || [];
+        reviewCount.textContent = `${requests.length}건`;
+        reviewBody.innerHTML = "";
+        for (const item of requests) {
+          const report = (item.reports || []).find((entry) => entry.url && entry.url.startsWith("/reports/"));
+          const row = document.createElement("tr");
+          row.innerHTML = `
+            <td>${escapeHtml(new Date(item.requested_at).toLocaleString("ko-KR"))}</td>
+            <td><b>${escapeHtml(item.target_name || "-")}</b></td>
+            <td>${escapeHtml([item.owner_organization, item.owner_department].filter(Boolean).join(" ") || "-")}</td>
+            <td>${escapeHtml(item.owner_email || "-")}</td>
+            <td>${escapeHtml(statusLabel(item.decision)[0])}</td>
+            <td>${report ? `<a class="report" href="${report.url}" target="_blank" rel="noreferrer">열기</a>` : "-"}</td>`;
+          reviewBody.appendChild(row);
+        }
+      } catch {
+        reviewCount.textContent = "검토 API 연결 필요";
+      }
+    }
+
     async function loadAdminData() {
       try {
         const [summary, scansData] = await Promise.all([
@@ -402,10 +621,12 @@
         metricValues[2].textContent = `${summary.blocked}건`;
         metricValues[3].textContent = `${summary.needs_review}건`;
         sectionCount.textContent = `현재 세션 ${summary.total}건`;
+        renderOps(summary);
         renderScans(scansData.scans || []);
       } catch (error) {
         sectionCount.textContent = "이력 API 연결 필요";
       }
+      await Promise.all([loadPackages(), loadReviewQueue()]);
     }
 
     loadAdminData();

@@ -371,6 +371,7 @@ async function scenarioQueueAndCapacity(fixture) {
       PORTAL_SCAN_HISTORY_FILE: join(fixture.fixtureDir, "queue-history.jsonl"),
       PORTAL_OBSERVATION_DIR: join(fixture.fixtureDir, "queue-observations"),
       PORTAL_ACCOUNT_DIR: join(fixture.fixtureDir, "queue-accounts"),
+      PORTAL_WHITELIST_DIR: join(fixture.fixtureDir, "queue-whitelist"),
       PORTAL_LOCAL_API_TOKEN: localApiToken,
       PYTHONUTF8: "1",
       PYTHONIOENCODING: "utf-8",
@@ -457,6 +458,7 @@ async function scenarioHostAllowlist(fixture) {
       PORTAL_SCAN_HISTORY_FILE: join(fixture.fixtureDir, "host-history.jsonl"),
       PORTAL_OBSERVATION_DIR: join(fixture.fixtureDir, "host-observations"),
       PORTAL_ACCOUNT_DIR: join(fixture.fixtureDir, "host-accounts"),
+      PORTAL_WHITELIST_DIR: join(fixture.fixtureDir, "host-whitelist"),
       PORTAL_LOCAL_API_TOKEN: localApiToken,
       PORTAL_ALLOWED_HOSTS: "portal.test.gg",
       PYTHONUTF8: "1",
@@ -508,7 +510,7 @@ async function scenarioToolsSurface() {
   assert.ok(versions.note.includes("도구 관리자"), "the response must say PC tool state belongs to the tool manager");
 }
 
-async function scenarioAdmin() {
+async function scenarioAdmin(fixture) {
   const withoutToken = await fetch(`${baseUrl}/api/admin/summary`);
   assert.equal(withoutToken.status, 403, "admin APIs must reject requests without the portal request token");
 
@@ -534,6 +536,71 @@ async function scenarioAdmin() {
   const reviewQueue = await fetchJson("/api/admin/review-requests");
   assert.ok(reviewQueue.requests.some((item) => item.owner_email === "tester@gg.go.kr" && item.status === "requested"),
     "admin review queue must list the requester and status");
+
+  // P4(현황 보강): 큐·디스크·화이트리스트 요약이 함께 온다.
+  assert.ok(summary.queue && Number.isFinite(summary.queue.limit), "admin summary must expose queue state");
+  assert.ok(summary.whitelist, "admin summary must expose whitelist counts");
+
+  // P4: 관측 → 근거 목록 → 담기/제외/저장 → 감사 기록.
+  const packagesData = await fetchJson("/api/admin/packages");
+  const busboyEntry = packagesData.packages.find((entry) => entry.package_name === "busboy");
+  assert.ok(busboyEntry, "observed packages must appear in the admin evidence list");
+  assert.ok(busboyEntry.observation_count >= 1, "evidence list must carry observation counts");
+  assert.ok(busboyEntry.department_count >= 1, "department snapshots must feed the evidence list");
+  assert.ok(String(packagesData.note).includes("승인·차단이 아닙니다"), "evidence list must state it is not a verdict");
+
+  const included = await fetchJson("/api/admin/whitelist", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ecosystem: busboyEntry.ecosystem, package_name: "busboy", action: "include", reason: "표준 업로드 파서" })
+  });
+  assert.equal(included.entry.status, "included");
+  const afterInclude = await fetchJson("/api/admin/packages");
+  assert.equal(afterInclude.packages.find((entry) => entry.package_name === "busboy")?.whitelist_status, "included");
+
+  const unobserved = await fetch(`${baseUrl}/api/admin/whitelist`, {
+    method: "POST",
+    headers: localHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify({ ecosystem: "npm", package_name: "never-observed-pkg", action: "include" })
+  });
+  assert.equal(unobserved.status, 404, "packages without observations must not be listable");
+
+  // 내보내기 — 패키지 식별 정보만, 부서·이메일·프로젝트명은 실리지 않는다(적대 검증).
+  const evidenceExport = await fetch(`${baseUrl}/api/admin/whitelist/export`, { headers: localHeaders() });
+  assert.equal(evidenceExport.status, 200, "whitelist evidence export must be downloadable");
+  assert.match(String(evidenceExport.headers.get("content-disposition")), /attachment/);
+  const exportText = await evidenceExport.text();
+  const evidencePayload = JSON.parse(exportText);
+  assert.ok(evidencePayload.included.some((entry) => entry.package_name === "busboy"), "export must contain included packages");
+  assert.ok(!exportText.includes("AI산업육성과"), "export must not leak department names");
+  assert.ok(!exportText.includes("gg.go.kr"), "export must not leak user emails");
+  assert.ok(!exportText.includes("obs-fixture"), "export must not leak project labels");
+
+  const excluded = await fetchJson("/api/admin/whitelist", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ecosystem: busboyEntry.ecosystem, package_name: "busboy", action: "exclude", reason: "테스트 제외" })
+  });
+  assert.equal(excluded.entry.status, "excluded");
+
+  // 감사 기록이 실제 파일로 남았는지 직접 확인한다 (담기·내보내기·제외 = 3건 이상).
+  const auditText = await readFile(join(fixture.fixtureDir, "whitelist", "whitelist-audit.jsonl"), "utf8");
+  const auditLines = auditText.trim().split("\n").map((line) => JSON.parse(line));
+  assert.ok(auditLines.length >= 3, "every whitelist change and export must leave an audit record");
+  assert.ok(auditLines.some((line) => line.action === "include" && line.package_name === "busboy"));
+  assert.ok(auditLines.some((line) => line.action === "export"));
+  assert.ok(auditLines.some((line) => line.action === "exclude" && line.before === "included"),
+    "audit must record the previous state of each change");
+
+  // 일반 사용자·무로그인으로는 관리자 패키지·화이트리스트 API에 접근할 수 없다.
+  const userAttempt = await fetch(`${baseUrl}/api/admin/whitelist`, {
+    method: "POST",
+    headers: withUser(userCookie, { "Content-Type": "application/json" }),
+    body: JSON.stringify({ ecosystem: "npm", package_name: "busboy", action: "include" })
+  });
+  assert.equal(userAttempt.status, 401, "user sessions must not manage the whitelist");
+  const anonymousPackages = await fetch(`${baseUrl}/api/admin/packages`, { headers: withUser("") });
+  assert.equal(anonymousPackages.status, 401, "anonymous callers must not read the evidence list");
   assert.ok(summary.allow >= 1, "admin allow count should include successful standard scans");
   assert.ok(summary.quick_complete >= 1, "admin summary must count completed quick scans separately from standard scans");
 
@@ -564,6 +631,7 @@ const child = spawn(process.execPath, ["src/server.js"], {
     PORTAL_SCAN_HISTORY_FILE: join(fixture.fixtureDir, "scan-history.jsonl"),
     PORTAL_OBSERVATION_DIR: join(fixture.fixtureDir, "observations"),
     PORTAL_ACCOUNT_DIR: join(fixture.fixtureDir, "accounts"),
+    PORTAL_WHITELIST_DIR: join(fixture.fixtureDir, "whitelist"),
     PORTAL_LOCAL_API_TOKEN: localApiToken,
     PYTHONUTF8: "1",
     PYTHONIOENCODING: "utf-8"
@@ -605,7 +673,7 @@ try {
   await scenarioAuthAndOwnership(quick);
   await scenarioReviewRequest(observation);
   await scenarioToolsSurface();
-  await scenarioAdmin();
+  await scenarioAdmin(fixture);
   await scenarioQueueAndCapacity(fixture);
   await scenarioHostAllowlist(fixture);
   console.log(JSON.stringify({
