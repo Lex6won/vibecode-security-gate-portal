@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>내 점검 이력 · 공공 바이브코딩 보안 게이트</title>
+  <meta name="description" content="내가 요청한 보안 점검의 결과와 보고서, 보안성검토 요청 상태를 확인합니다.">
+  <link rel="stylesheet" href="/shared.css">
+  <style>
+    .history-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+    .history-table th, .history-table td { padding: 10px 12px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+    .history-table th { font-size: 12px; color: var(--muted); font-weight: 900; }
+    .history-table .decision { font-weight: 900; }
+    .history-table a { color: var(--harbor); font-weight: 800; text-decoration: none; }
+    .table-wrap { overflow-x: auto; }
+    .empty-note { padding: 18px; font-size: 14px; color: var(--muted); font-weight: 700; }
+    .profile-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 10px; }
+    .profile-row input { padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius-md); font-size: 14px; min-width: 160px; }
+    .mini-note { font-size: 12.5px; color: var(--muted); font-weight: 700; margin-top: 8px; }
+    .review-button { padding: 6px 12px; font-size: 12.5px; border-radius: var(--radius-md); border: 1px solid var(--line); background: var(--panel); cursor: pointer; font-weight: 800; }
+    .review-button:disabled { opacity: 0.6; cursor: default; }
+  </style>
+</head>
+<body>
+  <main class="screen">
+    <header class="topbar">
+      <a class="brand-home" href="/" aria-label="홈으로 이동">
+        <span class="gg-mark" aria-hidden="true"><img src="/assets/images/gyeonggi-signature-ko.jpg" alt="경기도 로고"></span>
+        <span class="brand-copy">
+          <strong>내 점검 이력</strong>
+          <span>내가 요청한 점검의 결과와 검토 상태</span>
+        </span>
+      </a>
+      <div style="display:flex; gap:8px; align-items:center;">
+        <a class="pill" href="/scan">새 점검</a>
+        <button class="pill" id="logoutButton" type="button" style="cursor:pointer; border:1px solid var(--line); background:var(--panel);">로그아웃</button>
+      </div>
+    </header>
+
+    <section class="panel-card" id="loginNeeded" hidden>
+      <h2 class="section-title">로그인이 필요합니다</h2>
+      <p class="empty-note">이력은 본인만 볼 수 있습니다. <a href="/scan" style="color: var(--harbor); font-weight: 800;">점검 화면</a>에서 기관 메일로 로그인해 주세요.</p>
+    </section>
+
+    <section class="panel-card" id="profileCard" hidden aria-labelledby="profile-title">
+      <h2 class="section-title" id="profile-title">내 정보</h2>
+      <p class="mini-note" id="profileWho">확인 중</p>
+      <div class="profile-row">
+        <input id="profileOrganization" aria-label="기관명" placeholder="기관명">
+        <input id="profileDepartment" aria-label="부서명" placeholder="부서명">
+        <button class="ghost-button" id="saveProfile" type="button">소속 정보 수정</button>
+      </div>
+      <p class="mini-note">소속은 “사용자가 등록한 정보”로 표시되며, 이미 만들어진 보고서의 소속 기록은 바뀌지 않습니다.</p>
+    </section>
+
+    <section class="panel-card" id="historyCard" hidden aria-labelledby="history-title">
+      <h2 class="section-title" id="history-title">점검 이력</h2>
+      <div class="table-wrap">
+        <table class="history-table" aria-label="내 점검 이력">
+          <thead>
+            <tr><th>일시</th><th>대상</th><th>방식</th><th>결과</th><th>보고서</th><th>보안성검토</th></tr>
+          </thead>
+          <tbody id="historyBody"></tbody>
+        </table>
+      </div>
+      <p class="empty-note" id="historyEmpty" hidden>아직 점검 이력이 없습니다. 첫 점검을 시작해 보세요.</p>
+    </section>
+
+    <footer class="footnote">라이브러리 메타값은 점검 완료 시 화이트리스트 근거로 자동 반영됩니다. 소스 코드 원본은 서버에 남지 않습니다.</footer>
+  </main>
+
+  <script>
+    const loginNeeded = document.querySelector("#loginNeeded");
+    const profileCard = document.querySelector("#profileCard");
+    const historyCard = document.querySelector("#historyCard");
+    const historyBody = document.querySelector("#historyBody");
+    const historyEmpty = document.querySelector("#historyEmpty");
+    const profileWho = document.querySelector("#profileWho");
+    const profileOrganization = document.querySelector("#profileOrganization");
+    const profileDepartment = document.querySelector("#profileDepartment");
+    const saveProfile = document.querySelector("#saveProfile");
+    const logoutButton = document.querySelector("#logoutButton");
+
+    const decisionLabels = {
+      allow: "제출 가능",
+      quick_complete: "고위험 없음",
+      needs_review: "검토 필요",
+      blocked: "수정 필요",
+      incomplete: "재점검 필요"
+    };
+
+    function formatDate(value) {
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return value || "-";
+      const pad = (number) => String(number).padStart(2, "0");
+      return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+    }
+
+    function reviewCell(scan) {
+      if (scan.review_request) {
+        return `<span class="pill">요청됨 · ${formatDate(scan.review_request.requested_at)}</span>`;
+      }
+      if (scan.status !== "completed") return "<span>-</span>";
+      return `<button class="review-button" data-review="${scan.id}" type="button">검토 요청</button>`;
+    }
+
+    function renderScans(scans) {
+      historyBody.innerHTML = "";
+      historyEmpty.hidden = scans.length > 0;
+      for (const scan of scans) {
+        const row = document.createElement("tr");
+        const reports = (scan.reports || [])
+          .map((report) => `<a href="${report.url}" download>${report.file_name.split("_").pop()}</a>`)
+          .join(" ");
+        const decision = scan.status === "failed" ? "점검 실패"
+          : scan.status !== "completed" ? "진행 중"
+          : decisionLabels[scan.decision] || scan.decision;
+        row.innerHTML = `
+          <td>${formatDate(scan.created_at)}</td>
+          <td>${scan.target_name || scan.target_label || "-"}</td>
+          <td>${scan.mode === "quick" ? "간편" : "표준"}</td>
+          <td class="decision">${decision}</td>
+          <td>${reports || "-"}</td>
+          <td>${reviewCell(scan)}</td>`;
+        historyBody.appendChild(row);
+      }
+    }
+
+    historyBody.addEventListener("click", async (event) => {
+      const button = event.target.closest("[data-review]");
+      if (!button) return;
+      button.disabled = true;
+      button.textContent = "요청 중";
+      try {
+        const response = await fetch(`/api/scan/${button.dataset.review}/request-review`, { method: "POST" });
+        if (response.ok) {
+          await loadScans();
+        } else {
+          const result = await response.json();
+          button.disabled = false;
+          button.textContent = "검토 요청";
+          alert(result.message || "요청하지 못했습니다.");
+        }
+      } catch {
+        button.disabled = false;
+        button.textContent = "검토 요청";
+      }
+    });
+
+    saveProfile.addEventListener("click", async () => {
+      saveProfile.disabled = true;
+      try {
+        const response = await fetch("/api/auth/profile", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            organization: profileOrganization.value.trim(),
+            department: profileDepartment.value.trim()
+          })
+        });
+        const result = await response.json();
+        if (response.ok) {
+          profileWho.textContent = `${profileWho.dataset.email} · ${result.organization} ${result.department} (수정됨)`;
+        } else {
+          alert(result.message || "수정하지 못했습니다.");
+        }
+      } catch {
+        alert("수정하지 못했습니다. 연결을 확인해 주세요.");
+      } finally {
+        saveProfile.disabled = false;
+      }
+    });
+
+    logoutButton.addEventListener("click", async () => {
+      try { await fetch("/api/auth/logout", { method: "POST" }); } catch {}
+      window.location.href = "/scan";
+    });
+
+    async function loadScans() {
+      const response = await fetch("/api/my/scans", { cache: "no-store" });
+      if (!response.ok) return;
+      const data = await response.json();
+      renderScans(data.scans || []);
+    }
+
+    (async function init() {
+      try {
+        const session = await (await fetch("/api/auth/session", { cache: "no-store" })).json();
+        if (!session.logged_in) {
+          loginNeeded.hidden = false;
+          return;
+        }
+        profileCard.hidden = false;
+        historyCard.hidden = false;
+        profileWho.dataset.email = session.email;
+        profileWho.textContent = [session.email, [session.organization, session.department].filter(Boolean).join(" ")].filter(Boolean).join(" · ");
+        profileOrganization.value = session.organization || "";
+        profileDepartment.value = session.department || "";
+        await loadScans();
+      } catch {
+        loginNeeded.hidden = false;
+      }
+    })();
+  </script>
+</body>
+</html>

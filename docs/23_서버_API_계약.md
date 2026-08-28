@@ -366,3 +366,30 @@
 5. **"확인 못 함"을 "안전"으로 바꾸지 않는다.** `confidence`, `kev_checked`, `registry_status`를 응답에서 생략하지 않는다.
 6. **큐 상한 없이 체커를 실행하지 않는다.**
 7. **응답·로그·DB에 소스 조각과 로컬 전체 경로를 넣지 않는다.**
+
+---
+
+## 추기 (2026-08-28) — P3 구현 확정 (실구현 기준)
+
+하네스팀 연동합의(28번)에 따라 P3를 구현하며 확정된 실제 계약. 본문과 다른 부분은 이 추기가 우선한다.
+
+**인증 (매직링크, 비밀번호 없음)**
+- `POST /api/auth/request-link` `{email, organization?, department?}` — 도메인 허용목록(기본 gg.go.kr·korea.kr, `PORTAL_ALLOWED_EMAIL_DOMAINS`) 검사. 신규 가입은 기관명·부서명 필수(`registration_required`). 이메일당 15분 5회 제한(429). 개발 모드(`PORTAL_AUTH_MODE`≠smtp)는 `dev_login_url` 을 응답에 실어 화면에 표시한다 — SMTP 확정 시 발송 어댑터로 교체.
+- `GET /auth/complete?token=` — 1회용·15분 만료. 성공 시 `portal_session` HttpOnly 쿠키(12h) 발급 후 `/scan` 으로. 실패 시 `/scan?auth=expired`.
+- `GET /api/auth/session` / `POST /api/auth/logout` / `POST /api/auth/profile` `{organization, department}` (변경 이력 기록).
+- 계정 저장: `src/account-store.mjs` (파일 기반, 이메일 평문 — 링크 발송에 필요. DB 전환 시 함수만 교체). 감사 로그 `auth-audit.jsonl`.
+
+**소유자 검증**
+- `/api/scan/{id}/progress·result`, `/reports/{file}` — 소유자 또는 관리자만. 그 외 **404**(존재 여부 비공개). 점검 시작·업로드는 로그인 필수(401). 소유자 없는 과거 기록은 관리자 전용.
+- 사용자당 동시 점검 1건(`PORTAL_USER_CONCURRENT_SCANS`) 초과 시 409 `user_scan_limit`.
+- 점검 생성 시 기관·부서 **스냅샷** 저장 — 이후 프로필 변경에 불변.
+
+**관측 자동 적재 (P2 개정)**
+- `POST /api/scan/{id}/submit-observations` **제거(404)**. 완료 시 서버가 자동 적재하고 `observations_submitted_at` 로 표시. 시작 화면이 "서버에 남는 것/남지 않는 것" 을 고지한다. 관측 레코드의 department 는 점검 시점 부서명 스냅샷.
+
+**내 이력·보안성검토 요청**
+- `GET /api/my/scans` — 본인 것만. `target_name`(본인 라벨)·`review_request` 포함.
+- `POST /api/scan/{id}/request-review` — 완료된 본인 점검만, 중복 409. 요청서 문서 생성(HWPX)은 양식 확정 후 별도.
+- 관리자: `GET /api/admin/review-requests`(대기열), summary 에 `accounts`·`pending_review_requests` 추가.
+
+**화면**: `/my`(내 점검 이력·프로필 수정), `/scan` 로그인 게이트(이메일+기관·부서, 개발 모드 링크 표시), 결과 카드 "점검 후 처리"(자동 반영 표시 + 검토 요청 버튼). 메인에 "내 점검 이력" 진입점.

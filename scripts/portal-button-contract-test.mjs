@@ -10,6 +10,7 @@ const localApiToken = "portal-button-contract-token";
 const pages = [
   "/",
   "/scan",
+  "/my",
   "/harness",
   "/help",
   "/admin/login",
@@ -197,6 +198,14 @@ async function assertLocalPickerContract() {
   assert.ok(html.includes('window.showDirectoryPicker'), "report save location must use the browser directory picker");
   assert.ok(html.includes('error.name === "AbortError"') && html.includes('저장 위치 선택을 취소했습니다.'), "save-location cancellation must be shown as guidance, not a browser error");
   assert.ok(html.includes('targetSelectionInFlight'), "native target picker must prevent duplicate picker windows");
+
+  // P3: 로그인 게이트와 데이터 고지 — 매직링크 요소와 "남는 것/남지 않는 것" 문구가 있어야 한다.
+  assert.ok(html.includes('id="loginGate"') && html.includes('id="requestLoginLink"'), "scan page must expose the magic-link login gate");
+  assert.ok(html.includes('id="devLoginArea"'), "dev mode must show the login link on screen until SMTP is wired");
+  assert.ok(html.includes("소스 코드 원본은 서버에 남지 않으며"), "scan page must state that source is never retained on the server");
+  assert.ok(html.includes("화이트리스트 구축용"), "scan page must disclose the automatic metadata accumulation");
+  assert.ok(!html.includes("submit-observations"), "the manual observation submission must be gone from the user flow");
+  assert.ok(html.includes('id="requestReview"'), "completed scans must offer a security-review request action");
 }
 
 async function assertToolsGuidePage() {

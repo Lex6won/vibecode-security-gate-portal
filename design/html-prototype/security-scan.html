@@ -302,6 +302,28 @@
           <div class="eyebrow">개발소스 보안 점검</div>
           <h1 id="scan-title">3단계로 소스를 점검하세요.</h1>
           <p class="lead">저장 위치 → 검사 대상 → 점검 방식을 선택하면 바로 시작합니다.</p>
+          <p class="lead" id="dataNotice" style="margin-top: 8px; font-size: 13px;">점검 시 서버에는 점검 이력·보고서와 라이브러리 메타값(경기도 화이트리스트 구축용)만 남습니다. <b>소스 코드 원본은 서버에 남지 않으며 점검 직후 즉시 삭제됩니다.</b></p>
+        </div>
+        <div id="sessionBar" hidden aria-label="로그인 정보" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+          <span class="pill" id="sessionWho">확인 중</span>
+          <a class="pill" href="/my">내 점검 이력</a>
+          <button class="pill" id="logoutButton" type="button" style="cursor:pointer; border:1px solid var(--line); background:var(--panel);">로그아웃</button>
+        </div>
+      </section>
+
+      <section class="panel-card" id="loginGate" hidden aria-labelledby="login-title">
+        <h2 class="flow-title" id="login-title"><span class="sequence">✓</span><span>기관 메일로 로그인</span></h2>
+        <p style="margin: 8px 0 4px;">비밀번호가 없습니다. 기관 메일 주소로 1회용 로그인 링크를 받아 접속합니다. 처음이면 기관명·부서명만 함께 입력하세요.</p>
+        <p id="loginNote" style="margin: 0 0 10px; font-size: 13px; color: var(--muted);">허용 메일: @gg.go.kr, @korea.kr</p>
+        <div class="input-row" style="flex-wrap: wrap; gap: 8px;">
+          <input id="loginEmail" type="email" aria-label="기관 이메일" placeholder="이름@gg.go.kr" style="min-width: 220px;">
+          <input id="loginOrganization" aria-label="기관명" placeholder="기관명 (예: 경기도청)" style="min-width: 160px;">
+          <input id="loginDepartment" aria-label="부서명" placeholder="부서명 (예: AI산업육성과)" style="min-width: 160px;">
+          <button class="button save-button" id="requestLoginLink" type="button">로그인 링크 받기</button>
+        </div>
+        <div id="devLoginArea" hidden style="margin-top: 10px;">
+          <p style="font-size: 13px; color: var(--muted); margin-bottom: 6px;">메일 발송이 연결되기 전이라 링크를 화면에 표시합니다. 아래를 누르면 로그인됩니다.</p>
+          <a class="button save-button" id="devLoginLink" href="/auth/complete">로그인 완료하기</a>
         </div>
       </section>
 
@@ -353,10 +375,10 @@
             <li><span>HTML 보고서</span><b id="resultHtml">생성 대기</b></li>
             <li><span>JSON 증거 보고서</span><b id="resultJson">생성 대기</b></li>
           </ul>
-          <div class="save-row" id="observationSubmitRow" hidden>
-            <div class="flow-title"><span class="sequence">4</span><span>점검결과 제출 (선택)</span></div>
-            <span id="observationSubmitNote">사용한 라이브러리 목록과 검사 결과만 제출되어 경기도 화이트리스트 만들기에 쓰입니다. 소스 코드는 포함되지 않습니다.</span>
-            <button class="button save-button" id="submitObservations" type="button">점검결과 제출</button>
+          <div class="save-row" id="scanFollowUpRow" hidden>
+            <div class="flow-title"><span class="sequence">4</span><span>점검 후 처리</span></div>
+            <span id="observationAutoNote">라이브러리 목록과 검사 결과 메타값이 화이트리스트 근거로 자동 반영됩니다. 소스 코드는 포함되지 않습니다.</span>
+            <button class="button save-button" id="requestReview" type="button">보안성검토 요청</button>
           </div>
         </aside>
       </section>
@@ -685,58 +707,133 @@
       });
     }
 
-    const observationSubmitRow = document.querySelector("#observationSubmitRow");
-    const observationSubmitNote = document.querySelector("#observationSubmitNote");
-    const submitObservations = document.querySelector("#submitObservations");
+    // P3 전환: 관측 축적은 완료 시 서버가 자동으로 한다(화면 상단 고지). 여기서는
+    // 반영 사실 표시와 보안성검토 요청만 다룬다.
+    const scanFollowUpRow = document.querySelector("#scanFollowUpRow");
+    const observationAutoNote = document.querySelector("#observationAutoNote");
+    const requestReview = document.querySelector("#requestReview");
     let lastCompletedScanId = null;
 
-    function showObservationSubmit(job) {
+    function showScanFollowUp(job) {
       if (job.status !== "completed") {
-        observationSubmitRow.hidden = true;
+        scanFollowUpRow.hidden = true;
         return;
       }
       lastCompletedScanId = job.id;
-      observationSubmitRow.hidden = false;
-      if (job.observations_submitted_at) {
-        submitObservations.disabled = true;
-        submitObservations.textContent = "제출 완료";
-        observationSubmitNote.textContent = "이 점검의 결과는 이미 제출되었습니다. 화이트리스트 만들기에 반영됩니다.";
+      scanFollowUpRow.hidden = false;
+      observationAutoNote.textContent = job.observations_submitted_at
+        ? "라이브러리 목록과 검사 결과 메타값이 화이트리스트 근거로 자동 반영되었습니다. 소스 코드는 포함되지 않습니다."
+        : "라이브러리 메타값 반영을 확인하지 못했습니다. 내 점검 이력에서 다시 확인해 주세요.";
+      if (job.review_request) {
+        requestReview.disabled = true;
+        requestReview.textContent = "검토 요청됨";
       } else {
-        submitObservations.disabled = false;
-        submitObservations.textContent = "점검결과 제출";
-        observationSubmitNote.textContent = "사용한 라이브러리 목록과 검사 결과만 제출되어 경기도 화이트리스트 만들기에 쓰입니다. 소스 코드는 포함되지 않습니다.";
+        requestReview.disabled = false;
+        requestReview.textContent = "보안성검토 요청";
       }
     }
 
-    submitObservations.addEventListener("click", async () => {
+    requestReview.addEventListener("click", async () => {
       if (!lastCompletedScanId) return;
-      submitObservations.disabled = true;
-      submitObservations.textContent = "제출 중";
+      requestReview.disabled = true;
+      requestReview.textContent = "요청 중";
       try {
-        const response = await fetch(`/api/scan/${lastCompletedScanId}/submit-observations`, { method: "POST" });
+        const response = await fetch(`/api/scan/${lastCompletedScanId}/request-review`, { method: "POST" });
         const result = await response.json();
-        if (response.ok) {
-          submitObservations.textContent = "제출 완료";
-          observationSubmitNote.textContent = result.packages_recorded > 0
-            ? `라이브러리 ${result.packages_recorded}건이 제출되었습니다. 소스 코드는 포함되지 않았습니다.`
-            : "제출이 기록되었습니다. 이 점검에는 라이브러리 정보가 없습니다.";
-        } else if (result.reason === "already_submitted") {
-          submitObservations.textContent = "제출 완료";
-          observationSubmitNote.textContent = "이 점검의 결과는 이미 제출되었습니다.";
+        if (response.ok || result.error === "already_requested") {
+          requestReview.textContent = "검토 요청됨";
+          observationAutoNote.textContent = result.message || "보안성검토를 요청했습니다. 진행 상태는 내 점검 이력에서 확인할 수 있습니다.";
         } else {
-          submitObservations.disabled = false;
-          submitObservations.textContent = "점검결과 제출";
-          observationSubmitNote.textContent = result.message || "제출하지 못했습니다. 잠시 후 다시 시도해 주세요.";
+          requestReview.disabled = false;
+          requestReview.textContent = "보안성검토 요청";
+          observationAutoNote.textContent = result.message || "요청하지 못했습니다. 잠시 후 다시 시도해 주세요.";
         }
       } catch {
-        submitObservations.disabled = false;
-        submitObservations.textContent = "점검결과 제출";
-        observationSubmitNote.textContent = "제출하지 못했습니다. 연결을 확인한 뒤 다시 시도해 주세요.";
+        requestReview.disabled = false;
+        requestReview.textContent = "보안성검토 요청";
+        observationAutoNote.textContent = "요청하지 못했습니다. 연결을 확인한 뒤 다시 시도해 주세요.";
       }
     });
 
+    // ---- P3: 세션 확인과 로그인 게이트 (매직링크) ----
+    const loginGate = document.querySelector("#loginGate");
+    const sessionBar = document.querySelector("#sessionBar");
+    const sessionWho = document.querySelector("#sessionWho");
+    const logoutButton = document.querySelector("#logoutButton");
+    const loginEmail = document.querySelector("#loginEmail");
+    const loginOrganization = document.querySelector("#loginOrganization");
+    const loginDepartment = document.querySelector("#loginDepartment");
+    const requestLoginLink = document.querySelector("#requestLoginLink");
+    const devLoginArea = document.querySelector("#devLoginArea");
+    const devLoginLink = document.querySelector("#devLoginLink");
+    const loginNote = document.querySelector("#loginNote");
+    const scanGrid = document.querySelector(".scan-grid");
+
+    function applySession(session) {
+      const loggedIn = Boolean(session && session.logged_in);
+      loginGate.hidden = loggedIn;
+      sessionBar.hidden = !loggedIn;
+      scanGrid.style.display = loggedIn ? "" : "none";
+      if (loggedIn) {
+        sessionWho.textContent = [session.email, [session.organization, session.department].filter(Boolean).join(" ")]
+          .filter(Boolean).join(" · ");
+      }
+    }
+
+    async function loadSession() {
+      try {
+        const response = await fetch("/api/auth/session", { cache: "no-store" });
+        applySession(await response.json());
+      } catch {
+        applySession(null);
+      }
+      if (new URLSearchParams(window.location.search).get("auth") === "expired") {
+        loginNote.textContent = "로그인 링크가 만료되었거나 이미 사용되었습니다. 새 링크를 다시 받아 주세요.";
+      }
+    }
+
+    requestLoginLink.addEventListener("click", async () => {
+      requestLoginLink.disabled = true;
+      requestLoginLink.textContent = "요청 중";
+      try {
+        const response = await fetch("/api/auth/request-link", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            email: loginEmail.value.trim(),
+            organization: loginOrganization.value.trim(),
+            department: loginDepartment.value.trim()
+          })
+        });
+        const result = await response.json();
+        if (response.ok) {
+          if (result.dev_login_url) {
+            devLoginArea.hidden = false;
+            devLoginLink.href = result.dev_login_url;
+            loginNote.textContent = `링크는 ${result.expires_in_minutes}분 동안 1회만 쓸 수 있습니다.`;
+          } else {
+            loginNote.textContent = result.message || "메일로 보낸 링크를 열면 로그인됩니다.";
+          }
+        } else {
+          loginNote.textContent = result.message || "요청하지 못했습니다. 입력을 확인해 주세요.";
+        }
+      } catch {
+        loginNote.textContent = "요청하지 못했습니다. 연결을 확인해 주세요.";
+      } finally {
+        requestLoginLink.disabled = false;
+        requestLoginLink.textContent = "로그인 링크 받기";
+      }
+    });
+
+    logoutButton.addEventListener("click", async () => {
+      try { await fetch("/api/auth/logout", { method: "POST" }); } catch {}
+      window.location.reload();
+    });
+
+    loadSession();
+
     function setResultDone(job, saveError = null) {
-      showObservationSubmit(job);
+      showScanFollowUp(job);
       const findingCount = job.summary?.finding_count ?? 0;
       const dependencyCount = job.summary?.dependency_finding_count ?? 0;
       const reportNames = (job.reports || []).map((item) => item.file_name);
@@ -869,7 +966,13 @@
         })
       });
       const started = await response.json();
-      if (!response.ok) throw new Error(started.error || "점검을 시작하지 못했습니다.");
+      if (!response.ok) {
+        if (response.status === 401) {
+          applySession(null);
+          throw new Error("로그인이 필요합니다. 이메일 인증 후 다시 시도해 주세요.");
+        }
+        throw new Error(started.message || started.error || "점검을 시작하지 못했습니다.");
+      }
       await pollResult(started.scan_id);
     }
 

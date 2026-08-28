@@ -17,14 +17,47 @@ const adminId = "gg0018@gg.go.kr";
 const adminPassword = "ScenarioAdmin!2026";
 const localApiToken = "portal-scenario-local-token";
 let adminCookie = "";
+let userCookie = "";
 
 function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function localHeaders(headers) {
+function cookieHeader(extra = "") {
+  return [userCookie, adminCookie, extra].filter(Boolean).join("; ");
+}
+
+function localHeaders(headers, extraCookie = "") {
   const merged = new Headers(headers || {});
   merged.set("X-VibeCode-Local-Token", localApiToken);
+  const cookies = cookieHeader(extraCookie);
+  if (cookies) merged.set("cookie", cookies);
+  return merged;
+}
+
+// P3: 매직링크 가입 — 개발 모드가 돌려준 링크를 그대로 열어 세션 쿠키를 받는다.
+async function signupOn(base, email, organization, department) {
+  const tokenHeaders = new Headers({ "Content-Type": "application/json" });
+  tokenHeaders.set("X-VibeCode-Local-Token", localApiToken);
+  const requested = await fetch(`${base}/api/auth/request-link`, {
+    method: "POST",
+    headers: tokenHeaders,
+    body: JSON.stringify({ email, organization, department })
+  });
+  assert.equal(requested.status, 200, `signup link request failed for ${email}`);
+  const result = await requested.json();
+  assert.ok(result.dev_login_url, "dev mode must return the login link in the response");
+  const complete = await fetch(`${base}${result.dev_login_url}`, { redirect: "manual" });
+  assert.equal(complete.status, 302, "login completion must redirect back to the scan page");
+  const cookie = String(complete.headers.get("set-cookie") || "").split(";")[0];
+  assert.ok(cookie.startsWith("portal_session="), "login completion must issue a session cookie");
+  return cookie;
+}
+
+function withUser(cookie, headers) {
+  const merged = new Headers(headers || {});
+  merged.set("X-VibeCode-Local-Token", localApiToken);
+  merged.set("cookie", cookie);
   return merged;
 }
 
@@ -41,7 +74,6 @@ function rawRequest(path, headers = {}) {
 
 async function fetchJson(path, options) {
   const headers = localHeaders(options?.headers);
-  if (adminCookie) headers.set("cookie", adminCookie);
   const response = await fetch(`${baseUrl}${path}`, { ...options, headers });
   const text = await response.text();
   let body = null;
@@ -56,7 +88,8 @@ async function fetchJson(path, options) {
 
 async function fetchText(path) {
   const headers = new Headers();
-  if (adminCookie) headers.set("cookie", adminCookie);
+  const cookies = cookieHeader();
+  if (cookies) headers.set("cookie", cookies);
   const response = await fetch(`${baseUrl}${path}`, { headers });
   const text = await response.text();
   assert.ok(response.ok, `${path} expected ok, got ${response.status}`);
@@ -134,6 +167,7 @@ async function assertPagesLoad() {
   const pages = [
     ["/", "AI로 만든 코드, 제출 전에 보안 점검부터"],
     ["/scan", "3단계로 소스를 점검하세요."],
+    ["/my", "내 점검 이력"],
     ["/harness", "하네스 내려받기"],
     ["/tools", "하네스 내려받기"],
     ["/admin/login", "관리자 로그인"],
@@ -187,7 +221,7 @@ async function scenarioLocalRequestBoundary(result) {
 
   const koreanReport = result.reports.find((report) => /\p{L}/u.test(report.file_name));
   assert.ok(koreanReport, "checker report output must retain the Korean naming rule");
-  const download = await fetch(`${baseUrl}${koreanReport.url}`);
+  const download = await fetch(`${baseUrl}${koreanReport.url}`, { headers: localHeaders() });
   assert.equal(download.status, 200, "Korean-named reports must be downloadable");
   assert.match(String(download.headers.get("content-disposition")), /filename\*=UTF-8''/, "report download must expose a UTF-8 filename");
 }
@@ -239,8 +273,8 @@ async function scenarioRemovedLocalSurfaces() {
   }
 }
 
-// P2: 점검결과 제출(opt-in) — 매니페스트 있는 검사에서 관측이 적재되고, 중복 제출은 거부된다.
-async function scenarioObservationSubmission(fixture) {
+// P3 전환: 관측 축적은 완료 시 자동이다. 수동 제출 라우트는 제거됐다.
+async function scenarioAutoObservations(fixture) {
   const packageJsonPath = join(fixture.fixtureDir, "package.json");
   await writeFile(packageJsonPath, `${JSON.stringify({ name: "obs-fixture", version: "1.0.0", dependencies: { busboy: "1.6.0" } }, null, 2)}\n`, "utf8");
   const uploaded = await uploadBrowserTarget("folder", [
@@ -249,19 +283,78 @@ async function scenarioObservationSubmission(fixture) {
   ]);
   const result = await startScan("quick", uploaded.target_type, uploaded.path, uploaded.label);
   assert.equal(result.status, "completed");
+  assert.ok(result.observations_submitted_at, "completed scans must record observations automatically");
 
-  const submitted = await fetchJson(`/api/scan/${result.id}/submit-observations`, { method: "POST" });
-  assert.equal(submitted.status, "submitted");
-  assert.ok(submitted.packages_recorded >= 1, "manifest-based scan must record package observations");
-  assert.ok(String(submitted.note).includes("소스 코드는 포함되지"), "submission response must state that source is excluded");
-
-  const duplicate = await fetch(`${baseUrl}/api/scan/${result.id}/submit-observations`, { method: "POST", headers: localHeaders() });
-  assert.equal(duplicate.status, 409, "duplicate submission must be rejected");
-  assert.equal((await duplicate.json()).reason, "already_submitted");
-
-  const after = await fetchJson(`/api/scan/${result.id}/result`);
-  assert.ok(after.observations_submitted_at, "scan result must show when observations were submitted");
+  const removedRoute = await fetch(`${baseUrl}/api/scan/${result.id}/submit-observations`, { method: "POST", headers: localHeaders() });
+  assert.equal(removedRoute.status, 404, "the manual submission route must be gone after the auto-recording switch");
   return result;
+}
+
+// P3: 계정 경계 — 도메인 제한, 가입 필수 정보, 로그인 없는 접근 차단, 남의 결과 404.
+async function scenarioAuthAndOwnership(existingResult) {
+  const foreignDomain = await fetch(`${baseUrl}/api/auth/request-link`, {
+    method: "POST",
+    headers: withUser("", { "Content-Type": "application/json" }),
+    body: JSON.stringify({ email: "attacker@gmail.com", organization: "x", department: "y" })
+  });
+  assert.equal(foreignDomain.status, 400, "non-institution email domains must be rejected");
+  assert.equal((await foreignDomain.json()).error, "email_domain_not_allowed");
+
+  const missingProfile = await fetch(`${baseUrl}/api/auth/request-link`, {
+    method: "POST",
+    headers: withUser("", { "Content-Type": "application/json" }),
+    body: JSON.stringify({ email: "newuser@gg.go.kr" })
+  });
+  assert.equal(missingProfile.status, 400, "first registration must require organization and department");
+  assert.equal((await missingProfile.json()).error, "registration_required");
+
+  const anonymousScan = await fetch(`${baseUrl}/api/scan/start`, {
+    method: "POST",
+    headers: withUser("", { "Content-Type": "application/json" }),
+    body: JSON.stringify({ scan_mode: "quick", target_type: "github_url", target_ref: "https://github.com/x/y" })
+  });
+  assert.equal(anonymousScan.status, 401, "scans must require a logged-in user");
+
+  const anonymousResult = await fetch(`${baseUrl}/api/scan/${existingResult.id}/result`, { headers: withUser("") });
+  assert.equal(anonymousResult.status, 404, "results must not exist for anonymous callers");
+
+  // 다른 계정: 남의 결과·보고서·이력이 모두 보이지 않아야 한다.
+  const otherCookie = await signupOn(baseUrl, "other@korea.kr", "타기관", "타부서");
+  const foreignResult = await fetch(`${baseUrl}/api/scan/${existingResult.id}/result`, { headers: withUser(otherCookie) });
+  assert.equal(foreignResult.status, 404, "another user's scan result must return 404");
+  const reportUrl = existingResult.reports?.[0]?.url;
+  assert.ok(reportUrl, "fixture scan must have a report to test");
+  const foreignReport = await fetch(`${baseUrl}${reportUrl}`, { headers: withUser(otherCookie) });
+  assert.equal(foreignReport.status, 404, "another user's report file must return 404");
+  const otherHistory = await (await fetch(`${baseUrl}/api/my/scans`, { headers: withUser(otherCookie) })).json();
+  assert.equal(otherHistory.scans.length, 0, "my history must contain only the caller's scans");
+
+  // 본인: 이력 조회와 보고서 다운로드가 된다.
+  const myHistory = await fetchJson("/api/my/scans");
+  assert.ok(myHistory.scans.some((scan) => scan.id === existingResult.id), "owner must see the scan in my history");
+  const ownReport = await fetch(`${baseUrl}${reportUrl}`, { headers: localHeaders() });
+  assert.equal(ownReport.status, 200, "owner must download own reports");
+
+  // 프로필 수정 — 기관·부서는 언제든 바꿀 수 있고, 기존 점검의 스냅샷은 불변이다.
+  const profileUpdated = await fetchJson("/api/auth/profile", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ organization: "경기도청", department: "변경된부서" })
+  });
+  assert.equal(profileUpdated.status, "updated");
+  const afterProfile = await fetchJson(`/api/scan/${existingResult.id}/result`);
+  assert.notEqual(afterProfile.owner_department, "변경된부서", "scan-time department snapshot must not change with the profile");
+}
+
+// P3: 보안성검토 요청 — 완료된 본인 점검만, 중복 불가, 이력에 상태 표시.
+async function scenarioReviewRequest(result) {
+  const requested = await fetchJson(`/api/scan/${result.id}/request-review`, { method: "POST" });
+  assert.equal(requested.status, "requested");
+  const duplicate = await fetch(`${baseUrl}/api/scan/${result.id}/request-review`, { method: "POST", headers: localHeaders() });
+  assert.equal(duplicate.status, 409, "duplicate review requests must be rejected");
+  const history = await fetchJson("/api/my/scans");
+  const entry = history.scans.find((scan) => scan.id === result.id);
+  assert.equal(entry?.review_request?.status, "requested", "my history must show the review request status");
 }
 
 // S2: 동시 상한 1인 별도 서버에서 큐 순번과 워터마크 접수 중단을 검증한다.
@@ -277,6 +370,7 @@ async function scenarioQueueAndCapacity(fixture) {
       ADMIN_AUTH_FILE: join(fixture.fixtureDir, "queue-admin.json"),
       PORTAL_SCAN_HISTORY_FILE: join(fixture.fixtureDir, "queue-history.jsonl"),
       PORTAL_OBSERVATION_DIR: join(fixture.fixtureDir, "queue-observations"),
+      PORTAL_ACCOUNT_DIR: join(fixture.fixtureDir, "queue-accounts"),
       PORTAL_LOCAL_API_TOKEN: localApiToken,
       PYTHONUTF8: "1",
       PYTHONIOENCODING: "utf-8",
@@ -285,8 +379,9 @@ async function scenarioQueueAndCapacity(fixture) {
     stdio: ["ignore", "ignore", "ignore"],
     windowsHide: true
   });
-  const request = async (path, options) => {
-    const headers = localHeaders(options?.headers);
+  const request = async (path, options, cookie = "") => {
+    const headers = localHeaders(options?.headers, cookie);
+    if (cookie) headers.set("cookie", cookie);
     return fetch(`${queueBase}${path}`, { ...options, headers });
   };
   const waitReady = async (server) => {
@@ -306,29 +401,35 @@ async function scenarioQueueAndCapacity(fixture) {
     target_ref: `https://github.com/Lex6won/${label}`, target_label: label
   });
 
-  // 1) 동시 상한 1: 두 번째 접수는 반드시 대기열에 선다.
+  // 1) 동시 상한 1 + 사용자당 1건: 같은 사용자는 409, 다른 사용자는 대기열에 선다.
   const limited = spawnServer({ PORTAL_MAX_CONCURRENT_SCANS: "1" });
   try {
     await waitReady(limited);
-    const first = await (await request("/api/scan/start", { method: "POST", headers: { "Content-Type": "application/json" }, body: startBody("queue-a") })).json();
-    const second = await (await request("/api/scan/start", { method: "POST", headers: { "Content-Type": "application/json" }, body: startBody("queue-b") })).json();
-    assert.equal(second.status, "queued", "second scan must wait when the concurrency limit is 1");
-    assert.equal(second.queue_position, 1, "queued scan must expose its position");
-    const progress = await (await request(`/api/scan/${second.scan_id}/progress`)).json();
-    assert.ok(String(progress.message || "").includes("창을 닫으셔도"), "queued progress must tell users they can close the window");
+    const cookieA = await signupOn(queueBase, "queue-a@gg.go.kr", "경기도청", "테스트과");
+    const cookieB = await signupOn(queueBase, "queue-b@korea.kr", "타기관", "테스트과");
+    const first = await (await request("/api/scan/start", { method: "POST", headers: { "Content-Type": "application/json" }, body: startBody("queue-a") }, cookieA)).json();
     assert.ok(first.scan_id, "first scan must be accepted");
+    const sameUser = await request("/api/scan/start", { method: "POST", headers: { "Content-Type": "application/json" }, body: startBody("queue-a2") }, cookieA);
+    assert.equal(sameUser.status, 409, "a user must not run two scans at once");
+    assert.equal((await sameUser.json()).error, "user_scan_limit");
+    const second = await (await request("/api/scan/start", { method: "POST", headers: { "Content-Type": "application/json" }, body: startBody("queue-b") }, cookieB)).json();
+    assert.equal(second.status, "queued", "another user's scan must wait when the concurrency limit is 1");
+    assert.equal(second.queue_position, 1, "queued scan must expose its position");
+    const progress = await (await request(`/api/scan/${second.scan_id}/progress`, {}, cookieB)).json();
+    assert.ok(String(progress.message || "").includes("창을 닫으셔도"), "queued progress must tell users they can close the window");
   } finally {
     limited.kill();
     await Promise.race([once(limited, "exit"), wait(2000)]);
   }
 
-  // 2) 디스크 워터마크: 여유가 부족하면 접수 자체가 503으로 막힌다.
+  // 2) 디스크 워터마크: 로그인해도 여유가 부족하면 접수 자체가 503으로 막힌다.
   const exhausted = spawnServer({ PORTAL_MIN_FREE_DISK_BYTES: "999999999999999" });
   try {
     await waitReady(exhausted);
-    const rejectedScan = await request("/api/scan/start", { method: "POST", headers: { "Content-Type": "application/json" }, body: startBody("full-disk") });
+    const cookieFull = await signupOn(queueBase, "full-disk@gg.go.kr", "경기도청", "테스트과");
+    const rejectedScan = await request("/api/scan/start", { method: "POST", headers: { "Content-Type": "application/json" }, body: startBody("full-disk") }, cookieFull);
     assert.equal(rejectedScan.status, 503, "scan intake must stop when disk capacity is low");
-    const rejectedUpload = await request("/api/local/upload-target", { method: "POST" });
+    const rejectedUpload = await request("/api/local/upload-target", { method: "POST" }, cookieFull);
     assert.equal(rejectedUpload.status, 503, "upload intake must stop when disk capacity is low");
     const body = await rejectedScan.json();
     assert.equal(body.error, "capacity_exhausted");
@@ -355,6 +456,7 @@ async function scenarioHostAllowlist(fixture) {
       ADMIN_AUTH_FILE: join(fixture.fixtureDir, "host-admin.json"),
       PORTAL_SCAN_HISTORY_FILE: join(fixture.fixtureDir, "host-history.jsonl"),
       PORTAL_OBSERVATION_DIR: join(fixture.fixtureDir, "host-observations"),
+      PORTAL_ACCOUNT_DIR: join(fixture.fixtureDir, "host-accounts"),
       PORTAL_LOCAL_API_TOKEN: localApiToken,
       PORTAL_ALLOWED_HOSTS: "portal.test.gg",
       PYTHONUTF8: "1",
@@ -426,6 +528,12 @@ async function scenarioAdmin() {
   assert.ok(summary.total >= 2, "admin total should include scenario scans");
   assert.ok(summary.observations?.observed_packages >= 1, "admin summary must expose accumulated package observations");
   assert.ok(summary.observations?.submitted_scan_count >= 1, "admin summary must count observation submissions");
+  assert.ok(summary.accounts?.total_accounts >= 2, "admin summary must count registered accounts");
+  assert.ok(summary.pending_review_requests >= 1, "admin summary must count pending review requests");
+
+  const reviewQueue = await fetchJson("/api/admin/review-requests");
+  assert.ok(reviewQueue.requests.some((item) => item.owner_email === "tester@gg.go.kr" && item.status === "requested"),
+    "admin review queue must list the requester and status");
   assert.ok(summary.allow >= 1, "admin allow count should include successful standard scans");
   assert.ok(summary.quick_complete >= 1, "admin summary must count completed quick scans separately from standard scans");
 
@@ -455,6 +563,7 @@ const child = spawn(process.execPath, ["src/server.js"], {
     ADMIN_AUTH_FILE: join(process.env.TEMP || process.env.TMP || ".", "vibecode-portal-scenario-admin-auth.json"),
     PORTAL_SCAN_HISTORY_FILE: join(fixture.fixtureDir, "scan-history.jsonl"),
     PORTAL_OBSERVATION_DIR: join(fixture.fixtureDir, "observations"),
+    PORTAL_ACCOUNT_DIR: join(fixture.fixtureDir, "accounts"),
     PORTAL_LOCAL_API_TOKEN: localApiToken,
     PYTHONUTF8: "1",
     PYTHONIOENCODING: "utf-8"
@@ -474,6 +583,8 @@ child.stderr.on("data", (chunk) => {
 
 try {
   await waitForServer(child);
+  // P3: 모든 점검 흐름은 로그인 뒤에만 가능하다 — 매직링크 가입으로 시작한다.
+  userCookie = await signupOn(baseUrl, "tester@gg.go.kr", "경기도청", "AI산업육성과");
   await assertPagesLoad();
   const quick = await scenarioQuickScan(fixture);
   await scenarioLocalRequestBoundary(quick);
@@ -490,7 +601,9 @@ try {
   assert.equal(archiveResult.status, "completed");
   assert.equal(archiveResult.summary.scanned_file_count, 1, "uploaded ZIP must reach the checker");
 
-  const observation = await scenarioObservationSubmission(fixture);
+  const observation = await scenarioAutoObservations(fixture);
+  await scenarioAuthAndOwnership(quick);
+  await scenarioReviewRequest(observation);
   await scenarioToolsSurface();
   await scenarioAdmin();
   await scenarioQueueAndCapacity(fixture);
@@ -503,7 +616,9 @@ try {
       quick_scan: quick.id,
       standard_scan: standard.id,
       uploaded_zip_scan: archiveResult.id,
-      observation_submission: observation.id,
+      auto_observations: observation.id,
+      auth_and_ownership: true,
+      review_request: true,
       removed_local_surfaces: true,
       tools_surface: true,
       admin: true,

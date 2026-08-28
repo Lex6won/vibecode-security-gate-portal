@@ -9,6 +9,11 @@ import { fileURLToPath } from "node:url";
 import { randomBytes, randomUUID, scryptSync, timingSafeEqual } from "node:crypto";
 import Busboy from "busboy";
 import { initObservationStore, toObservationRecord, hasSubmission, recordSubmission, observationSummary } from "./observation-store.mjs";
+import {
+  initAccountStore, recordAuthAudit, normalizeEmail, isValidEmail, emailDomainAllowed,
+  linkRequestAllowed, getAccount, createLoginToken, consumeLoginToken,
+  upsertAccountOnLogin, updateAccountProfile, accountSummary
+} from "./account-store.mjs";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 const ROOT = resolve(__dirname, "..");
@@ -68,6 +73,15 @@ const LOGIN_LOCK_THRESHOLD = 5;
 const LOGIN_LOCK_MS = 5 * 60 * 1000;
 const loginFailures = { count: 0, locked_until: 0 };
 
+// P3(계정): 매직링크 가입·로그인. 기관 프로파일 — 허용 이메일 도메인은 설정으로 교체 가능.
+const ALLOWED_EMAIL_DOMAINS = String(runtimeEnv.PORTAL_ALLOWED_EMAIL_DOMAINS || "gg.go.kr,korea.kr")
+  .split(",").map((value) => value.trim().toLowerCase()).filter(Boolean);
+// SMTP 미확정(§9): 개발 모드는 링크를 응답으로 돌려줘 화면에 표시한다. 실발송 어댑터는 SMTP 확정 후.
+const AUTH_DEV_MODE = runtimeEnv.PORTAL_AUTH_MODE !== "smtp";
+const USER_SESSION_TTL_MS = 12 * 60 * 60 * 1000;
+const USER_CONCURRENT_SCANS = Math.max(1, Number(runtimeEnv.PORTAL_USER_CONCURRENT_SCANS || 1));
+const userSessions = new Map();
+
 // S1(서버 전환): 일회용 승인 토큰(issue/consumeApprovalToken)은 설치·업데이트·MCP
 // 등록에만 쓰였으므로 그 로직과 함께 tool-manager/core.mjs 쪽 흐름으로 넘어갔다.
 
@@ -122,6 +136,11 @@ function persistedJobRecord(job) {
     reports: (job.reports || []).map(({ file_name, path, url }) => ({ file_name, path, url })),
     report_stem: job.report_stem || null,
     observations_submitted_at: job.observations_submitted_at || null,
+    // P3: 소유자와 점검 시점의 소속 스냅샷. 이후 프로필을 바꿔도 이 값은 불변이다(연동합의).
+    owner_email: job.owner_email || null,
+    owner_organization: job.owner_organization || null,
+    owner_department: job.owner_department || null,
+    review_request: job.review_request || null,
     created_at: job.created_at,
     updated_at: job.updated_at || null,
     error: job.error || null
@@ -156,6 +175,7 @@ function loadScanHistory() {
 
 loadScanHistory();
 initObservationStore(runtimePath("PORTAL_OBSERVATION_DIR", join(ROOT, ".local", "observations")));
+initAccountStore(runtimePath("PORTAL_ACCOUNT_DIR", join(ROOT, ".local", "accounts")));
 
 // Scan targets are copies of someone else's project and may hold credentials or keys.
 // A crashed or interrupted job leaves its copy behind, so every startup clears the
@@ -183,6 +203,7 @@ const staticRoutes = new Map([
   ["/", "main page.html"],
   ["/first-screen-gg-v2-1.html", "main page.html"],
   ["/scan", "security-scan.html"],
+  ["/my", "my-scans.html"],
   ["/harness", "tools.html"],
   ["/tools", "tools.html"],
   ["/help", "help.html"],
@@ -234,6 +255,41 @@ function isAdminAuthenticated(request) {
     return false;
   }
   return true;
+}
+
+// P3(계정): 일반 사용자 세션 — 매직링크 인증 후 발급되는 HttpOnly 쿠키.
+function createUserSession(email) {
+  const token = randomBytes(32).toString("hex");
+  userSessions.set(token, { email, expires_at: Date.now() + USER_SESSION_TTL_MS });
+  return `portal_session=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${USER_SESSION_TTL_MS / 1000}`;
+}
+
+function currentUser(request) {
+  const token = cookieValue(request, "portal_session");
+  const session = userSessions.get(token);
+  if (!session) return null;
+  if (session.expires_at <= Date.now()) {
+    userSessions.delete(token);
+    return null;
+  }
+  return getAccount(session.email);
+}
+
+function requireUser(request, response) {
+  const account = currentUser(request);
+  if (!account) {
+    json(response, 401, { error: "login_required", message: "이메일 인증 후 이용할 수 있습니다." });
+    return null;
+  }
+  return account;
+}
+
+// 소유자 검증: 남의 검사는 존재 여부도 알리지 않는다(404). 관리자는 전체 열람.
+function canViewJob(request, job) {
+  if (isAdminAuthenticated(request)) return true;
+  const account = currentUser(request);
+  if (!account) return false;
+  return Boolean(job.owner_email) && job.owner_email === account.email;
 }
 
 function requireAdmin(request, response) {
@@ -917,6 +973,7 @@ async function runScanJob(job) {
       dependency_incomplete: dependencyIncomplete
     }
   });
+  await recordObservationsForJob(job);
   await cleanupJobTargets(job);
   await persistJob(job);
 }
@@ -937,6 +994,8 @@ function adminSummary() {
     needs_review: needsReview,
     blocked,
     observations: observationSummary(),
+    accounts: accountSummary(),
+    pending_review_requests: scans.filter((job) => job.review_request?.status === "requested").length,
     generated_at: new Date().toISOString()
   };
 }
@@ -987,6 +1046,13 @@ function publicJob(job) {
     steps: job.steps || [],
     reports: (job.reports || []).map(({ file_name, url }) => ({ file_name, url })),
     observations_submitted_at: job.observations_submitted_at || null,
+    // 소유자 검증 뒤에만 응답되므로 본인 라벨·소속 스냅샷·검토요청 상태를 보여줄 수 있다.
+    target_name: job.target_label || "",
+    owner_organization: job.owner_organization || null,
+    owner_department: job.owner_department || null,
+    review_request: job.review_request
+      ? { status: job.review_request.status, requested_at: job.review_request.requested_at }
+      : null,
     created_at: job.created_at,
     updated_at: job.updated_at || null,
     error: job.error || null
@@ -1043,17 +1109,11 @@ function capacityExhausted(response) {
   });
 }
 
-// P2: 점검결과 제출 (opt-in) — 서버가 몰래 축적하지 않는다. 공무원이 버튼으로 제출한다.
-// 서버가 보관 중인 검사 JSON에서 허용목록 필드만 추려 적재한다. 클라이언트가 데이터를 만들지 않는다.
-async function submitObservations(job, response) {
-  if (job.status !== "completed") {
-    json(response, 409, { status: "blocked", reason: "not_submittable", message: "완료된 검사만 제출할 수 있습니다." });
-    return;
-  }
-  if (hasSubmission(job.id)) {
-    json(response, 409, { status: "blocked", reason: "already_submitted", message: "이미 제출한 검사입니다." });
-    return;
-  }
+// P2→P3 전환: 관측 축적은 점검 완료 시 자동이다(2026-08-28 확정 — "그 데이터는 이미 서버에 있다").
+// 시작 화면이 "서버에 남는 것/남지 않는 것"을 고지하고, 서버가 보관 중인 검사 JSON에서
+// 허용목록 필드만 추려 적재한다. 클라이언트는 데이터를 만들지 않는다.
+async function recordObservationsForJob(job) {
+  if (job.status !== "completed" || hasSubmission(job.id)) return;
   const jsonReport = (job.reports || []).find((report) => report.file_name?.endsWith(".json"));
   let audits = [];
   if (jsonReport?.path && existsSync(jsonReport.path)) {
@@ -1067,34 +1127,42 @@ async function submitObservations(job, response) {
   const records = [];
   for (const audit of audits) {
     for (const check of audit.checks || []) {
-      if (!check?.name || !check?.version) continue; // 버전 미확정 관측은 제출하지 않는다(§5-D)
+      if (!check?.name || !check?.version) continue; // 버전 미확정 관측은 적재하지 않는다(§5-D)
       records.push(toObservationRecord(check, {
         scanId: job.id,
         ecosystem: audit.ecosystem,
         sourceScope: audit.source_kind,
         projectLabel: job.target_label || "",
-        departmentCode: null // P3(가입·부서)에서 채운다
+        departmentCode: job.owner_department || null // 점검 시점 스냅샷 (부서명)
       }));
     }
   }
-  const recorded = await recordSubmission(job.id, records);
-  updateJob(job, { observations_submitted_at: new Date().toISOString() });
-  await persistJob(job);
-  json(response, 200, {
-    status: "submitted",
-    packages_recorded: recorded,
-    note: recorded > 0
-      ? "라이브러리 목록과 검사 결과만 제출되었습니다. 소스 코드는 포함되지 않습니다."
-      : "이 검사에는 제출할 라이브러리 정보가 없습니다. 제출은 기록되었습니다."
-  });
+  try {
+    await recordSubmission(job.id, records);
+    updateJob(job, { observations_submitted_at: new Date().toISOString() });
+  } catch {
+    // 축적 실패가 점검 결과 전달을 막아선 안 된다.
+  }
 }
 
 async function startScan(request, response) {
+  const account = requireUser(request, response);
+  if (!account) return;
   const body = await readJson(request);
   const mode = ["quick", "standard"].includes(body.scan_mode) ? body.scan_mode : "standard";
   const targetType = ["github_url", "browser_folder", "browser_archive"].includes(body.target_type) ? body.target_type : "";
   if (!targetType) {
     json(response, 400, { error: "invalid_target_type", message: "폴더나 ZIP을 올리거나 GitHub 주소로 검사할 수 있습니다." });
+    return;
+  }
+  // 사용자당 동시 점검 제한(23번 계약) — 큐 독점을 막는다.
+  const activeOwned = Array.from(jobs.values())
+    .filter((job) => job.owner_email === account.email && ["queued", "running"].includes(job.status)).length;
+  if (activeOwned >= USER_CONCURRENT_SCANS) {
+    json(response, 409, {
+      error: "user_scan_limit",
+      message: "진행 중인 점검이 있습니다. 끝난 뒤 다시 시도해 주세요. (내 점검 이력에서 확인)"
+    });
     return;
   }
   if (scanQueue.length >= SCAN_QUEUE_LIMIT) {
@@ -1106,6 +1174,10 @@ async function startScan(request, response) {
     return;
   }
   const job = createJob(mode, targetType, body.target_ref, body.target_label);
+  // 점검 시점의 소속 스냅샷 — 이후 프로필 변경에 영향받지 않는다.
+  job.owner_email = account.email;
+  job.owner_organization = account.organization || null;
+  job.owner_department = account.department || null;
   scanQueue.push(job.id);
   pumpScanQueue();
 
@@ -1179,6 +1251,90 @@ async function handleApi(request, response, pathname) {
     return;
   }
 
+  // ---- P3: 매직링크 가입·로그인 -------------------------------------------
+  if (request.method === "POST" && pathname === "/api/auth/request-link") {
+    const body = await readJson(request);
+    const email = normalizeEmail(body.email);
+    if (!isValidEmail(email)) {
+      json(response, 400, { error: "invalid_email", message: "이메일 주소를 확인해 주세요." });
+      return;
+    }
+    if (!emailDomainAllowed(email, ALLOWED_EMAIL_DOMAINS)) {
+      json(response, 400, {
+        error: "email_domain_not_allowed",
+        message: `기관 메일(${ALLOWED_EMAIL_DOMAINS.map((domain) => "@" + domain).join(", ")})로만 가입할 수 있습니다.`
+      });
+      return;
+    }
+    if (!linkRequestAllowed(email)) {
+      json(response, 429, { error: "too_many_requests", message: "요청이 잦습니다. 15분 뒤 다시 시도해 주세요." });
+      return;
+    }
+    const isNew = !getAccount(email);
+    if (isNew && (!String(body.organization || "").trim() || !String(body.department || "").trim())) {
+      json(response, 400, { error: "registration_required", message: "처음 가입할 때는 기관명과 부서명을 함께 입력해 주세요." });
+      return;
+    }
+    const { token, expires_in_minutes } = createLoginToken(email, body);
+    await recordAuthAudit("link_requested", email, { new_account: isNew });
+    const loginPath = `/auth/complete?token=${token}`;
+    if (AUTH_DEV_MODE) {
+      // SMTP 미확정 — 링크를 응답으로 돌려줘 화면에 표시한다(테스트·시연용). 실발송 전환 시 이 필드는 사라진다.
+      json(response, 200, { status: "sent", mode: "dev", dev_login_url: loginPath, expires_in_minutes });
+      return;
+    }
+    json(response, 200, { status: "sent", mode: "email", expires_in_minutes, message: "메일로 받은 링크를 열면 로그인됩니다." });
+    return;
+  }
+
+  if (request.method === "GET" && pathname === "/api/auth/session") {
+    const account = currentUser(request);
+    if (!account) {
+      json(response, 200, { logged_in: false });
+      return;
+    }
+    json(response, 200, {
+      logged_in: true,
+      email: account.email,
+      organization: account.organization || "",
+      department: account.department || ""
+    });
+    return;
+  }
+
+  if (request.method === "POST" && pathname === "/api/auth/logout") {
+    const token = cookieValue(request, "portal_session");
+    if (token) userSessions.delete(token);
+    json(response, 200, { status: "signed_out" }, { "Set-Cookie": "portal_session=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0" });
+    return;
+  }
+
+  if (request.method === "POST" && pathname === "/api/auth/profile") {
+    const account = requireUser(request, response);
+    if (!account) return;
+    const body = await readJson(request);
+    const organization = String(body.organization || "").trim();
+    const department = String(body.department || "").trim();
+    if (!organization || !department) {
+      json(response, 400, { error: "profile_incomplete", message: "기관명과 부서명을 모두 입력해 주세요." });
+      return;
+    }
+    const updated = await updateAccountProfile(account.email, organization, department);
+    json(response, 200, { status: "updated", organization: updated.organization, department: updated.department });
+    return;
+  }
+
+  if (request.method === "GET" && pathname === "/api/my/scans") {
+    const account = requireUser(request, response);
+    if (!account) return;
+    const mine = Array.from(jobs.values())
+      .filter((job) => job.owner_email === account.email)
+      .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))
+      .map(publicJob);
+    json(response, 200, { scans: mine });
+    return;
+  }
+
   if (request.method === "GET" && pathname === "/api/tools/versions") {
     json(response, 200, {
       checker: await serverCheckerVersion(),
@@ -1188,6 +1344,7 @@ async function handleApi(request, response, pathname) {
   }
 
   if (request.method === "POST" && pathname === "/api/local/upload-target") {
+    if (!requireUser(request, response)) return;
     if (!(await hasDiskCapacity())) {
       capacityExhausted(response);
       return;
@@ -1234,18 +1391,53 @@ async function handleApi(request, response, pathname) {
     return;
   }
 
-  const submitMatch = pathname.match(/^\/api\/scan\/([^/]+)\/submit-observations$/);
-  if (request.method === "POST" && submitMatch) {
-    const job = jobs.get(submitMatch[1]);
-    if (!job) return notFound(response);
-    await submitObservations(job, response);
+  // P3: 보안성검토 요청 — 완료된 본인 점검을 보안부서 검토 대기열에 올린다.
+  // 판정은 사람이 한다. 이 요청은 전달일 뿐 어떤 자동 판정도 붙지 않는다.
+  const reviewMatch = pathname.match(/^\/api\/scan\/([^/]+)\/request-review$/);
+  if (request.method === "POST" && reviewMatch) {
+    const job = jobs.get(reviewMatch[1]);
+    if (!job || !canViewJob(request, job)) return notFound(response);
+    if (job.status !== "completed") {
+      json(response, 409, { error: "not_reviewable", message: "완료된 점검만 검토를 요청할 수 있습니다." });
+      return;
+    }
+    if (job.review_request) {
+      json(response, 409, { error: "already_requested", message: "이미 검토를 요청한 점검입니다." });
+      return;
+    }
+    updateJob(job, { review_request: { status: "requested", requested_at: new Date().toISOString() } });
+    await persistJob(job);
+    json(response, 200, {
+      status: "requested",
+      message: "보안성검토를 요청했습니다. 진행 상태는 내 점검 이력에서 확인할 수 있습니다."
+    });
+    return;
+  }
+
+  if (request.method === "GET" && pathname === "/api/admin/review-requests") {
+    if (!requireAdmin(request, response)) return;
+    const requests = Array.from(jobs.values())
+      .filter((job) => job.review_request)
+      .sort((a, b) => String(b.review_request.requested_at).localeCompare(String(a.review_request.requested_at)))
+      .map((job) => ({
+        scan_id: job.id,
+        target_name: job.target_label || "",
+        decision: job.decision,
+        owner_email: job.owner_email || null,
+        owner_organization: job.owner_organization || null,
+        owner_department: job.owner_department || null,
+        requested_at: job.review_request.requested_at,
+        status: job.review_request.status,
+        reports: (job.reports || []).map(({ file_name, url }) => ({ file_name, url }))
+      }));
+    json(response, 200, { requests });
     return;
   }
 
   const progressMatch = pathname.match(/^\/api\/scan\/([^/]+)\/progress$/);
   if (request.method === "GET" && progressMatch) {
     const job = jobs.get(progressMatch[1]);
-    if (!job) return notFound(response);
+    if (!job || !canViewJob(request, job)) return notFound(response);
     json(response, 200, {
       scan_id: job.id,
       status: job.status,
@@ -1259,7 +1451,7 @@ async function handleApi(request, response, pathname) {
   const resultMatch = pathname.match(/^\/api\/scan\/([^/]+)\/result$/);
   if (request.method === "GET" && resultMatch) {
     const job = jobs.get(resultMatch[1]);
-    if (!job) return notFound(response);
+    if (!job || !canViewJob(request, job)) return notFound(response);
     json(response, 200, publicJob(job));
     return;
   }
@@ -1276,8 +1468,31 @@ createServer(async (request, response) => {
       return;
     }
 
+    // P3: 매직링크 인증 완료 — 토큰은 1회용이며 만료·오류 시 안내와 함께 되돌린다.
+    if (url.pathname === "/auth/complete") {
+      const pending = consumeLoginToken(String(url.searchParams.get("token") || ""));
+      if (!pending) {
+        await recordAuthAudit("login_link_rejected", null);
+        redirect(response, "/scan?auth=expired");
+        return;
+      }
+      await upsertAccountOnLogin(pending);
+      const cookie = createUserSession(pending.email);
+      response.writeHead(302, { Location: "/scan", "Cache-Control": "no-store", "Set-Cookie": cookie });
+      response.end();
+      return;
+    }
+
     const reportMatch = url.pathname.match(/^\/reports\/(.+)$/);
     if (reportMatch) {
+      // 보고서 파일도 소유자(또는 관리자)만 받는다 — scan_id 를 몰라도 파일명 공유로 새는 것을 막는다.
+      const fileName = decodeURIComponent(reportMatch[1]);
+      const owningJob = Array.from(jobs.values())
+        .find((job) => (job.reports || []).some((report) => report.file_name === fileName));
+      if (!owningJob || !canViewJob(request, owningJob)) {
+        notFound(response);
+        return;
+      }
       serveReport(response, reportMatch[1]);
       return;
     }
