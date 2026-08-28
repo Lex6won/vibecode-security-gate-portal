@@ -338,6 +338,66 @@ async function scenarioQueueAndCapacity(fixture) {
   }
 }
 
+// 서버 프로파일: 허용 호스트는 설정(PORTAL_ALLOWED_HOSTS)으로만 열리고,
+// 설정이 없으면 기본값(로컬 전용)이 그대로 유지되어야 한다.
+async function scenarioHostAllowlist(fixture) {
+  // 1) 기본 서버(허용목록 미설정): 외부 호스트명은 거부된다.
+  const defaultDenied = await rawRequest("/", { host: "portal.test.gg" });
+  assert.equal(defaultDenied.statusCode, 421, "unknown Host must stay rejected when no allowlist is configured");
+
+  const hostPort = Number(process.env.PORTAL_HOST_TEST_PORT || 8795);
+  const server = spawn(process.execPath, ["src/server.js"], {
+    cwd: process.cwd(),
+    env: {
+      ...process.env,
+      PORT: String(hostPort),
+      ADMIN_INITIAL_PASSWORD: adminPassword,
+      ADMIN_AUTH_FILE: join(fixture.fixtureDir, "host-admin.json"),
+      PORTAL_SCAN_HISTORY_FILE: join(fixture.fixtureDir, "host-history.jsonl"),
+      PORTAL_OBSERVATION_DIR: join(fixture.fixtureDir, "host-observations"),
+      PORTAL_LOCAL_API_TOKEN: localApiToken,
+      PORTAL_ALLOWED_HOSTS: "portal.test.gg",
+      PYTHONUTF8: "1",
+      PYTHONIOENCODING: "utf-8"
+    },
+    stdio: ["ignore", "ignore", "ignore"],
+    windowsHide: true
+  });
+  const requestWithHost = (headers) => new Promise((resolveRequest, rejectRequest) => {
+    const request = httpRequest({ host: "127.0.0.1", port: hostPort, path: "/", headers }, (response) => {
+      response.resume();
+      response.on("end", () => resolveRequest(response));
+    });
+    request.once("error", rejectRequest);
+    request.end();
+  });
+  try {
+    let ready = false;
+    for (let attempt = 0; attempt < 40 && !ready; attempt += 1) {
+      if (server.exitCode !== null) throw new Error("host allowlist test server died");
+      try {
+        const health = await fetch(`http://127.0.0.1:${hostPort}/health`);
+        ready = health.ok;
+      } catch {
+        await wait(250);
+      }
+    }
+    assert.ok(ready, "host allowlist test server did not become ready");
+
+    const allowed = await requestWithHost({ host: "portal.test.gg" });
+    assert.equal(allowed.statusCode, 200, "a configured host must be accepted");
+    const denied = await requestWithHost({ host: "evil.example.com" });
+    assert.equal(denied.statusCode, 421, "hosts outside the allowlist must stay rejected");
+    const httpsOrigin = await requestWithHost({ host: "portal.test.gg", origin: "https://portal.test.gg" });
+    assert.equal(httpsOrigin.statusCode, 200, "an https origin for an allowed host must pass (tunnel/reverse-proxy)");
+    const foreignOrigin = await requestWithHost({ host: "portal.test.gg", origin: "https://evil.example.com" });
+    assert.equal(foreignOrigin.statusCode, 403, "foreign origins must stay rejected");
+  } finally {
+    server.kill();
+    await Promise.race([once(server, "exit"), wait(2000)]);
+  }
+}
+
 async function scenarioToolsSurface() {
   const versions = await fetchJson("/api/tools/versions");
   assert.equal(versions.checker.installed, true, "the server checker must be installed for the portal to be useful");
@@ -434,6 +494,7 @@ try {
   await scenarioToolsSurface();
   await scenarioAdmin();
   await scenarioQueueAndCapacity(fixture);
+  await scenarioHostAllowlist(fixture);
   console.log(JSON.stringify({
     status: "passed",
     base_url: baseUrl,
@@ -446,7 +507,8 @@ try {
       removed_local_surfaces: true,
       tools_surface: true,
       admin: true,
-      queue_and_capacity: true
+      queue_and_capacity: true,
+      host_allowlist: true
     }
   }, null, 2));
 } catch (error) {

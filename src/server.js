@@ -15,23 +15,6 @@ const ROOT = resolve(__dirname, "..");
 const DESIGN_DIR = join(ROOT, "design", "html-prototype");
 const REPORT_DIR = join(ROOT, "reports");
 const TMP_DIR = join(ROOT, "tmp", "scan-targets");
-const PORT = Number(process.env.PORT || 8787);
-const POWERSHELL = join(process.env.SystemRoot || "C:\\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
-const MAX_BROWSER_UPLOAD_BYTES = 500 * 1024 * 1024;
-const MAX_BROWSER_UPLOAD_FILES = 10000;
-
-// S2(동시성): 체커는 CPU·메모리를 크게 쓰므로 동시 실행을 제한하고 초과분은 큐에 세운다.
-const MAX_CONCURRENT_SCANS = Math.max(1, Number(process.env.PORTAL_MAX_CONCURRENT_SCANS || Math.min(4, cpus().length - 2)) || 1);
-const SCAN_QUEUE_LIMIT = Math.max(1, Number(process.env.PORTAL_SCAN_QUEUE_LIMIT || 20));
-const SCAN_TIMEOUT_QUICK_MS = Number(process.env.PORTAL_SCAN_TIMEOUT_QUICK_MS || 5 * 60 * 1000);
-const SCAN_TIMEOUT_STANDARD_MS = Number(process.env.PORTAL_SCAN_TIMEOUT_STANDARD_MS || 20 * 60 * 1000);
-const MIN_FREE_DISK_BYTES = Number(process.env.PORTAL_MIN_FREE_DISK_BYTES || 2 * 1024 * 1024 * 1024);
-
-function runtimePath(name, fallback) {
-  const value = process.env[name];
-  return value && isAbsolute(value) ? value : fallback;
-}
-
 function loadDotEnv(filePath) {
   if (!existsSync(filePath)) return {};
   return Object.fromEntries(readFileSync(filePath, "utf8").split(/\r?\n/).flatMap((line) => {
@@ -42,6 +25,28 @@ function loadDotEnv(filePath) {
 }
 
 const runtimeEnv = { ...loadDotEnv(join(ROOT, ".env")), ...process.env };
+const PORT = Number(runtimeEnv.PORT || 8787);
+// 서버 프로파일: 기본은 로컬 단독(127.0.0.1)이며, 집/기관 서버에서는 .env 로
+// 바인드 주소와 접속 호스트 허용목록을 명시해야만 외부 접속이 열린다.
+// (config/server.env.example 참고 — 기본값을 바꾸지 않는 한 기존 동작과 동일)
+const BIND_HOST = runtimeEnv.PORTAL_BIND_HOST || "127.0.0.1";
+const EXTRA_ALLOWED_HOSTS = String(runtimeEnv.PORTAL_ALLOWED_HOSTS || "")
+  .split(",").map((value) => value.trim().toLowerCase()).filter(Boolean);
+const POWERSHELL = join(runtimeEnv.SystemRoot || "C:\\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
+const MAX_BROWSER_UPLOAD_BYTES = 500 * 1024 * 1024;
+const MAX_BROWSER_UPLOAD_FILES = 10000;
+
+// S2(동시성): 체커는 CPU·메모리를 크게 쓰므로 동시 실행을 제한하고 초과분은 큐에 세운다.
+const MAX_CONCURRENT_SCANS = Math.max(1, Number(runtimeEnv.PORTAL_MAX_CONCURRENT_SCANS || Math.min(4, cpus().length - 2)) || 1);
+const SCAN_QUEUE_LIMIT = Math.max(1, Number(runtimeEnv.PORTAL_SCAN_QUEUE_LIMIT || 20));
+const SCAN_TIMEOUT_QUICK_MS = Number(runtimeEnv.PORTAL_SCAN_TIMEOUT_QUICK_MS || 5 * 60 * 1000);
+const SCAN_TIMEOUT_STANDARD_MS = Number(runtimeEnv.PORTAL_SCAN_TIMEOUT_STANDARD_MS || 20 * 60 * 1000);
+const MIN_FREE_DISK_BYTES = Number(runtimeEnv.PORTAL_MIN_FREE_DISK_BYTES || 2 * 1024 * 1024 * 1024);
+
+function runtimePath(name, fallback) {
+  const value = runtimeEnv[name];
+  return value && isAbsolute(value) ? value : fallback;
+}
 const ADMIN_ID = runtimeEnv.ADMIN_ID || "gg0018@gg.go.kr";
 const ADMIN_AUTH_FILE = isAbsolute(runtimeEnv.ADMIN_AUTH_FILE || "")
   ? runtimeEnv.ADMIN_AUTH_FILE
@@ -51,7 +56,8 @@ const adminSessions = new Map();
 const LOCAL_API_TOKEN = runtimeEnv.PORTAL_LOCAL_API_TOKEN || randomBytes(32).toString("hex");
 const LOCAL_HOSTS = new Set([
   `127.0.0.1:${PORT}`,
-  `localhost:${PORT}`
+  `localhost:${PORT}`,
+  ...EXTRA_ALLOWED_HOSTS
 ]);
 const MAX_ARCHIVE_BYTES = 500 * 1024 * 1024;
 const MAX_EXTRACTED_BYTES = 2 * 1024 * 1024 * 1024;
@@ -267,7 +273,8 @@ function hasAllowedOrigin(request) {
   if (!origin) return true;
   try {
     const url = new URL(origin);
-    return url.protocol === "http:" && LOCAL_HOSTS.has(url.host.toLowerCase());
+    // https 는 터널·리버스프록시 뒤에서 허용 호스트로 접속할 때 필요하다.
+    return (url.protocol === "http:" || url.protocol === "https:") && LOCAL_HOSTS.has(url.host.toLowerCase());
   } catch {
     return false;
   }
@@ -286,7 +293,7 @@ function isStateChangingRequest(request) {
 
 function requireTrustedLocalRequest(request, response, pathname = "") {
   if (!isAllowedLocalHost(request)) {
-    json(response, 421, { error: "local_host_required", message: "로컬 포털 주소에서만 요청할 수 있습니다." });
+    json(response, 421, { error: "local_host_required", message: "허용된 포털 주소로만 요청할 수 있습니다." });
     return false;
   }
   if (!hasAllowedOrigin(request)) {
@@ -1284,6 +1291,6 @@ createServer(async (request, response) => {
   } catch (error) {
     text(response, 500, `server_error: ${String(error.message || error)}`);
   }
-}).listen(PORT, "127.0.0.1", () => {
-  console.log(`VibeCode Security Gate Portal: http://127.0.0.1:${PORT}`);
+}).listen(PORT, BIND_HOST, () => {
+  console.log(`VibeCode Security Gate Portal: http://${BIND_HOST}:${PORT}`);
 });
