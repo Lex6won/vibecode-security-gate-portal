@@ -304,7 +304,7 @@
           <p class="lead">저장 위치 → 검사 대상 → 점검 방식을 선택하면 바로 시작합니다.</p>
           <p class="lead" id="dataNotice" style="margin-top: 8px; font-size: 13px;">점검 시 서버에는 점검 이력·보고서와 라이브러리 메타값(경기도 화이트리스트 구축용)만 남습니다. <b>소스 코드 원본은 서버에 남지 않으며 점검 직후 즉시 삭제됩니다.</b></p>
         </div>
-        <div id="sessionBar" hidden aria-label="로그인 정보" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+        <div id="sessionBar" aria-label="로그인 정보" style="display:none; gap:8px; align-items:center; flex-wrap:wrap;">
           <span class="pill" id="sessionWho">확인 중</span>
           <a class="pill" href="/my">내 점검 이력</a>
           <button class="pill" id="logoutButton" type="button" style="cursor:pointer; border:1px solid var(--line); background:var(--panel);">로그아웃</button>
@@ -774,7 +774,8 @@
     function applySession(session) {
       const loggedIn = Boolean(session && session.logged_in);
       loginGate.hidden = loggedIn;
-      sessionBar.hidden = !loggedIn;
+      // hidden 속성은 인라인 display 에 지므로 display 로 직접 제어한다.
+      sessionBar.style.display = loggedIn ? "flex" : "none";
       scanGrid.style.display = loggedIn ? "" : "none";
       if (loggedIn) {
         sessionWho.textContent = [session.email, [session.organization, session.department].filter(Boolean).join(" ")]
