@@ -984,6 +984,11 @@ async function runScanJob(job) {
     }
   }
 
+  // 관측 적재는 상태 전환보다 먼저 — 완료 응답에는 항상 적재 결과가 실려 있어야 한다.
+  if (scan.ok || parsed) {
+    await recordObservationsForJob(job, finalReportItems);
+  }
+
   updateJob(job, {
     status: scan.ok || parsed ? "completed" : "failed",
     decision,
@@ -1005,7 +1010,6 @@ async function runScanJob(job) {
       dependency_incomplete: dependencyIncomplete
     }
   });
-  await recordObservationsForJob(job);
   await cleanupJobTargets(job);
   await persistJob(job);
 }
@@ -1147,9 +1151,11 @@ function capacityExhausted(response) {
 // P2→P3 전환: 관측 축적은 점검 완료 시 자동이다(2026-08-28 확정 — "그 데이터는 이미 서버에 있다").
 // 시작 화면이 "서버에 남는 것/남지 않는 것"을 고지하고, 서버가 보관 중인 검사 JSON에서
 // 허용목록 필드만 추려 적재한다. 클라이언트는 데이터를 만들지 않는다.
-async function recordObservationsForJob(job) {
-  if (job.status !== "completed" || hasSubmission(job.id)) return;
-  const jsonReport = (job.reports || []).find((report) => report.file_name?.endsWith(".json"));
+// 주의: 반드시 상태가 completed 로 바뀌기 **전에** 호출한다 — 완료를 본 클라이언트가
+// 적재 완료 전의 결과를 읽는 경합을 막는다(2026-08-28 guard 에서 실제로 잡힌 레이스).
+async function recordObservationsForJob(job, reportItems) {
+  if (hasSubmission(job.id)) return;
+  const jsonReport = (reportItems || []).find((report) => report.file_name?.endsWith(".json"));
   let audits = [];
   if (jsonReport?.path && existsSync(jsonReport.path)) {
     try {
@@ -1174,7 +1180,7 @@ async function recordObservationsForJob(job) {
   }
   try {
     await recordSubmission(job.id, records);
-    updateJob(job, { observations_submitted_at: new Date().toISOString() });
+    job.observations_submitted_at = new Date().toISOString();
   } catch {
     // 축적 실패가 점검 결과 전달을 막아선 안 된다.
   }
