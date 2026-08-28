@@ -12,7 +12,9 @@
     "button:test": "node scripts/portal-button-contract-test.mjs",
     "db:check": "node scripts/db-schema-structure-check.mjs",
     "scenario:test": "node scripts/portal-scenario-test.mjs",
-    "guard": "npm run check && npm run harness:gate && npm run button:test && npm run scenario:test && npm run security:scan"
+    "hwpx:test": "node scripts/hwpx-template-test.mjs",
+    "hwpx:validate": "node scripts/hwpx-validate.mjs",
+    "guard": "npm run check && npm run hwpx:test && npm run harness:gate && npm run button:test && npm run scenario:test && npm run security:scan"
   },
   "dependencies": {
     "busboy": "^1.6.0"
