@@ -56,6 +56,22 @@
     .exe-warn { padding: 12px 14px; border-radius: var(--radius-md); background: var(--warn-soft); color: var(--warn); font-size: 13px; font-weight: 700; line-height: 1.6; }
     .exe-unavailable { font-size: 13px; color: var(--muted); font-weight: 700; }
 
+    /* 히어로: 좌 설명 + 우 대형 다운로드 */
+    .hero-split { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 24px; align-items: center; }
+    .hero-cta { display: grid; gap: 10px; justify-items: center; }
+    .hero-cta .big-download { padding: 24px 44px; font-size: 20px; }
+    .hero-cta .exe-badge { justify-self: center; }
+    @media (max-width: 900px) { .hero-split { grid-template-columns: 1fr; } .hero-cta { justify-items: start; } }
+
+    /* 설치 3단계 — 가로 배치 */
+    .steps-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; align-items: start; }
+    @media (max-width: 960px) { .steps-row { grid-template-columns: 1fr; } }
+    .step-col { padding: 20px; display: grid; gap: 12px; align-content: start; }
+    .col-title { display: flex; align-items: center; gap: 10px; font-size: 17px; font-weight: 900; }
+    .col-num { width: 30px; height: 30px; flex: 0 0 auto; display: grid; place-items: center; border-radius: 999px; background: var(--soft); color: var(--info); font-size: 14px; font-weight: 900; }
+    .col-lead { font-size: var(--fs-small); color: var(--muted); font-weight: 700; line-height: 1.6; }
+    .step-col .cmd { font-size: 11.5px; }
+
     /* 대안 설치 경로 — 접어두되, 설치 파일을 못 쓸 때 바로 펴진다. */
     .alt-install { margin-top: 16px; border-top: 1px solid var(--line); padding-top: 14px; }
     .alt-install > summary { cursor: pointer; font-size: 13.5px; font-weight: 800; color: var(--muted); list-style: none; padding: 6px 0; }
@@ -78,21 +94,26 @@
       <a class="back" href="/" aria-label="처음으로">←</a>
     </header>
 
-    <section class="hero panel-card" aria-labelledby="tools-title">
+    <section class="hero panel-card hero-split" aria-labelledby="tools-title">
       <div>
         <span class="eyebrow">하네스 설치</span>
         <h1 id="tools-title">AI 코딩 도구로 업무 도구를 만들 때 기준이 되는 하네스</h1>
         <p class="lead">하네스는 기획 → 설계 → 구현 → 테스트 → 보안점검 순서를 지키도록 돕는 개발 표준 키트입니다. Python, JavaScript, TypeScript 외 언어는 차단하고, 승인된 절차대로 개발하도록 안내합니다.</p>
       </div>
+      <div class="hero-cta" id="heroDownloadArea">
+        <p class="exe-unavailable">설치 파일 확인 중…</p>
+      </div>
     </section>
 
-    <section class="panel-card" id="download" aria-labelledby="download-title">
-      <h2 class="section-title" id="download-title">1단계 · 하네스 내려받기</h2>
-      <div id="exeCardArea">
-        <p class="exe-unavailable">하네스 설치 파일 정보를 확인하고 있습니다…</p>
-      </div>
-
-      <details class="alt-install" id="zipInstall">
+    <section aria-label="설치와 사용 3단계">
+      <div class="steps-row">
+        <div class="step-col panel-card">
+          <h2 class="col-title"><span class="col-num">1</span>하네스 내려받기</h2>
+          <p class="col-lead">설치 파일을 실행하면 <b>VibeCode Harness Manager</b> 화면이 열립니다. 화면 안내에 따라 진행하세요.</p>
+          <div id="exeCardArea">
+            <p class="exe-unavailable">설치 파일 정보를 확인하고 있습니다…</p>
+          </div>
+<details class="alt-install" id="zipInstall">
         <summary>설치 파일이 안 될 때 — ZIP으로 설치하기 (PowerShell 명령 사용)</summary>
         <div class="download-box" style="margin-top: 12px;">
           <span class="label">최신 하네스 패키지 (GitHub ZIP)</span>
@@ -106,12 +127,11 @@
           <p class="section-lead" style="margin:0;">Windows가 Node.js LTS와 Python 설치를 안내하면 안내에 따라 승인합니다. 설치가 끝나면 <code>%LOCALAPPDATA%\Gyeonggi\VibeCodeHarness\github-pilot</code>에 하네스가 준비됩니다.</p>
         </div>
       </details>
-    </section>
-
-    <section class="panel-card" aria-labelledby="apply-title">
-      <h2 class="section-title" id="apply-title">2단계 · 프로젝트에 적용하기</h2>
-      <p class="section-lead">설치가 끝나면 <b>Manager</b> 화면에서 프로젝트 폴더와 AI 도구를 선택합니다.</p>
-      <details class="more">
+        </div>
+        <div class="step-col panel-card">
+          <h2 class="col-title"><span class="col-num">2</span>프로젝트에 적용하기</h2>
+          <p class="col-lead">설치가 끝나면 <b>Manager</b> 화면에서 프로젝트 폴더와 AI 도구를 선택합니다.</p>
+<details class="more">
       <summary>명령줄(PowerShell)로 적용하기 — ZIP으로 설치했거나 명령이 익숙한 분</summary>
       <p class="section-lead" style="margin-top:12px;">만들 업무 도구 폴더를 준비하고, PowerShell에서 아래 명령을 실행합니다. 예시는 TypeScript 웹 도구에 Codex와 Claude Code를 함께 적용하는 경우입니다.</p>
       <code class="cmd">$gg = "$env:LOCALAPPDATA\Gyeonggi\VibeCodeHarness\github-pilot\gg.cmd"
@@ -124,12 +144,11 @@
         <div class="mini"><b>점검 수준</b><span><code>L1</code> 시제품, <code>L2</code> 내부 업무 도구, <code>L3</code> 엄격한 점검</span></div>
       </div>
       </details>
-    </section>
-
-    <section class="panel-card" aria-labelledby="flow-title">
-      <h2 class="section-title" id="flow-title">3단계 · 순서대로 개발하기</h2>
-      <p class="section-lead">AI 코딩 도구에 <b>“하네스 기준으로 시작해줘”</b>라고 말하면 기획 → 설계 → 구현 → 테스트 → 보안점검 순서로 안내합니다.</p>
-      <details class="more">
+        </div>
+        <div class="step-col panel-card">
+          <h2 class="col-title"><span class="col-num">3</span>순서대로 개발하기</h2>
+          <p class="col-lead">AI 코딩 도구에 <b>“하네스 기준으로 시작해줘”</b>라고 말하면 기획 → 설계 → 구현 → 테스트 → 보안점검 순서로 안내합니다.</p>
+<details class="more">
       <summary>단계별 자세한 순서 보기</summary>
       <div class="steps" style="margin-top:12px;">
         <div class="step">
@@ -176,7 +195,8 @@
         </div>
       </div>
       </details>
-    
+        </div>
+      </div>
     </section>
 
     <section class="panel-card" aria-labelledby="what-title">
@@ -224,11 +244,13 @@
     // 이 화면은 고치지 않아도 자동으로 바뀐다(is_demo 플래그로 문구만 갈아끼움).
     (async function loadHarnessRelease() {
       const area = document.getElementById("exeCardArea");
+      const heroArea = document.getElementById("heroDownloadArea");
       const toolListText = document.getElementById("toolListText");
       const zipInstall = document.getElementById("zipInstall");
       // 설치 파일을 쓸 수 없으면 대안(ZIP)을 펴 둔다 — 막다른 화면을 만들지 않는다.
       const fallBackToZip = (message) => {
         area.innerHTML = `<p class="exe-unavailable">${message}</p>`;
+        heroArea.innerHTML = `<p class="exe-unavailable">지금은 설치 파일을 내려받을 수 없습니다.</p>`;
         if (zipInstall) zipInstall.open = true;
       };
       try {
@@ -247,18 +269,19 @@
         const warn = data.is_demo
           ? `체험판이라 서명되지 않았습니다. <b>실제 업무에는 사용하지 마세요.</b> Windows "알 수 없는 게시자" 경고가 보이면 <b>추가 정보 → 실행</b>으로 진행합니다.`
           : "";
+        // 다운로드 버튼은 히어로(첫 화면)에 크게 — 정보·경고는 1단계 칸에.
+        heroArea.innerHTML = `
+          <a class="big-download" href="${escapeHtml(data.download_url)}" target="_blank" rel="noreferrer noopener">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            설치 파일 내려받기
+          </a>
+          <span class="exe-badge">${escapeHtml(badge)}</span>`;
         area.innerHTML = `
-          <span class="exe-badge">${escapeHtml(badge)}</span>
-          <p class="section-lead" style="margin:4px 0 0;">설치 파일을 실행하면 <b>VibeCode Harness Manager</b> 화면이 열립니다. 화면 안내에 따라 진행하세요.</p>
           <div class="exe-meta">
             <div class="item"><b>버전</b><span>${escapeHtml(data.version || "-")}</span></div>
             ${data.expires_at ? `<div class="item"><b>체험판 만료</b><span>${escapeHtml(formatExpiry(data.expires_at))}</span></div>` : ""}
           </div>
-          ${warn ? `<div class="exe-warn">${warn}</div>` : ""}
-          <a class="big-download" href="${escapeHtml(data.download_url)}" target="_blank" rel="noreferrer noopener">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-            설치 파일 내려받기
-          </a>`;
+          ${warn ? `<div class="exe-warn">${warn}</div>` : ""}`;
       } catch {
         fallBackToZip("지금은 설치 파일 정보를 확인할 수 없습니다. 아래 ZIP 방법으로 설치해 주세요.");
       }
