@@ -686,6 +686,20 @@ async function scenarioAccessLogin(fixture) {
     })).json();
     assert.equal(hinted.access_email, "access-user@gg.go.kr");
     assert.equal(hinted.access_registered, true);
+
+    // 터널 사칭 차단: 관문을 통과한 요청은 그 신원과 같은 이메일로만 로그인 링크를 받을 수 있다.
+    const linkHeaders = (jwt) => ({ "Content-Type": "application/json", "X-VibeCode-Local-Token": localApiToken, "Cf-Access-Jwt-Assertion": jwt });
+    const mismatch = await fetch(`${base}/api/auth/request-link`, {
+      method: "POST", headers: linkHeaders(makeJwt(good.privateKey)),
+      body: JSON.stringify({ email: "someone.else@gg.go.kr" })
+    });
+    assert.equal(mismatch.status, 403, "request-link through the gateway must reject a different email");
+    assert.equal((await mismatch.json()).error, "email_mismatch", "gateway impersonation must be reported as an identity mismatch");
+    const selfLink = await fetch(`${base}/api/auth/request-link`, {
+      method: "POST", headers: linkHeaders(makeJwt(good.privateKey)),
+      body: JSON.stringify({ email: "access-user@gg.go.kr" })
+    });
+    assert.equal(selfLink.status, 200, "request-link through the gateway must accept the matching identity");
   } finally {
     server.kill();
     await Promise.race([once(server, "exit"), wait(2000)]);

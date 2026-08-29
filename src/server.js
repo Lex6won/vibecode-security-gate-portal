@@ -4,7 +4,7 @@ import { createReadStream, createWriteStream, existsSync, mkdirSync, readFileSyn
 import { appendFile, rm, readdir, readFile, stat, statfs } from "node:fs/promises";
 import { cpus } from "node:os";
 import { pipeline } from "node:stream/promises";
-import { basename, dirname, extname, isAbsolute, join, normalize, resolve } from "node:path";
+import { basename, dirname, extname, isAbsolute, join, normalize, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createPublicKey, randomBytes, randomUUID, scryptSync, timingSafeEqual, verify as cryptoVerify } from "node:crypto";
 import Busboy from "busboy";
@@ -479,7 +479,9 @@ function safeStaticPath(pathname) {
   const routeFile = staticRoutes.get(pathname);
   const target = routeFile ? join(DESIGN_DIR, routeFile) : join(DESIGN_DIR, pathname);
   const resolved = resolve(normalize(target));
-  if (!resolved.startsWith(resolve(DESIGN_DIR))) return null;
+  const root = resolve(DESIGN_DIR);
+  // 경계는 디렉터리 구분자까지 확인한다 — 접두어만 보면 형제 폴더(html-prototype-v2 등)가 새어 나간다.
+  if (resolved !== root && !resolved.startsWith(root + sep)) return null;
   return resolved;
 }
 
@@ -494,6 +496,7 @@ function serveStatic(request, response, pathname) {
   response.writeHead(200, {
     "Content-Type": type,
     "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
     "Referrer-Policy": "same-origin",
     "Cache-Control": "no-store"
   });
@@ -1481,6 +1484,17 @@ async function handleApi(request, response, pathname) {
       json(response, 400, {
         error: "email_domain_not_allowed",
         message: `기관 메일(${ALLOWED_EMAIL_DOMAINS.map((domain) => "@" + domain).join(", ")})로만 가입할 수 있습니다.`
+      });
+      return;
+    }
+    // 관문(Cloudflare Access)을 통과해 들어온 요청은 그 신원과 같은 계정으로만 로그인할 수 있다.
+    // LAN 직접 접속은 관문 JWT 가 없어 null 이므로 시연용 개발 로그인 흐름은 그대로 유지된다.
+    const accessIdentity = await accessEmailFromRequest(request);
+    if (accessIdentity && accessIdentity !== email) {
+      await recordAuthAudit("link_identity_mismatch", email, { access_identity: accessIdentity });
+      json(response, 403, {
+        error: "email_mismatch",
+        message: "보안 관문에서 인증된 계정으로만 로그인할 수 있습니다."
       });
       return;
     }

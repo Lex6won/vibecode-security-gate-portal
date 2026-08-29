@@ -89,6 +89,15 @@
       incomplete: "재점검 필요"
     };
 
+    function escapeHtml(value) {
+      return String(value ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#39;");
+    }
+
     function formatDate(value) {
       const date = new Date(value);
       if (Number.isNaN(date.getTime())) return value || "-";
@@ -110,16 +119,16 @@
       for (const scan of scans) {
         const row = document.createElement("tr");
         const reports = (scan.reports || [])
-          .map((report) => `<a href="${report.url}" download>${report.file_name.split("_").pop()}</a>`)
+          .map((report) => `<a href="${escapeHtml(report.url)}" download>${escapeHtml(report.file_name.split("_").pop())}</a>`)
           .join(" ");
         const decision = scan.status === "failed" ? "점검 실패"
           : scan.status !== "completed" ? "진행 중"
           : decisionLabels[scan.decision] || scan.decision;
         row.innerHTML = `
-          <td>${formatDate(scan.created_at)}</td>
-          <td>${scan.target_name || scan.target_label || "-"}</td>
+          <td>${escapeHtml(formatDate(scan.created_at))}</td>
+          <td>${escapeHtml(scan.target_name || scan.target_label || "-")}</td>
           <td>${scan.mode === "quick" ? "간편" : "표준"}</td>
-          <td class="decision">${decision}</td>
+          <td class="decision">${escapeHtml(decision)}</td>
           <td>${reports || "-"}</td>
           <td>${reviewCell(scan)}</td>`;
         historyBody.appendChild(row);
