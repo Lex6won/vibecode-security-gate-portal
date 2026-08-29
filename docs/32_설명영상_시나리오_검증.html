@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>공공 바이브코딩 보안 게이트 포털 | 1분 콘티 검증</title>
+  <style>
+    :root {
+      --bg: #08090a;
+      --panel: #111417;
+      --panel-2: #171b20;
+      --line: rgba(255,255,255,.12);
+      --muted: #9da5ad;
+      --text: #f5f7f8;
+      --teal: #43c7f4;
+      --indigo: #8290ff;
+      --amber: #f6c668;
+      --red: #ff8b83;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; background: var(--bg); color: var(--text); font-family: Pretendard, "Noto Sans KR", system-ui, sans-serif; }
+    body { overflow-x: hidden; }
+    button { font: inherit; color: inherit; }
+    .app { min-height: 100vh; padding: 28px 34px 52px; }
+    .chrome { display: flex; justify-content: space-between; align-items: center; color: var(--muted); font-size: 12px; letter-spacing: .18em; text-transform: uppercase; }
+    .brand { color: var(--teal); font-weight: 700; }
+    .top-actions { display: flex; gap: 8px; }
+    .icon-button { width: 38px; height: 32px; border: 1px solid var(--line); background: transparent; cursor: pointer; }
+    .icon-button:hover, .icon-button:focus-visible { border-color: var(--teal); color: var(--teal); outline: none; }
+    .intro { display: flex; justify-content: space-between; align-items: end; gap: 32px; padding: 58px 0 30px; }
+    .eyebrow { margin: 0 0 14px; color: var(--amber); font-size: 13px; letter-spacing: .22em; }
+    h1 { max-width: 880px; margin: 0; font-size: clamp(34px, 5vw, 76px); line-height: 1.08; letter-spacing: 0; font-weight: 650; }
+    .intro-copy { max-width: 430px; margin: 0; color: var(--muted); font-size: 15px; line-height: 1.7; }
+    .layout { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(360px, .65fr); gap: 18px; align-items: start; }
+    .stage-wrap { position: relative; min-width: 0; }
+    .stage { position: relative; overflow: hidden; aspect-ratio: 16 / 9; min-height: 480px; background: #121619; border: 1px solid var(--line); }
+    .stage::after { content: ""; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(90deg, rgba(8,9,10,.83) 0%, rgba(8,9,10,.2) 58%, rgba(8,9,10,.48) 100%), linear-gradient(0deg, rgba(8,9,10,.88) 0%, transparent 42%, rgba(8,9,10,.12) 100%); }
+    .stage-image { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0; transform: scale(1.05); transition: opacity .35s ease, transform 1.2s cubic-bezier(.16,1,.3,1); }
+    .stage-image.active { opacity: 1; transform: scale(1); }
+    .stage-copy { position: absolute; z-index: 2; inset: 0; display: flex; flex-direction: column; justify-content: space-between; padding: clamp(24px, 4vw, 66px); pointer-events: none; }
+    .scene-kicker { color: var(--teal); font-size: 13px; letter-spacing: .2em; text-transform: uppercase; }
+    .scene-title { max-width: 630px; margin: auto 0 12px; font-size: clamp(28px, 4vw, 60px); line-height: 1.1; font-weight: 650; }
+    .scene-thesis { max-width: 560px; margin: 0; color: #d5dce0; font-size: clamp(14px, 1.5vw, 20px); line-height: 1.55; }
+    .scene-time { position: absolute; right: clamp(24px, 4vw, 66px); bottom: clamp(24px, 4vw, 66px); color: var(--amber); font-variant-numeric: tabular-nums; font-size: 13px; }
+    .timeline { display: grid; grid-template-columns: repeat(10, 1fr); gap: 5px; margin-top: 12px; }
+    .timeline button { min-width: 0; padding: 10px 5px 8px; border: 1px solid var(--line); background: var(--panel); cursor: pointer; text-align: left; }
+    .timeline button:hover, .timeline button:focus-visible { border-color: var(--teal); outline: none; }
+    .timeline button.active { border-color: var(--teal); background: #15242b; }
+    .timeline-no { display: block; color: var(--teal); font-size: 11px; }
+    .timeline-label { display: block; overflow: hidden; margin-top: 5px; color: var(--muted); font-size: 11px; white-space: nowrap; text-overflow: ellipsis; }
+    .review-panel { display: grid; gap: 12px; }
+    .panel { border: 1px solid var(--line); background: linear-gradient(135deg, rgba(255,255,255,.055), rgba(255,255,255,.018)); }
+    .panel-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 16px 18px; border-bottom: 1px solid var(--line); }
+    .panel-title { margin: 0; font-size: 13px; letter-spacing: .12em; color: var(--muted); text-transform: uppercase; }
+    .status { color: var(--teal); font-size: 12px; }
+    .panel-body { padding: 18px; }
+    .meta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .meta-label { color: var(--muted); font-size: 11px; }
+    .meta-value { margin-top: 5px; color: var(--text); font-size: 14px; line-height: 1.45; }
+    .tabs { display: grid; grid-template-columns: repeat(4, 1fr); border-bottom: 1px solid var(--line); }
+    .tab { padding: 12px 8px; border: 0; border-right: 1px solid var(--line); background: transparent; color: var(--muted); cursor: pointer; font-size: 12px; }
+    .tab:last-child { border-right: 0; }
+    .tab.active { color: var(--teal); background: rgba(67,199,244,.08); }
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+    .label { margin: 0 0 8px; color: var(--amber); font-size: 12px; letter-spacing: .08em; }
+    .script { margin: 0; color: #e7ebed; font-size: 15px; line-height: 1.7; white-space: pre-line; }
+    .caption { margin-top: 15px; padding-top: 15px; border-top: 1px solid var(--line); color: var(--teal); font-size: 14px; line-height: 1.55; }
+    .caption::before { content: "자막  "; color: var(--muted); font-size: 11px; letter-spacing: .1em; }
+    .checklist { display: grid; gap: 8px; }
+    .check { display: flex; align-items: center; gap: 9px; color: #dbe1e4; font-size: 13px; line-height: 1.45; }
+    .check::before { content: ""; flex: 0 0 8px; width: 8px; height: 8px; background: var(--teal); }
+    .footer-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 18px; }
+    .roles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 9px; }
+    .reference-strip { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; margin-bottom: 14px; }
+    .reference-strip figure { margin: 0; }
+    .reference-strip img { display: block; width: 100%; height: 112px; border: 1px solid var(--line); object-fit: cover; object-position: top; }
+    .reference-strip figcaption { margin-top: 6px; color: var(--muted); font-size: 11px; }
+    .role { padding: 14px; border-left: 2px solid var(--indigo); background: rgba(255,255,255,.04); }
+    .role strong { display: block; font-size: 14px; }
+    .role span { display: block; margin-top: 6px; color: var(--muted); font-size: 12px; line-height: 1.5; }
+    .notes { color: var(--muted); font-size: 13px; line-height: 1.65; }
+    .notes p { margin: 0 0 10px; }
+    .notes p:last-child { margin-bottom: 0; }
+    .nav { display: flex; justify-content: space-between; gap: 8px; margin-top: 12px; }
+    .nav button { flex: 1; padding: 10px; border: 1px solid var(--line); background: var(--panel); cursor: pointer; }
+    .nav button:hover, .nav button:focus-visible { border-color: var(--teal); outline: none; }
+    .play-state { color: var(--muted); font-size: 12px; text-align: right; }
+    @media (max-width: 1050px) { .layout { grid-template-columns: 1fr; } .intro { display: block; } .intro-copy { margin-top: 18px; } .stage { min-height: 0; } }
+    @media (max-width: 650px) { .app { padding: 18px 14px 36px; } .chrome { font-size: 9px; } .timeline { grid-template-columns: repeat(5, 1fr); } .timeline-label { font-size: 10px; } .footer-grid, .meta-grid { grid-template-columns: 1fr; } .roles { grid-template-columns: 1fr; } .stage-copy { padding: 22px; } .scene-title { font-size: 29px; } .scene-thesis { font-size: 13px; } .scene-time { right: 22px; bottom: 22px; } }
+    @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; } }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <header class="chrome">
+      <div class="brand">PUBLIC VIBE CODING / STORYBOARD REVIEW</div>
+      <div>2026.08 / 01 MINUTE FILM</div>
+      <div class="top-actions"><button class="icon-button" id="prevTop" aria-label="이전 씬">&lt;</button><button class="icon-button" id="nextTop" aria-label="다음 씬">&gt;</button></div>
+    </header>
+
+    <section class="intro">
+      <div><p class="eyebrow">SCENARIO VALIDATION</p><h1>개발은 쉬워졌는데,<br>검토와 운영은 그대로다.</h1></div>
+      <p class="intro-copy">실제 현장 대화를 중심으로 만든 1분 설명영상 콘티입니다. 장면을 선택해 화면, 대사, 나레이션, 자막, 움직임 프롬프트를 함께 검증하세요.</p>
+    </section>
+
+    <section class="layout">
+      <div class="stage-wrap">
+        <div class="stage" id="stage"></div>
+        <div class="timeline" id="timeline" aria-label="씬 타임라인"></div>
+        <div class="nav"><button id="prev">이전 씬</button><span class="play-state" id="playState">씬을 선택하세요</span><button id="next">다음 씬</button></div>
+      </div>
+
+      <aside class="review-panel">
+        <section class="panel">
+          <div class="panel-head"><h2 class="panel-title">Current Scene</h2><span class="status" id="sceneStatus">01 / 10</span></div>
+          <div class="panel-body"><div class="meta-grid"><div><div class="meta-label">TIME</div><div class="meta-value" id="metaTime"></div></div><div><div class="meta-label">DURATION</div><div class="meta-value" id="metaDuration"></div></div><div><div class="meta-label">ROLES</div><div class="meta-value" id="metaRoles"></div></div><div><div class="meta-label">PURPOSE</div><div class="meta-value" id="metaPurpose"></div></div></div></div>
+        </section>
+
+        <section class="panel">
+          <div class="tabs"><button class="tab active" data-tab="story">화면</button><button class="tab" data-tab="voice">음성·대사</button><button class="tab" data-tab="motion">영상 프롬프트</button><button class="tab" data-tab="check">검증</button></div>
+          <div class="panel-body">
+            <div class="tab-panel active" id="tab-story"><p class="label">SCREEN DIRECTION</p><p class="script" id="screen"></p><div class="caption" id="caption"></div></div>
+            <div class="tab-panel" id="tab-voice"><p class="label">VOICE TRACK</p><p class="script" id="voice"></p><div class="caption" id="captionVoice"></div></div>
+            <div class="tab-panel" id="tab-motion"><p class="label">IMAGE TO VIDEO</p><p class="script" id="motion"></p><p class="caption"><a id="promptLink" href="#" style="color:inherit">해당 씬의 이미지 프롬프트 파일 열기</a></p></div>
+            <div class="tab-panel" id="tab-check"><p class="label">CHECKPOINTS</p><div class="checklist" id="checks"></div></div>
+          </div>
+        </section>
+      </aside>
+    </section>
+
+    <section class="footer-grid">
+      <section class="panel"><div class="panel-head"><h2 class="panel-title">Character Continuity</h2><span class="status">REFERENCE LOCKED</span></div><div class="panel-body"><div class="reference-strip"><figure><img src="video-references/character-sheet.png" alt="세 인물 캐릭터 시트"><figcaption>캐릭터 시트</figcaption></figure><figure><img src="video-references/office-reference.png" alt="공공기관 사무실 배경 레퍼런스"><figcaption>사무실·서버실 레퍼런스</figcaption></figure></div><div class="roles"><div class="role"><strong>김도윤 · 38세</strong><span>현업 개발자<br>짧은 검은 머리 / 안경 / 네이비 니트</span></div><div class="role"><strong>박서연 · 43세</strong><span>정보보안 담당자<br>단정한 단발 / 안경 / 차콜 재킷</span></div><div class="role"><strong>이준호 · 39세</strong><span>인프라·운영 담당자<br>짧은 헤어 / 회색 재킷</span></div></div></div></section>
+      <section class="panel"><div class="panel-head"><h2 class="panel-title">Global Validation</h2><span class="status">60 SEC / 10 SCENES</span></div><div class="panel-body notes"><p><strong style="color:var(--text)">핵심 문제:</strong> 개발자는 만들 수 있지만 보안성검토·SBOM·취약점 점검 자료를 준비하기 어렵고, 정보화부서는 근거와 책임 때문에 운영 이관을 망설인다.</p><p><strong style="color:var(--text)">포털의 역할:</strong> 체커 결과, 보고서, SBOM·패키지 근거를 모아 현업과 정보화부서가 같은 자료를 보고 사람이 최종 판단하게 한다.</p><p><strong style="color:var(--text)">주의:</strong> 포털이 보안 승인을 자동으로 내리는 것처럼 표현하지 않는다.</p></div></section>
+    </section>
+  </main>
+
+  <script>
+    const scenes = [
+      {no:"01", time:"0-5초", duration:"5초", title:"현업도 직접 개발한다", thesis:"AI로 만든 업무 도구가 이제 막 완성됐다.", image:"video-scenes/scene-01.png", roles:"김도윤", purpose:"문제의 출발", screen:"공무원 사무실. 개발자 김도윤이 노트북으로 AI를 활용해 ‘욕가리게’ 업무 도구를 완성한다. 화면을 보며 자신 있게 고개를 끄덕인다.", voice:"나레이션\nAI 덕분에 공무원도 직접 업무 도구를 만들 수 있게 됐습니다.", caption:"개발은 이제 현업도 합니다", motion:"5-second slow push-in toward the developer and laptop. The developer finishes typing, looks at the abstract result, and gives a small confident nod. Keep the office background stable and realistic. No new text or logos appear.", checks:["개발자가 현업 공무원으로 보이는가", "이미지에 자막이나 읽을 수 있는 텍스트가 없는가", "이후 장면과 같은 김도윤 얼굴·복장인가"]},
+      {no:"02", time:"5-12초", duration:"7초", title:"정식 서비스 가능할까요?", thesis:"개발의 끝에서 운영 요청이 시작된다.", image:"video-scenes/scene-02.png", roles:"김도윤 · 이준호", purpose:"운영 요청", screen:"김도윤이 노트북과 요청서를 들고 인프라 담당자 이준호의 자리로 온다. 문서를 내밀고, 이준호는 서버 모니터 앞에서 문서를 받아 살펴본다.", voice:"개발자\n“제가 욕가리게를 개발했어요. 민원 담당자들에게 도움이 될거에요. 이거 정식 서비스 가능할까요?”", caption:"“욕가리게를 개발했어요. 정식 서비스 가능할까요?”", motion:"7-second gentle tracking shot. The developer approaches the infrastructure desk, places the request document down, and speaks with hopeful but respectful body language. The infrastructure officer receives the document and looks at it. Keep faces and clothing consistent. No lip-sync text or new text appears.", checks:["사용자 제공 실제 대사가 그대로 들어갔는가", "요청서가 운영 이관 요청으로 읽히는가", "이준호는 서버·운영 담당자로 보이는가"]},
+      {no:"03", time:"12-17초", duration:"5초", title:"우선 보안성검토 받아 오세요", thesis:"운영부서는 보안 근거 없이는 움직일 수 없다.", image:"video-scenes/scene-03.png", roles:"김도윤 · 이준호 · 박서연", purpose:"첫 번째 장벽", screen:"이준호가 요청서를 들고 한 손을 들어 절차상 멈춤을 표시한다. 보안담당자 박서연의 자리 방향을 가리키고, 김도윤은 당황한 표정으로 돌아본다.", voice:"인프라 담당자\n“우선 보안성검토 받아 오세요.”", caption:"“우선 보안성검토 받아 오세요.”", motion:"5-second restrained reaction shot. The infrastructure officer raises one hand slightly in a calm procedural pause gesture and indicates the security desk. The developer turns toward the security officer with a surprised pause. Keep the office layout stable and natural.", checks:["인프라 담당자의 말이 거절이 아니라 절차 요구로 보이는가", "김도윤의 당황한 반응이 보이는가", "세 인물의 역할이 혼동되지 않는가"]},
+      {no:"04", time:"17-24초", duration:"7초", title:"취약점 점검과 SBOM", thesis:"검토 단계에서 생소한 요구사항이 등장한다.", image:"video-scenes/scene-04.png", roles:"김도윤 · 박서연 · 이준호", purpose:"보안검토 병목", screen:"박서연의 보안검토 책상. 요청서와 체크리스트, 라이브러리 목록이 놓여 있다. 박서연이 문서를 들고 요구사항을 설명하고, 김도윤은 SBOM이라는 말에 멈칫한다.", voice:"보안담당자\n“이거 직접 개발하신 거예요? 취약점 점검 받아 오시고, SBOM 제출해 주세요.”", caption:"“취약점 점검과 SBOM을 제출해 주세요.”", motion:"7-second office dialogue shot. The security officer lifts the request document, checks one checklist page, and gestures toward the abstract software-component list. The developer's expression changes from hopeful to confused. The infrastructure officer listens quietly. No readable text appears.", checks:["보안담당자의 요구가 구체적으로 보이는가", "SBOM은 음성과 편집 자막으로만 전달되는가", "보안담당자를 악역처럼 표현하지 않는가"]},
+      {no:"05", time:"24-31초", duration:"7초", title:"네? S 뭐라구요?", thesis:"현업은 무엇을, 어디서, 어떻게 준비할지 모른다.", image:"video-scenes/scene-05.png", roles:"김도윤 · 박서연 · 이준호", purpose:"현업의 난감함", screen:"김도윤이 문서를 들고 박서연을 바라본다. 작은 질문 gesture를 했다가 문서를 내려다보며 말끝을 흐린다. 뒤의 담당자들은 현실적인 표정으로 듣는다.", voice:"개발자\n“네? S 뭐라구요? 취약점 점검은 유료잖아요. 제가 어떻게....”", caption:"“네? S 뭐라구요? 제가 어떻게....”", motion:"7-second close-medium reaction. The developer looks from the document to the security officer, makes a small questioning gesture, then lowers the document with embarrassment. Keep the emotion realistic and restrained, not comedic. Preserve the reference faces and clothing.", checks:["사용자 제공 대사의 당황스러움이 살아 있는가", "유료 도구 부담이 표정과 행동으로 드러나는가", "과장된 코미디 장면이 되지 않았는가"]},
+      {no:"06", time:"31-37초", duration:"6초", title:"그럼 저희는 어떻게 해요", thesis:"누구도 악의적이지 않지만 업무는 멈춘다.", image:"video-scenes/scene-06.png", roles:"김도윤 · 박서연 · 이준호", purpose:"구조적 정체", screen:"세 사람이 회의 테이블에 마주 앉아 있다. 박서연은 문서를 살짝 돌려주며 양손을 펴고, 김도윤은 말없이 내려다본다. 이준호도 시선을 낮춘다.", voice:"보안담당자\n“그럼 저희는 어떻게 해요. 받아오세요.”\n\n짧은 침묵.", caption:"“그럼 저희는 어떻게 해요. 받아오세요.”", motion:"6-second tense three-person shot. The security officer opens both hands in a practical gesture meaning the materials are still required. The developer falls silent and looks down. The infrastructure officer also looks down. Hold the awkward silence naturally, with no aggressive movement.", checks:["보안담당자의 실제 문장이 정확한가", "세 부서 모두 책임 때문에 멈춘 구조가 보이는가", "인물 간 적대감이 과도하지 않은가"]},
+      {no:"07", time:"37-43초", duration:"6초", title:"나는 어떻게 해야 하지?", thesis:"개발과 운영 사이의 구조적 병목.", image:"video-scenes/scene-07.png", roles:"세 인물", purpose:"문제 각인", screen:"회의실 전경. 세 사람은 각자 서류와 모니터를 보고 있다. 중앙과 하단에는 자막을 넣을 여백을 둔다. 요청서는 테이블 가운데 놓인 채 멈춰 있다.", voice:"개발자 속마음 + 나레이션\n“나는 어떻게 해야 하지? 포기해야 하나?”\n\n설명 나레이션\n“개발은 쉬워졌는데, 검토와 운영은 그대로입니다.”", caption:"개발은 쉬워졌는데 검토와 운영은 그대로", motion:"6-second slow zoom out from the stalled meeting. Keep all three people nearly still, with the developer looking at the untouched request document. Preserve a clean central area for Korean narration captions added later. Do not generate text.", checks:["속마음과 설명 나레이션이 구분되는가", "문제 문장이 한 번에 각인되는가", "중앙 자막 공간이 충분한가"]},
+      {no:"08", time:"43-49초", duration:"6초", title:"포털에서 보안 점검 시작", thesis:"클릭 한 번으로 보안 점검을 시작한다.", image:"video-scenes/scene-08.png", roles:"세 인물", purpose:"포털 진입", screen:"포털 메인 화면을 크게 보여준다. 김도윤이 ‘보안 점검’을 클릭하고, 박서연과 이준호가 같은 포털 화면으로 시선을 모은다.", voice:"나레이션\n“포털에서 보안 점검을 누릅니다. 복잡한 명령어 없이, 검사 대상과 방식을 고르면 됩니다.”", caption:"클릭 한 번으로 보안 점검 시작", motion:"6-second gentle push toward the portal monitor. The developer moves the mouse and clicks the prominent security-check entry once. The three characters shift their gaze to the same portal screen and become focused and collaborative. Keep the UI layout stable and do not morph the interface or generate new readable text.", checks:["포털 메인 화면이 장면의 주인공인가", "보안 점검 진입 동작이 보이는가", "실제 포털 UI의 색상과 구조를 반영했는가"]},
+      {no:"09", time:"49-55초", duration:"6초", title:"몇 번의 클릭으로 점검과 보고서", thesis:"점검 결과와 제출 자료가 한 흐름으로 정리된다.", image:"video-scenes/scene-09.png", roles:"김도윤 · 박서연", purpose:"포털 사용 흐름", screen:"포털에서 점검 대상 선택, 표준 점검 선택, 점검 진행률, 결과 카드, HTML·JSON 보고서 저장 화면을 빠르게 연결한다. 김도윤은 결과를 확인하고 박서연은 근거 항목을 검토한다.", voice:"개발자\n“점검 결과가 나왔고, 보고서도 저장됐습니다.”\n\n나레이션\n“몇 번의 클릭으로 제출할 근거가 정리됩니다.”", caption:"점검하고, 결과를 저장하고", motion:"6-second controlled UI pan: move from target selection to standard-check selection, scan progress, result cards, and report-save controls. Highlight each step once in sequence as if a few clicks complete the workflow. Keep the monitor and hand movement minimal, preserve the real portal layout, and do not morph or invent text.", checks:["점검 대상부터 보고서 저장까지 순서가 보이는가", "HTML·JSON 보고서가 시각적으로 드러나는가", "포털이 실제 UI를 보여주는 장면인가"]},
+      {no:"10", time:"55-60초", duration:"5초", title:"보안성검토 요청까지 접수", thesis:"모두가 같은 자료로 다음 단계로 움직인다.", image:"video-scenes/scene-10.png", roles:"세 인물", purpose:"요청 접수·결론", screen:"결과 화면의 ‘보안성검토 요청’ 버튼을 클릭한다. 요청 접수 상태와 저장된 보고서가 보이고, 박서연·이준호·김도윤이 안도하며 다음 단계로 움직인다.", voice:"보안담당자\n“이 자료를 기준으로 검토 요청을 접수하겠습니다.”\n\n나레이션\n“모두가 같은 자료로 다음 단계로 움직입니다. 최종 판단은 사람이 합니다.”", caption:"보안성검토 요청까지 한 흐름으로", motion:"5-second final side shot. The security officer clicks the review-request action once, the interface changes subtly to a submitted/requested state, the infrastructure officer nods, and the developer looks relieved. End on the stable portal result and saved-report view with clear upper space for the closing caption. Human review remains visible; do not show automatic approval.", checks:["보안성검토 요청 버튼과 접수 상태가 보이는가", "세 인물 모두 만족하는 변화가 드러나는가", "포털의 자동 승인 오해를 막는가"]}
+    ];
+
+    let active = 0;
+    const stage = document.getElementById('stage');
+    const timeline = document.getElementById('timeline');
+    stage.innerHTML = '<div class="stage-copy"><div class="scene-kicker" id="sceneKicker"></div><div><h2 class="scene-title" id="sceneTitle"></h2><p class="scene-thesis" id="sceneThesis"></p></div><div class="scene-time" id="sceneTime"></div></div>';
+    scenes.forEach((scene, index) => {
+      const image = document.createElement('img'); image.className = 'stage-image'; image.src = scene.image; image.alt = `${scene.no} ${scene.title}`; image.dataset.index = index; stage.appendChild(image);
+      const button = document.createElement('button'); button.dataset.index = index; button.innerHTML = `<span class="timeline-no">${scene.no} · ${scene.time}</span><span class="timeline-label">${scene.title}</span>`; button.addEventListener('click', () => selectScene(index)); timeline.appendChild(button);
+    });
+    const $ = id => document.getElementById(id);
+    function selectScene(index) {
+      active = (index + scenes.length) % scenes.length; const scene = scenes[active];
+      document.querySelectorAll('.stage-image').forEach((el, i) => el.classList.toggle('active', i === active));
+      document.querySelectorAll('.timeline button').forEach((el, i) => { el.classList.toggle('active', i === active); el.setAttribute('aria-current', i === active ? 'true' : 'false'); });
+      $('sceneKicker').textContent = `SCENE ${scene.no} / ${scene.purpose}`; $('sceneTitle').textContent = scene.title; $('sceneThesis').textContent = scene.thesis; $('sceneTime').textContent = scene.time; $('sceneStatus').textContent = `${scene.no} / ${scenes.length}`; $('metaTime').textContent = scene.time; $('metaDuration').textContent = scene.duration; $('metaRoles').textContent = scene.roles; $('metaPurpose').textContent = scene.purpose;
+      $('screen').textContent = scene.screen; $('voice').textContent = scene.voice; $('motion').textContent = scene.motion; $('caption').textContent = scene.caption; $('captionVoice').textContent = scene.caption; $('promptLink').href = `video-prompts/scene-${scene.no}.md`; $('checks').innerHTML = scene.checks.map(item => `<div class="check">${item}</div>`).join(''); $('playState').textContent = `현재 ${scene.no}번 씬 · ${scene.title}`;
+    }
+    function nextScene() { selectScene(active + 1); }
+    function prevScene() { selectScene(active - 1); }
+    $('next').addEventListener('click', nextScene); $('nextTop').addEventListener('click', nextScene); $('prev').addEventListener('click', prevScene); $('prevTop').addEventListener('click', prevScene);
+    document.querySelectorAll('.tab').forEach(tab => tab.addEventListener('click', () => { document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t === tab)); document.querySelectorAll('.tab-panel').forEach(panel => panel.classList.toggle('active', panel.id === `tab-${tab.dataset.tab}`)); }));
+    document.addEventListener('keydown', event => { if (event.key === 'ArrowRight') nextScene(); if (event.key === 'ArrowLeft') prevScene(); });
+    selectScene(0);
+  </script>
+</body>
+</html>
