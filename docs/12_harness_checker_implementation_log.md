@@ -603,3 +603,16 @@ guard 재실행에서 잡힌 실제 레이스: 상태가 completed 로 바뀐 �
 - `/harness` 화면: "설치 파일로 설치하기 (PowerShell 명령 없이)" 섹션 신설. 체험판이면 주황 배지·SHA-256·만료일·"실제 업무 사용 금지"·서명되지 않음 SmartScreen 안내를 정직하게 표시하고, 정식 서명본이 되면 배지·경고문이 자동으로 바뀌도록 `is_demo` 분기. 하네스 JSON의 `message` 필드가 영문이라 화면엔 노출하지 않고 고정 한국어 문구를 씀.
 - "AI 도구" 미니카드도 같은 데이터로 실시간 채움 — 이전엔 codex·claude·both 3개만 하드코딩되어 있었는데, 실제로는 Antigravity·Claude Desktop·ChatGPT 데스크톱까지 5개가 지원됨(Lovable 제외)을 반영.
 - 검증: `/api/harness/release` 를 로컬 서버에서 직접 호출해 실데이터(버전 0.2.0-demo.2, SHA-256, 5개 도구) 확인. 시나리오에 회귀 추가(available 플래그 항상 boolean, Lovable 미노출, 가용 시 download_url https 검증) — 시나리오 13종, 버튼 계약 통과. 헤드리스 캡처로 실제 렌더링 1회 확인 후 message 필드 영문 노출 발견·수정.
+
+## 2026-08-29 집 서버 구축 — 상시 가동 서비스화 완료 (docs/30 지시서 수행)
+
+집 노트북(HP OMEN Slim 16-an0xxx / Intel Core Ultra 5 225H 14C14T / RAM 63GB / Windows 11 Pro 26200)을 `VibeCodePortal` 서비스로 상시 가동시켰다. 접속은 집 LAN 한정(§6 원칙대로 인터넷 직접 공개·포트포워딩 없음).
+
+- **구성**: 포털 `C:\servers\vibecode-security-gate-portal`(npm ci), 체커 `C:\servers\vibecode-checker` — 체커는 **전용 venv `C:\servers\checker-venv`**(python.org 3.11.9)에 `pip install -e .`. `gvskb doctor` OK 26 · WARN 3 · **ERROR 0**(WARN: PYTHONUTF8/PYTHONIOENCODING 미설정, semgrep 미설치 — 서비스 환경변수로 앞의 둘 해소). 데이터 `C:\portal-data\`, 로그 `C:\servers\portal-logs\`.
+- **스모크 7종 전부 통과**: ①health(127.0.0.1·LAN IP) ②메인 화면 200 ③매직링크 가입·로그인(개발 모드) + 관리자 로그인·summary ④예제 폴더(fixtures/checker-negative-fixture) 10파일 업로드 → 간편점검 completed(8파일 스캔·16건 탐지·HTML/MD/JSON 보고서 3종 + registry-bundle·관측 자동 적재) ⑤휴대폰(같은 와이파이) 메인 화면 ⑥재부팅 후 서비스 자동 기동·①⑤ 재확인 ⑦데이터가 전부 `C:\portal-data\` 아래에만 생성(코드 폴더엔 `.local`·`reports` 없음).
+- **걸린 문제 3건과 해결**(절차서 docs/29 에 반영):
+  ① **NSSM 서비스(LocalSystem)가 `gvskb` 를 못 찾음** — 포털은 PATH 의 `gvskb` 를 실행하는데 서비스 계정 PATH 에 체커 venv 가 없다. Machine PATH 등록 + `nssm set VibeCodePortal AppEnvironmentExtra "PATH=..." "PYTHONUTF8=1" "PYTHONIOENCODING=utf-8"` 로 해결(SCM 이 부팅 시 환경을 캐시하므로 AppEnvironmentExtra 가 확실한 쪽).
+  ② **방화벽 규칙은 Private 프로파일 한정인데 집 와이파이가 Public 으로 분류** — 규칙이 있어도 다른 기기에서 막힌다. `Set-NetConnectionProfile -NetworkCategory Private` 필요(반드시 **관리자 권한** 창에서 — 일반 창에서 실행하면 "not running PowerShell elevated" 로 실패).
+  ③ **로그 경로가 문서와 불일치** — 절차서 트리는 `C:\portal-logs\` 인데 `setup-server.ps1` 은 저장소 상위(`C:\servers\portal-logs\`)에 만든다. 실제 동작에 맞춰 절차서를 수정.
+- **관찰(수정 안 함)**: `prepare_target` 실패로 끝난 점검은 업로드 스테이징(`tmp\scan-targets\browser-*`)을 남긴다. 성공 경로는 정리됨. 데이터 위치 원칙 위반은 아니지만(임시 폴더) 상시 서버에서 누적 여지 — 정리 주기 검토 후보.
+- **운영 메모**: 접속 주소는 `http://<노트북 LAN IP>:8787`, DHCP 이므로 공유기 DHCP 예약 필요. 관리자 초기 비밀번호는 `.env` 에만 두고 첫 로그인 후 변경. 동료 테스트(도청)는 docs/29 부록 A-1(Cloudflare Tunnel + Access) 설정 후.
