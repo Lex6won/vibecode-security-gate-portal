@@ -130,6 +130,9 @@
       overflow-wrap: break-word;
     }
     .save-button { width: fit-content; min-height: 44px; padding: 0 18px; }
+    .login-field { display: grid; gap: 5px; }
+    .login-field > span { font-size: 12.5px; font-weight: 900; color: var(--muted); }
+    .login-field > span em { font-style: normal; font-weight: 700; color: var(--muted); opacity: .75; }
     .mode-grid {
       margin-top: 14px;
       display: grid;
@@ -300,9 +303,9 @@
             <span>AI로 만든 개발 소스의 보안 위험을 빠르게 확인합니다.</span>
           </span>
         </a>
-        <div aria-label="현재 상태">
-          <span class="pill ok">체커 정상</span>
-          <span class="pill">온라인 연결</span>
+        <div aria-label="현재 상태" aria-live="polite">
+          <span class="pill" id="checkerBadge">체커 확인 중</span>
+          <span class="pill" id="serverBadge">서버 확인 중</span>
           <a class="pill" href="https://github.com/Lex6won/vibecode-checker" target="_blank" rel="noreferrer">체커 GitHub</a>
         </div>
       </header>
@@ -325,11 +328,14 @@
         <h2 class="flow-title" id="login-title"><span class="sequence">✓</span><span>기관 메일로 로그인</span></h2>
         <p style="margin: 8px 0 4px;">비밀번호가 없습니다. 기관 메일 주소로 1회용 로그인 링크를 받아 접속합니다. 처음이면 기관명·부서명만 함께 입력하세요.</p>
         <p id="loginNote" style="margin: 0 0 10px; font-size: 13px; color: var(--muted);">허용 메일: @gg.go.kr, @korea.kr</p>
-        <div class="input-row" style="flex-wrap: wrap; gap: 8px;">
-          <input id="loginEmail" type="email" aria-label="기관 이메일" placeholder="이름@gg.go.kr" style="min-width: 220px;">
-          <input id="loginOrganization" aria-label="기관명" placeholder="기관명 (예: 경기도청)" style="min-width: 160px;">
-          <input id="loginDepartment" aria-label="부서명" placeholder="부서명 (예: AI산업육성과)" style="min-width: 160px;">
-          <button class="button save-button" id="requestLoginLink" type="button">로그인 링크 받기</button>
+        <div class="input-row" style="flex-wrap: wrap; gap: 10px; align-items: end;">
+          <label class="login-field" style="flex: 1 1 220px;"><span>기관 이메일</span>
+            <input id="loginEmail" type="email" placeholder="이름@gg.go.kr" autocomplete="email"></label>
+          <label class="login-field" style="flex: 1 1 160px;"><span>기관명 <em>(처음 한 번)</em></span>
+            <input id="loginOrganization" placeholder="예: 경기도청" autocomplete="organization"></label>
+          <label class="login-field" style="flex: 1 1 160px;"><span>부서명 <em>(처음 한 번)</em></span>
+            <input id="loginDepartment" placeholder="예: AI산업육성과"></label>
+          <button class="button save-button" id="requestLoginLink" type="button" style="min-height:46px;">로그인 링크 받기</button>
         </div>
         <div id="devLoginArea" hidden style="margin-top: 10px;">
           <p style="font-size: 13px; color: var(--muted); margin-bottom: 6px;">메일 발송이 연결되기 전이라 링크를 화면에 표시합니다. 아래를 누르면 로그인됩니다.</p>
@@ -401,7 +407,7 @@
     </main>
   </div>
 
-  <section class="modal" id="scanProgress" aria-label="검사 진행상황" aria-live="polite" hidden>
+  <section class="modal" id="scanProgress" role="dialog" aria-modal="true" aria-label="검사 진행상황" aria-live="polite" hidden>
     <div class="modal-card">
       <div class="modal-head">
         <div>
@@ -432,7 +438,7 @@
     </div>
   </section>
 
-  <section class="modal" id="saveLocationPrompt" aria-labelledby="saveLocationPromptTitle" hidden>
+  <section class="modal" id="saveLocationPrompt" role="dialog" aria-modal="true" aria-labelledby="saveLocationPromptTitle" hidden>
     <div class="modal-card">
       <div class="modal-head">
         <div>
@@ -451,7 +457,7 @@
     </div>
   </section>
 
-  <section class="modal" id="targetProgress" aria-labelledby="targetProgressTitle" aria-live="polite" hidden>
+  <section class="modal" id="targetProgress" role="dialog" aria-modal="true" aria-labelledby="targetProgressTitle" aria-live="polite" hidden>
     <div class="modal-card">
       <div class="modal-head">
         <div>
@@ -518,6 +524,39 @@
     const scanCompleteActions = document.querySelector("#scanCompleteActions");
     const closeCompletedScan = document.querySelector("#closeCompletedScan");
     let saveLocationSelectionInFlight = false;
+
+    // ── 모달 포커스 관리: 열리면 첫 행동 버튼으로, Tab 은 모달 안에서 순환, 닫히면 제자리로 ──
+    const modalOpeners = new WeakMap();
+    function modalFocusables(modal) {
+      return [...modal.querySelectorAll("button, a[href], input")].filter(
+        (el) => !el.hidden && !el.closest("[hidden]") && !el.disabled && el.offsetParent !== null
+      );
+    }
+    function openModal(modal) {
+      if (!modal.hidden) return;
+      modalOpeners.set(modal, document.activeElement);
+      modal.hidden = false;
+      const focusables = modalFocusables(modal);
+      const primary = focusables.find((el) => el.classList.contains("primary")) || focusables[0];
+      if (primary) primary.focus();
+    }
+    function closeModal(modal) {
+      if (modal.hidden) return;
+      modal.hidden = true;
+      const opener = modalOpeners.get(modal);
+      if (opener && document.contains(opener) && !opener.closest("[hidden]")) opener.focus();
+    }
+    document.querySelectorAll(".modal").forEach((modal) => {
+      modal.addEventListener("keydown", (event) => {
+        if (event.key !== "Tab") return;
+        const focusables = modalFocusables(modal);
+        if (!focusables.length) return;
+        const first = focusables[0];
+        const last = focusables[focusables.length - 1];
+        if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+        else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+      });
+    });
     // 폴더 직접 저장(showDirectoryPicker)은 https 또는 127.0.0.1 에서만 존재한다.
     // LAN IP(http://192.168...)로 접속하면 API 자체가 없어, 폴백으로 "화면에서 내려받기" 모드로 진행한다.
     // ?save=download 로 강제해 폴백 화면을 시험할 수 있다.
@@ -566,7 +605,7 @@
       targetProgressBar.style.width = `${Math.max(0, Math.min(100, percent))}%`;
       targetProgressBar.classList.toggle("done", completed);
       targetProgressActions.hidden = !completed;
-      targetProgress.hidden = false;
+      openModal(targetProgress);
     }
 
     function completeTargetProgress({ title, description, state, detail, startScan = false }) {
@@ -690,10 +729,11 @@
 
     function setScanRunning(mode) {
       scanProgressTitle.textContent = "검사를 진행하고 있습니다.";
-      scanProgressDescription.textContent = mode?.dataset.mode === "quick"
+      scanProgressDescription.textContent = (mode?.dataset.mode === "quick"
         ? "간편 점검은 고위험 규칙과 의존성을 빠르게 확인합니다."
-        : "표준점검은 전체 파일을 확인합니다. 시간이 오래 걸릴 수 있습니다.";
-      closeScanProgress.hidden = true;
+        : "표준점검은 전체 파일을 확인합니다. 시간이 오래 걸릴 수 있습니다.")
+        + " 창을 닫아도 점검은 계속되며, 결과는 점검 후 확인 카드에 표시됩니다.";
+      closeScanProgress.hidden = false;
       scanCompleteActions.hidden = true;
       retryScan.hidden = true;
     }
@@ -867,12 +907,44 @@
       }
     });
 
+    // Enter 로도 로그인 링크를 요청할 수 있게 한다 (form 이 아니라 기본 제출이 없음).
+    [loginEmail, loginOrganization, loginDepartment].forEach((field) => {
+      field.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" && !requestLoginLink.disabled) requestLoginLink.click();
+      });
+    });
+
     logoutButton.addEventListener("click", async () => {
       try { await fetch("/api/auth/logout", { method: "POST" }); } catch {}
       window.location.reload();
     });
 
     loadSession();
+
+    // 상단 배지를 실제 상태와 연결한다 — 정적 "정상" 표시는 장애 때 거짓말이 된다.
+    (async function loadStatusBadges() {
+      const checkerBadge = document.querySelector("#checkerBadge");
+      const serverBadge = document.querySelector("#serverBadge");
+      try {
+        const response = await fetch("/api/tools/versions", { cache: "no-store" });
+        if (!response.ok) throw new Error("unreachable");
+        const data = await response.json();
+        serverBadge.textContent = "서버 연결됨";
+        serverBadge.classList.add("ok");
+        const doctor = data.checker?.doctor_status;
+        if (data.checker?.installed && doctor === "ok") {
+          checkerBadge.textContent = "체커 정상"; checkerBadge.classList.add("ok");
+        } else if (data.checker?.installed && doctor === "warn") {
+          checkerBadge.textContent = "체커 정상(주의)"; checkerBadge.classList.add("ok");
+          checkerBadge.title = "체커는 동작하지만 경고가 있습니다.";
+        } else {
+          checkerBadge.textContent = "체커 점검 필요"; checkerBadge.classList.add("warn");
+        }
+      } catch {
+        serverBadge.textContent = "서버 연결 확인 불가"; serverBadge.classList.add("warn");
+        checkerBadge.textContent = "체커 확인 불가"; checkerBadge.classList.add("warn");
+      }
+    })();
 
     const resultSource = document.querySelector("#resultSource");
     const resultRetention = document.querySelector("#resultRetention");
@@ -1074,7 +1146,7 @@
         message: `${getTargetLabel()}을 준비하고 있습니다.`,
         steps: [{ name: "prepare_target", status: "running" }]
       });
-      scanProgress.hidden = false;
+      openModal(scanProgress);
       setResultPending(`${mode.dataset.modeTitle}을 시작했습니다.`);
       try {
         await startApiScan(mode);
@@ -1108,7 +1180,7 @@
 
     confirmTargetProgress.addEventListener("click", async () => {
       const shouldStartScan = confirmTargetProgress.dataset.startScan === "true";
-      targetProgress.hidden = true;
+      closeModal(targetProgress);
       confirmTargetProgress.dataset.startScan = "false";
       if (shouldStartScan && pendingMode) {
         const mode = pendingMode;
@@ -1190,11 +1262,11 @@
       saveLocationPromptDescription.textContent = "점검을 시작하려면 HTML·MD·JSON 보고서를 저장할 폴더를 먼저 선택해야 합니다.";
       saveLocationPromptActions.hidden = false;
       saveLocationCompleteActions.hidden = true;
-      saveLocationPrompt.hidden = false;
+      openModal(saveLocationPrompt);
     }
 
     function closeSavePrompt() {
-      saveLocationPrompt.hidden = true;
+      closeModal(saveLocationPrompt);
       pendingMode = null;
     }
 
@@ -1203,28 +1275,28 @@
     confirmSaveLocation.addEventListener("click", async () => {
       const queuedMode = pendingMode;
       pendingMode = null;
-      saveLocationPrompt.hidden = true;
+      closeModal(saveLocationPrompt);
       if (queuedMode) await runScan(queuedMode);
     });
     closeSaveLocationPrompt.addEventListener("click", closeSavePrompt);
     cancelSaveLocation.addEventListener("click", closeSavePrompt);
 
-    closeScanProgress.addEventListener("click", () => { scanProgress.hidden = true; });
+    closeScanProgress.addEventListener("click", () => closeModal(scanProgress));
     closeCompletedScan.addEventListener("click", () => {
-      scanProgress.hidden = true;
+      closeModal(scanProgress);
       document.querySelector(".result-card").scrollIntoView({ behavior: "smooth", block: "nearest" });
     });
     retryScan.addEventListener("click", async () => {
       const mode = lastScanMode;
-      scanProgress.hidden = true;
+      closeModal(scanProgress);
       if (mode) await runScan(mode);
     });
 
     window.addEventListener("keydown", (event) => {
       if (event.key === "Escape") {
-        if (!scanCompleteActions.hidden) scanProgress.hidden = true;
+        if (!scanProgress.hidden) closeModal(scanProgress);
         if (!saveLocationPrompt.hidden) closeSavePrompt();
-        if (!targetProgressActions.hidden) targetProgress.hidden = true;
+        if (!targetProgressActions.hidden) closeModal(targetProgress);
       }
     });
   </script>
