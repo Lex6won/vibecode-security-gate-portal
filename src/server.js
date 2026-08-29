@@ -6,7 +6,7 @@ import { cpus } from "node:os";
 import { pipeline } from "node:stream/promises";
 import { basename, dirname, extname, isAbsolute, join, normalize, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { randomBytes, randomUUID, scryptSync, timingSafeEqual } from "node:crypto";
+import { createPublicKey, randomBytes, randomUUID, scryptSync, timingSafeEqual, verify as cryptoVerify } from "node:crypto";
 import Busboy from "busboy";
 import { initObservationStore, toObservationRecord, hasSubmission, recordSubmission, observationSummary, usageStatsSnapshot } from "./observation-store.mjs";
 import { initWhitelistStore, whitelistStatus, setWhitelistEntry, whitelistSnapshot, whitelistSummary, recordWhitelistExport } from "./whitelist-store.mjs";
@@ -83,6 +83,77 @@ const ALLOWED_EMAIL_DOMAINS = String(runtimeEnv.PORTAL_ALLOWED_EMAIL_DOMAINS || 
   .split(",").map((value) => value.trim().toLowerCase()).filter(Boolean);
 // SMTP 미확정(§9): 개발 모드는 링크를 응답으로 돌려줘 화면에 표시한다. 실발송 어댑터는 SMTP 확정 후.
 const AUTH_DEV_MODE = runtimeEnv.PORTAL_AUTH_MODE !== "smtp";
+
+// ---- Cloudflare Access 연동(선택) -------------------------------------------
+// 터널(portal.<도메인>) 관문을 통과한 요청에는 Cloudflare 가 서명한 JWT 헤더
+// (Cf-Access-Jwt-Assertion)가 붙는다. 이를 공개키로 검증해 포털 로그인을 대체한다.
+// 두 값이 모두 설정된 경우에만 동작한다 — LAN 접속(헤더 없음)은 기존 매직링크 그대로.
+// 헤더는 위조 가능하므로 서명·발급자·대상(aud)·만료를 전부 검증한다. 검증 실패 = 없는 것으로 취급.
+const ACCESS_TEAM_DOMAIN = String(runtimeEnv.PORTAL_ACCESS_TEAM_DOMAIN || "").trim();
+const ACCESS_AUD = String(runtimeEnv.PORTAL_ACCESS_AUD || "").trim();
+const ACCESS_BASE = ACCESS_TEAM_DOMAIN
+  ? (ACCESS_TEAM_DOMAIN.startsWith("http://") || ACCESS_TEAM_DOMAIN.startsWith("https://")
+      ? ACCESS_TEAM_DOMAIN.replace(/\/$/, "")
+      : `https://${ACCESS_TEAM_DOMAIN}`)
+  : "";
+const ACCESS_ENABLED = Boolean(ACCESS_BASE && ACCESS_AUD);
+const ACCESS_CERTS_TTL_MS = 60 * 60 * 1000;
+let accessCertsCache = { at: 0, keys: null };
+
+function base64UrlToBuffer(value) {
+  return Buffer.from(String(value).replace(/-/g, "+").replace(/_/g, "/"), "base64");
+}
+
+async function fetchAccessKeys() {
+  if (accessCertsCache.keys && Date.now() - accessCertsCache.at < ACCESS_CERTS_TTL_MS) {
+    return accessCertsCache.keys;
+  }
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
+    const response = await fetch(`${ACCESS_BASE}/cdn-cgi/access/certs`, { signal: controller.signal });
+    clearTimeout(timeout);
+    if (!response.ok) throw new Error(`http_${response.status}`);
+    const jwks = await response.json();
+    const keys = new Map();
+    for (const jwk of jwks.keys || []) {
+      if (jwk.kty === "RSA" && jwk.kid) keys.set(jwk.kid, createPublicKey({ key: jwk, format: "jwk" }));
+    }
+    if (keys.size) accessCertsCache = { at: Date.now(), keys };
+    return accessCertsCache.keys;
+  } catch {
+    // 조회 실패 시 이전 키가 있으면 그대로 쓴다(로그인 가용성) — 없으면 검증 불가로 거부.
+    return accessCertsCache.keys;
+  }
+}
+
+async function accessEmailFromRequest(request) {
+  if (!ACCESS_ENABLED) return null;
+  const token = String(request.headers["cf-access-jwt-assertion"] || "");
+  const parts = token.split(".");
+  if (parts.length !== 3) return null;
+  try {
+    const header = JSON.parse(base64UrlToBuffer(parts[0]).toString("utf8"));
+    const payload = JSON.parse(base64UrlToBuffer(parts[1]).toString("utf8"));
+    if (header.alg !== "RS256") return null;
+    const keys = await fetchAccessKeys();
+    const key = keys?.get(header.kid);
+    if (!key) return null;
+    const signed = Buffer.from(`${parts[0]}.${parts[1]}`, "utf8");
+    if (!cryptoVerify("RSA-SHA256", signed, key, base64UrlToBuffer(parts[2]))) return null;
+    const now = Math.floor(Date.now() / 1000);
+    const audiences = Array.isArray(payload.aud) ? payload.aud : [payload.aud];
+    if (payload.iss !== ACCESS_BASE) return null;
+    if (!audiences.includes(ACCESS_AUD)) return null;
+    if (!(Number(payload.exp) > now - 30)) return null;
+    if (payload.nbf && !(Number(payload.nbf) <= now + 30)) return null;
+    const email = normalizeEmail(String(payload.email || ""));
+    if (!isValidEmail(email) || !emailDomainAllowed(email, ALLOWED_EMAIL_DOMAINS)) return null;
+    return email;
+  } catch {
+    return null;
+  }
+}
 const USER_SESSION_TTL_MS = 12 * 60 * 60 * 1000;
 const USER_CONCURRENT_SCANS = Math.max(1, Number(runtimeEnv.PORTAL_USER_CONCURRENT_SCANS || 1));
 const userSessions = new Map();
@@ -1358,6 +1429,34 @@ async function handleApi(request, response, pathname) {
     return;
   }
 
+  // ---- Cloudflare Access 자동 로그인 ---------------------------------------
+  // 관문의 서명 JWT 로 이메일 소유가 이미 증명됐으므로 매직링크를 생략한다.
+  // 신규 계정은 기관명·부서명을 함께 받아야 한다(매직링크 가입과 동일 규칙).
+  if (request.method === "POST" && pathname === "/api/auth/access-login") {
+    if (!ACCESS_ENABLED) {
+      notFound(response);
+      return;
+    }
+    const email = await accessEmailFromRequest(request);
+    if (!email) {
+      json(response, 401, { error: "access_required", message: "관문 인증을 확인하지 못했습니다. 새로고침 후 다시 시도해 주세요." });
+      return;
+    }
+    const body = await readJson(request);
+    const organization = String(body.organization || "").trim();
+    const department = String(body.department || "").trim();
+    const isNew = !getAccount(email);
+    if (isNew && (!organization || !department)) {
+      json(response, 400, { error: "registration_required", message: "처음 시작할 때는 기관명과 부서명을 함께 입력해 주세요." });
+      return;
+    }
+    await upsertAccountOnLogin({ email, organization, department });
+    await recordAuthAudit("access_login", email, { new_account: isNew });
+    const cookie = createUserSession(email);
+    json(response, 200, { status: "logged_in", email }, { "Set-Cookie": cookie });
+    return;
+  }
+
   // ---- P3: 매직링크 가입·로그인 -------------------------------------------
   if (request.method === "POST" && pathname === "/api/auth/request-link") {
     const body = await readJson(request);
@@ -1397,7 +1496,15 @@ async function handleApi(request, response, pathname) {
   if (request.method === "GET" && pathname === "/api/auth/session") {
     const account = currentUser(request);
     if (!account) {
-      json(response, 200, { logged_in: false, report_retention_days: REPORT_RETENTION_DAYS || null });
+      // 관문(Access)을 이미 통과한 사람에게는 매직링크를 다시 시키지 않는다 —
+      // 화면이 이 정보로 "바로 시작" 경로를 보여준다.
+      const accessEmail = await accessEmailFromRequest(request);
+      json(response, 200, {
+        logged_in: false,
+        report_retention_days: REPORT_RETENTION_DAYS || null,
+        access_email: accessEmail,
+        access_registered: accessEmail ? Boolean(getAccount(accessEmail)) : false
+      });
       return;
     }
     json(response, 200, {

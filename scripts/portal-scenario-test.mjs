@@ -3,6 +3,7 @@
 // 입력은 업로드(browser_folder/browser_archive)와 GitHub URL뿐이다.
 // 로컬 픽커·로컬 절대경로·save_dir·설치/MCP 라우트는 제거됐음을 함께 검증한다.
 import assert from "node:assert/strict";
+import { createSign, generateKeyPairSync } from "node:crypto";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { existsSync } from "node:fs";
@@ -569,6 +570,107 @@ async function scenarioHarnessReleaseGuard(fixture) {
   }
 }
 
+// Cloudflare Access 연동: 서명이 유효한 JWT 만 로그인으로 인정한다.
+// 위조 토큰(다른 키 서명)·무토큰은 거부, 미설정 서버는 라우트 자체가 없어야 한다.
+async function scenarioAccessLogin(fixture) {
+  const certsPort = Number(process.env.PORTAL_ACCESS_CERTS_PORT || 8799);
+  const portalPort = Number(process.env.PORTAL_ACCESS_TEST_PORT || 8800);
+  const teamBase = `http://127.0.0.1:${certsPort}`;
+  const aud = "portal-test-aud";
+
+  const good = generateKeyPairSync("rsa", { modulusLength: 2048 });
+  const evil = generateKeyPairSync("rsa", { modulusLength: 2048 });
+  const jwk = { ...good.publicKey.export({ format: "jwk" }), kid: "test-key", alg: "RS256", use: "sig" };
+  const certs = createHttpServer((request, response) => {
+    response.writeHead(200, { "Content-Type": "application/json" });
+    response.end(JSON.stringify({ keys: [jwk] }));
+  });
+  await new Promise((resolveListen) => certs.listen(certsPort, "127.0.0.1", resolveListen));
+
+  const b64url = (value) => Buffer.from(value).toString("base64url");
+  const makeJwt = (privateKey, payloadOverride = {}) => {
+    const now = Math.floor(Date.now() / 1000);
+    const header = b64url(JSON.stringify({ alg: "RS256", kid: "test-key", typ: "JWT" }));
+    const payload = b64url(JSON.stringify({
+      iss: teamBase, aud: [aud], email: "access-user@gg.go.kr",
+      iat: now, nbf: now - 10, exp: now + 300, ...payloadOverride
+    }));
+    const signer = createSign("RSA-SHA256");
+    signer.update(`${header}.${payload}`);
+    return `${header}.${payload}.${signer.sign(privateKey).toString("base64url")}`;
+  };
+
+  const server = spawn(process.execPath, ["src/server.js"], {
+    cwd: process.cwd(),
+    env: {
+      ...process.env,
+      PORT: String(portalPort),
+      ADMIN_INITIAL_PASSWORD: adminPassword,
+      ADMIN_AUTH_FILE: join(fixture.fixtureDir, "access-admin.json"),
+      PORTAL_SCAN_HISTORY_FILE: join(fixture.fixtureDir, "access-history.jsonl"),
+      PORTAL_OBSERVATION_DIR: join(fixture.fixtureDir, "access-observations"),
+      PORTAL_ACCOUNT_DIR: join(fixture.fixtureDir, "access-accounts"),
+      PORTAL_WHITELIST_DIR: join(fixture.fixtureDir, "access-whitelist"),
+      PORTAL_ACCESS_TEAM_DOMAIN: teamBase,
+      PORTAL_ACCESS_AUD: aud,
+      PORTAL_LOCAL_API_TOKEN: localApiToken,
+      PYTHONUTF8: "1",
+      PYTHONIOENCODING: "utf-8"
+    },
+    stdio: ["ignore", "ignore", "ignore"],
+    windowsHide: true
+  });
+  try {
+    let ready = false;
+    for (let attempt = 0; attempt < 40 && !ready; attempt += 1) {
+      if (server.exitCode !== null) throw new Error("access test server died");
+      try { ready = (await fetch(`http://127.0.0.1:${portalPort}/health`)).ok; } catch { await wait(250); }
+    }
+    assert.ok(ready, "access test server did not become ready");
+    const base = `http://127.0.0.1:${portalPort}`;
+    const post = (jwt, body = {}) => fetch(`${base}/api/auth/access-login`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-VibeCode-Local-Token": localApiToken,
+        ...(jwt ? { "Cf-Access-Jwt-Assertion": jwt } : {})
+      },
+      body: JSON.stringify(body)
+    });
+
+    const noToken = await post(null);
+    assert.equal(noToken.status, 401, "missing Access JWT must be rejected");
+    const forged = await post(makeJwt(evil.privateKey));
+    assert.equal(forged.status, 401, "a JWT signed by an unknown key must be rejected");
+    const wrongAud = await post(makeJwt(good.privateKey, { aud: ["other-app"] }));
+    assert.equal(wrongAud.status, 401, "a JWT for another application must be rejected");
+    const expired = await post(makeJwt(good.privateKey, { exp: Math.floor(Date.now() / 1000) - 600 }));
+    assert.equal(expired.status, 401, "an expired JWT must be rejected");
+
+    const missingProfile = await post(makeJwt(good.privateKey));
+    assert.equal(missingProfile.status, 400, "a new account must still provide organization and department");
+    const ok = await post(makeJwt(good.privateKey), { organization: "경기도청", department: "AI산업육성과" });
+    assert.equal(ok.status, 200, "a valid Access JWT must sign the user in");
+    const cookie = String(ok.headers.get("set-cookie") || "").split(";")[0];
+    assert.ok(cookie.startsWith("portal_session="), "access login must issue a portal session");
+    const who = await (await fetch(`${base}/api/auth/session`, {
+      headers: { "X-VibeCode-Local-Token": localApiToken, cookie }
+    })).json();
+    assert.equal(who.email, "access-user@gg.go.kr", "session must belong to the JWT email");
+
+    // 세션 조회는 관문 인증 사실을 화면에 알려준다 (빠른 시작 경로의 근거).
+    const hinted = await (await fetch(`${base}/api/auth/session`, {
+      headers: { "X-VibeCode-Local-Token": localApiToken, "Cf-Access-Jwt-Assertion": makeJwt(good.privateKey) }
+    })).json();
+    assert.equal(hinted.access_email, "access-user@gg.go.kr");
+    assert.equal(hinted.access_registered, true);
+  } finally {
+    server.kill();
+    await Promise.race([once(server, "exit"), wait(2000)]);
+    await new Promise((resolveClose) => certs.close(resolveClose));
+  }
+}
+
 // P5: 보존기한이 지난 보고서는 기동 시 삭제되고, 기한 내 보고서는 남는다.
 async function scenarioReportRetention(fixture) {
   const retentionPort = Number(process.env.PORTAL_RETENTION_TEST_PORT || 8796);
@@ -805,6 +907,10 @@ try {
   await scenarioQueueAndCapacity(fixture);
   await scenarioHostAllowlist(fixture);
   await scenarioHarnessReleaseGuard(fixture);
+  await scenarioAccessLogin(fixture);
+  // 미설정 서버(메인 테스트 서버)에서는 라우트 자체가 닫혀 있어야 한다.
+  const accessDisabled = await fetch(`${baseUrl}/api/auth/access-login`, { method: "POST", headers: localHeaders({ "Content-Type": "application/json" }), body: "{}" });
+  assert.equal(accessDisabled.status, 404, "access-login must be absent when the integration is not configured");
   await scenarioReportRetention(fixture);
   console.log(JSON.stringify({
     status: "passed",
@@ -823,6 +929,7 @@ try {
       queue_and_capacity: true,
       host_allowlist: true,
       harness_release_guard: true,
+      access_login: true,
       report_retention: true
     }
   }, null, 2));

@@ -328,7 +328,18 @@
         <h2 class="flow-title" id="login-title"><span class="sequence">✓</span><span>기관 메일로 로그인</span></h2>
         <p style="margin: 8px 0 4px;">비밀번호가 없습니다. 기관 메일 주소로 1회용 로그인 링크를 받아 접속합니다. 처음이면 기관명·부서명만 함께 입력하세요.</p>
         <p id="loginNote" style="margin: 0 0 10px; font-size: 13px; color: var(--muted);">허용 메일: @gg.go.kr, @korea.kr</p>
-        <div class="input-row" style="flex-wrap: wrap; gap: 10px; align-items: end;">
+        <div id="accessLoginArea" hidden>
+          <p style="margin: 0 0 10px;" id="accessLoginWho">확인 중</p>
+          <div class="input-row" id="accessProfileRow" hidden style="flex-wrap: wrap; gap: 10px; align-items: end;">
+            <label class="login-field" style="flex: 1 1 200px;"><span>기관명 <em>(처음 한 번)</em></span>
+              <input id="accessOrganization" placeholder="예: 경기도청" autocomplete="organization"></label>
+            <label class="login-field" style="flex: 1 1 200px;"><span>부서명 <em>(처음 한 번)</em></span>
+              <input id="accessDepartment" placeholder="예: AI산업육성과"></label>
+          </div>
+          <button class="button save-button" id="accessLoginButton" type="button" style="margin-top: 10px;">바로 시작하기</button>
+          <p id="accessLoginNote" style="margin: 8px 0 0; font-size: 13px; color: var(--muted);"></p>
+        </div>
+        <div class="input-row" id="magicLoginRow" style="flex-wrap: wrap; gap: 10px; align-items: end;">
           <label class="login-field" style="flex: 1 1 220px;"><span>기관 이메일</span>
             <input id="loginEmail" type="email" placeholder="이름@gg.go.kr" autocomplete="email"></label>
           <label class="login-field" style="flex: 1 1 160px;"><span>기관명 <em>(처음 한 번)</em></span>
@@ -833,8 +844,32 @@
     const loginNote = document.querySelector("#loginNote");
     const scanGrid = document.querySelector(".scan-grid");
 
+    const accessLoginArea = document.querySelector("#accessLoginArea");
+    const accessLoginWho = document.querySelector("#accessLoginWho");
+    const accessProfileRow = document.querySelector("#accessProfileRow");
+    const accessOrganization = document.querySelector("#accessOrganization");
+    const accessDepartment = document.querySelector("#accessDepartment");
+    const accessLoginButton = document.querySelector("#accessLoginButton");
+    const accessLoginNote = document.querySelector("#accessLoginNote");
+    const magicLoginRow = document.querySelector("#magicLoginRow");
+
+    // 관문(Access)을 통과해 들어온 사람은 이메일 소유가 이미 증명됐다 —
+    // 매직링크 대신 한 번의 클릭(신규는 소속 입력)으로 시작한다.
+    function applyAccessShortcut(session) {
+      const accessEmail = session && !session.logged_in ? session.access_email : null;
+      accessLoginArea.hidden = !accessEmail;
+      magicLoginRow.hidden = Boolean(accessEmail);
+      if (loginNote) loginNote.hidden = Boolean(accessEmail);
+      if (!accessEmail) return;
+      const isNew = !session.access_registered;
+      accessLoginWho.innerHTML = `보안 관문에서 <b>${accessEmail}</b> 인증을 확인했습니다. 별도 로그인 없이 시작할 수 있습니다.`;
+      accessProfileRow.hidden = !isNew;
+      accessLoginButton.textContent = isNew ? "소속 입력하고 시작하기" : "바로 시작하기";
+    }
+
     function applySession(session) {
       const loggedIn = Boolean(session && session.logged_in);
+      applyAccessShortcut(session);
       // 로그인 전/후로 세로 레이아웃이 달라진다 — CSS 가 판단할 수 있게 상태를 표시한다.
       document.body.classList.toggle("logged-out", !loggedIn);
       loginGate.hidden = loggedIn;
@@ -904,6 +939,32 @@
       } finally {
         requestLoginLink.disabled = false;
         requestLoginLink.textContent = "로그인 링크 받기";
+      }
+    });
+
+    accessLoginButton.addEventListener("click", async () => {
+      accessLoginButton.disabled = true;
+      accessLoginNote.textContent = "";
+      try {
+        const response = await fetch("/api/auth/access-login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            organization: accessOrganization.value.trim(),
+            department: accessDepartment.value.trim()
+          })
+        });
+        const result = await response.json();
+        if (response.ok) {
+          window.location.reload();
+          return;
+        }
+        accessLoginNote.textContent = result.message || "시작하지 못했습니다. 다시 시도해 주세요.";
+        if (result.error === "registration_required") accessProfileRow.hidden = false;
+      } catch {
+        accessLoginNote.textContent = "연결을 확인해 주세요.";
+      } finally {
+        accessLoginButton.disabled = false;
       }
     });
 
