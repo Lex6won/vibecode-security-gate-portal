@@ -222,6 +222,12 @@ async function assertToolsGuidePage() {
   assert.ok(html.includes('fetch("/api/tools/versions"'), "tools page must load the server checker version");
   assert.ok(html.includes("확인할 수 없습니다"), "version load failure must be shown honestly, never as up-to-date");
   assert.ok(!/data-action="(harness|checker)-(install|update)"/.test(html), "web page must not expose PC install/update actions after the tool-manager split");
+
+  // 하네스 release-index.json 을 실시간으로 소비하는 설치 파일 카드 — PowerShell 없는 설치 경로.
+  assert.ok(html.includes('id="exeCardArea"') && html.includes('fetch("/api/harness/release"'), "tools page must offer a live installer card sourced from the harness release feed");
+  assert.ok(html.includes("PowerShell 명령을 입력할 필요가 없습니다"), "installer card must state that no PowerShell typing is required");
+  assert.ok(html.includes("data.is_demo") && html.includes("서명되지 않음"), "installer card must honestly label an unsigned demo build");
+  assert.ok(!html.includes("lovable"), "unapproved tool (Lovable) must not be named in the harness install guidance");
 }
 
 const child = spawn(process.execPath, ["src/server.js"], {

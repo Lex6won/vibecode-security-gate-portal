@@ -565,6 +565,14 @@ async function scenarioToolsSurface() {
   assert.ok(String(versions.checker.version || "").includes("gvskb"), "server checker version must be reported");
   assert.ok(["ok", "warn", "error"].includes(versions.checker.doctor_status));
   assert.ok(versions.note.includes("도구 관리자"), "the response must say PC tool state belongs to the tool manager");
+
+  // 하네스의 release-index.json 을 그대로 소비한다 — Lovable 은 정책 확인 전까지 걸러진다.
+  const release = await fetchJson("/api/harness/release");
+  assert.equal(typeof release.available, "boolean", "release endpoint must always report availability honestly");
+  if (release.available) {
+    assert.ok(!release.supported_tools.some((tool) => tool.id.includes("lovable")), "Lovable must stay filtered out pending security policy review");
+    assert.ok(release.download_url?.startsWith("https://"), "installer download URL must be present when available");
+  }
 }
 
 async function scenarioAdmin(fixture) {

@@ -592,3 +592,14 @@ guard 재실행에서 잡힌 실제 레이스: 상태가 completed 로 바뀐 �
 - **연동합의 2차 개정(사용자 확정, 양 저장소 반영)**: "EXE의 체커·Python 제거" → **"최종 점검=포털, 패키지 사전확인용 체커는 번들 유지"**. 도구 6종 확대 확인(Claude·ChatGPT 데스크톱 포함 — 기존 회신 필요 1번 해소). Lovable=typescript_postgres 엄격형+PR 게이트, Supabase 는 선택 통합 — 공공 실사용 허용은 보안부서 확인 대기(포털 안내 표기 보류).
 - **확인**: 하네스 "pilot portal"(GitHub Pages)은 EXE 실행 후 화면이 아니라 별도 웹 배포 페이지(파일럿 임시 채널). EXE 후 화면은 manager.ps1 GUI. 정식 단계에는 포털이 release-index.json 계약을 소비해 배포 일원화(포털 후속 작업, EXE 게시 시점).
 - 잔여: gg restore 미구현(하네스), 상태 보고 채널(양측 다음 단계), SMTP·서버 OS 협의(기존).
+
+## 2026-08-28 하네스 설치 안내 실시간 연동 — release-index.json 소비
+
+사용자 확인 요청("EXE 설치가 파워쉘 없는 걸로 업데이트되지 않았나")에서 시작. 하네스 저장소에 실제 Inno Setup EXE(더블클릭 설치, 설치 후 자동으로 VibeCode Harness Manager GUI 실행 — PowerShell 타이핑 없음)가 있음을 확인했으나, `release-index.json`의 status가 `demo_installer_published`(PEM 서명만, Authenticode 미서명, "실제 업무에 사용하지 마세요" 명시, 3개월 만료)임도 확인. 정식 배포 승인 5단계(docs/20)를 거치지 않은 파이프라인 시연용.
+
+사용자 정정: 실사용 공무원이 아니라 본인이 집 노트북에서 테스트하는 것 — 데모 EXE를 실제로 눌러보며 검증해야 함. 하드코딩 대신 **하네스가 게시하는 `release-index.json`을 포털 서버가 실시간으로 읽어오도록 구현**(정식 서명본으로 바뀌어도 포털 코드 무수정).
+
+- `GET /api/harness/release`: 5분 캐시, 8초 타임아웃, 실패 시 정직하게 `available:false`(최신인 것처럼 보이지 않음). `HARNESS_TOOL_LABELS`로 지원 도구를 한글 라벨로 매핑하며 **Lovable은 의도적으로 목록에서 제외**(보안부서 정책 확인 대기 — 연동합의 2차 개정 그대로 코드로 강제).
+- `/harness` 화면: "설치 파일로 설치하기 (PowerShell 명령 없이)" 섹션 신설. 체험판이면 주황 배지·SHA-256·만료일·"실제 업무 사용 금지"·서명되지 않음 SmartScreen 안내를 정직하게 표시하고, 정식 서명본이 되면 배지·경고문이 자동으로 바뀌도록 `is_demo` 분기. 하네스 JSON의 `message` 필드가 영문이라 화면엔 노출하지 않고 고정 한국어 문구를 씀.
+- "AI 도구" 미니카드도 같은 데이터로 실시간 채움 — 이전엔 codex·claude·both 3개만 하드코딩되어 있었는데, 실제로는 Antigravity·Claude Desktop·ChatGPT 데스크톱까지 5개가 지원됨(Lovable 제외)을 반영.
+- 검증: `/api/harness/release` 를 로컬 서버에서 직접 호출해 실데이터(버전 0.2.0-demo.2, SHA-256, 5개 도구) 확인. 시나리오에 회귀 추가(available 플래그 항상 boolean, Lovable 미노출, 가용 시 download_url https 검증) — 시나리오 13종, 버튼 계약 통과. 헤드리스 캡처로 실제 렌더링 1회 확인 후 message 필드 영문 노출 발견·수정.

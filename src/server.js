@@ -684,6 +684,58 @@ ${doctor.stderr}`;
   };
 }
 
+// P5 후속: 하네스가 게시하는 release-index.json 을 실시간으로 읽어와 설치 안내에 반영한다.
+// 하드코딩하지 않는 이유 — 정식 서명본으로 바뀌면(installer_published) 하네스 쪽 JSON만
+// 바뀌고 포털 코드는 그대로다. Lovable 은 보안부서 정책 확인 전까지 표기하지 않는다(연동합의 2차 개정).
+const HARNESS_RELEASE_URL = runtimeEnv.PORTAL_HARNESS_RELEASE_URL
+  || "https://lex6won.github.io/vibecode-harness/releases/release-index.json";
+const HARNESS_RELEASE_CACHE_MS = 5 * 60 * 1000;
+const HARNESS_TOOL_LABELS = {
+  codex: "Codex CLI",
+  "claude-code": "Claude Code",
+  "google-antigravity": "Google Antigravity",
+  "claude-desktop": "Claude 데스크톱",
+  "chatgpt-codex-desktop": "ChatGPT 데스크톱"
+  // lovable-github: 보안부서 정책 확인 전까지 의도적으로 미표기.
+};
+let harnessReleaseCache = { at: 0, value: null };
+
+async function fetchHarnessRelease() {
+  if (Date.now() - harnessReleaseCache.at < HARNESS_RELEASE_CACHE_MS && harnessReleaseCache.value) {
+    return harnessReleaseCache.value;
+  }
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
+    const response = await fetch(HARNESS_RELEASE_URL, { signal: controller.signal });
+    clearTimeout(timeout);
+    if (!response.ok) throw new Error(`http_${response.status}`);
+    const data = await response.json();
+    const supportedTools = (data.capabilities?.supported_tools || [])
+      .filter((tool) => Object.hasOwn(HARNESS_TOOL_LABELS, tool))
+      .map((tool) => ({ id: tool, label: HARNESS_TOOL_LABELS[tool] }));
+    const value = {
+      available: true,
+      status: data.status || null,
+      is_demo: String(data.status || "").includes("demo"),
+      message: data.message || null,
+      version: data.installer?.version || null,
+      download_url: data.installer?.download_url || null,
+      sha256: data.installer?.sha256 || null,
+      signature_status: data.installer?.signature_status || null,
+      expires_at: data.installer?.expires_at || null,
+      supported_tools: supportedTools
+    };
+    harnessReleaseCache = { at: Date.now(), value };
+    return value;
+  } catch {
+    // 확인 실패는 정직하게 "확인 불가"로 보고한다 — 최신처럼 보이게 하지 않는다.
+    const value = { available: false };
+    harnessReleaseCache = { at: Date.now(), value };
+    return value;
+  }
+}
+
 function safeReportNamePart(value) {
   return String(value || "")
     .normalize("NFKC")
@@ -1384,6 +1436,11 @@ async function handleApi(request, response, pathname) {
       checker: await serverCheckerVersion(),
       note: "서버에 설치된 체커입니다. 사용자 PC의 도구 상태는 도구 관리자가 확인합니다."
     });
+    return;
+  }
+
+  if (request.method === "GET" && pathname === "/api/harness/release") {
+    json(response, 200, await fetchHarnessRelease());
     return;
   }
 
