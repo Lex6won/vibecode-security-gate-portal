@@ -64,7 +64,16 @@
       background: var(--panel);
       box-shadow: var(--shadow-sm);
       outline: 1px solid var(--soft);
+      transition: outline-color var(--duration-fast) var(--ease-out), opacity var(--duration-fast) var(--ease-out), background-color var(--duration-fast) var(--ease-out);
     }
+    /* 지금 할 단계는 파란 테두리, 끝난 단계는 초록 체크, 아직인 단계는 흐리게 —
+       어느 단계에 있는지 한눈에 보이게 한다. */
+    .step-section[data-step-state="active"] { outline: 2px solid var(--harbor); background: #fbfdff; box-shadow: 0 12px 28px rgba(55,112,191,.14); }
+    .step-section[data-step-state="active"] .sequence { background: var(--harbor); color: #fff; }
+    .step-section[data-step-state="done"] { outline: 1px solid var(--green-line); }
+    .step-section[data-step-state="done"] .sequence { background: var(--green); color: #fff; }
+    .step-section[data-step-state="done"] .sequence::after { content: ""; }
+    .step-section[data-step-state="pending"] { opacity: .55; }
     .flow-title {
       display: flex;
       align-items: center;
@@ -207,6 +216,12 @@
       font-weight: 800;
     }
     .result-list b { color: var(--ink); white-space: nowrap; }
+    /* 판정 행은 결과 색으로 — 초록(통과)·주황(검토)·빨강(수정) */
+    .result-list li[data-tone="good"] { background: var(--green-soft); }
+    .result-list li[data-tone="good"] b { color: var(--green); }
+    .result-list li[data-tone="warn"] { background: var(--warn-soft); }
+    .result-list li[data-tone="warn"] b { color: var(--warn); }
+    .result-list li[data-tone="busy"] { outline: 1.5px solid var(--harbor); }
     .mode-note {
       margin-top: 10px;
       padding: 10px 12px;
@@ -590,6 +605,7 @@
     let targetSelectionInFlight = false;
     let activeTarget = "folder";
     let selectedReady = false;
+    let scanEverStarted = false;
     let pendingMode = null;
     let selectedTargetRef = "";
     let selectedSaveDir = "";
@@ -699,6 +715,7 @@
         targetInput.value = selection.label;
         scanButton.textContent = kind === "folder" ? "폴더 다시 선택" : "ZIP 다시 선택";
         selectedReady = true;
+        updateStepStates();
         targetHelp.textContent = `${selection.file_count}개 파일을 이 PC에서 점검합니다.`;
         completeTargetProgress({
           title: "검사 대상 준비 완료",
@@ -721,6 +738,29 @@
         scanButton.disabled = false;
         if (!selectedReady) scanButton.textContent = targetText[activeTarget].button;
       }
+    }
+
+    // 단계 카드 1·2·3 의 진행 상태를 계산해 표시한다.
+    const stepSections = {
+      save: document.querySelector("#save-step-title")?.closest(".step-section"),
+      target: document.querySelector("#target-step-title")?.closest(".step-section"),
+      mode: document.querySelector("#scan-mode-title")?.closest(".step-section")
+    };
+    function markStep(section, state, doneMark) {
+      if (!section) return;
+      section.dataset.stepState = state;
+      const badge = section.querySelector(".sequence");
+      if (badge) {
+        if (state === "done") { badge.dataset.number = badge.dataset.number || badge.textContent; badge.textContent = "✓"; }
+        else if (badge.dataset.number) badge.textContent = badge.dataset.number;
+      }
+    }
+    function updateStepStates() {
+      const saveDone = Boolean(selectedSaveDir);
+      const targetDone = Boolean(selectedReady);
+      markStep(stepSections.save, saveDone ? "done" : "active");
+      markStep(stepSections.target, !saveDone ? "pending" : targetDone ? "done" : "active");
+      markStep(stepSections.mode, saveDone && targetDone ? (scanEverStarted ? "done" : "active") : "pending");
     }
 
     function getTargetLabel() {
@@ -773,6 +813,7 @@
 
     function setResultPending(message) {
       resultDecision.textContent = "점검 중";
+      resultDecision.closest("li").dataset.tone = "busy";
       resultFindings.textContent = "확인 중";
       resultReview.textContent = "확인 중";
       resultDeps.textContent = "확인 중";
@@ -783,6 +824,7 @@
     function setResultBlocked(message) {
       renderProgress({ status: "failed", message });
       resultDecision.textContent = "진행 불가";
+      resultDecision.closest("li").dataset.tone = "warn";
       resultFindings.textContent = "-";
       resultReview.textContent = "-";
       resultDeps.textContent = "-";
@@ -981,6 +1023,7 @@
     });
 
     loadSession();
+    updateStepStates();
 
     // 상단 배지를 실제 상태와 연결한다 — 정적 "정상" 표시는 장애 때 거짓말이 된다.
     (async function loadStatusBadges() {
@@ -1054,6 +1097,9 @@
                 ? "검토 필요"
                 : "제출 가능";
       resultDecision.textContent = decision;
+      resultDecision.closest("li").dataset.tone =
+        decision === "제출 가능" || decision === "고위험 없음" ? "good"
+        : decision === "점검 중" ? "busy" : "warn";
       resultFindings.textContent = `${findingCount}건`;
       resultReview.textContent = job.decision === "needs_review" ? "필요" : "0건";
       resultDeps.textContent = `${dependencyCount}건`;
@@ -1240,6 +1286,8 @@
       }
       activateMode(mode);
       lastScanMode = mode;
+      scanEverStarted = true;
+      updateStepStates();
       setScanRunning(mode);
       progressTarget.textContent = `${getTargetLabel()} 접근 가능 여부 확인 중`;
       progressMode.textContent = `${mode.dataset.modeTitle} 실행`;
@@ -1296,6 +1344,7 @@
       if (activeTarget !== "url") return;
       selectedReady = targetInput.value.trim().length > 0;
       selectedTargetRef = targetInput.value.trim();
+      updateStepStates();
     });
 
     modeButtons.forEach((mode) => {
@@ -1314,6 +1363,7 @@
     if (!canPickFolder) {
       // 저장 위치 단계가 성립하지 않는 환경 — 정직하게 안내하고 점검은 막지 않는다.
       selectedSaveDir = DOWNLOAD_MODE_LABEL;
+      queueMicrotask(updateStepStates);
       savePath.innerHTML = "이 접속 환경에서는 폴더 직접 저장을 지원하지 않습니다. 점검이 끝나면 <b>결과 카드의 보고서 내려받기</b>로 저장하세요. 보고서는 서버에도 보관됩니다.";
       saveButton.hidden = true;
       progressSaveDetail.textContent = "점검 후 결과 카드에서 보고서를 내려받으세요.";
@@ -1329,6 +1379,7 @@
         if (!window.showDirectoryPicker) throw new Error("이 기능은 Chrome 또는 Edge에서 사용할 수 있습니다.");
         selectedSaveDirectoryHandle = await window.showDirectoryPicker({ mode: "readwrite" });
         selectedSaveDir = selectedSaveDirectoryHandle.name;
+        updateStepStates();
         savePath.textContent = `${selectedSaveDir} 폴더에 결과물을 저장합니다.`;
         progressSaveDetail.textContent = `${selectedSaveDir} 폴더에 결과물을 저장합니다.`;
         saveLocationPromptTitle.textContent = "결과 저장 위치 선택 완료";
