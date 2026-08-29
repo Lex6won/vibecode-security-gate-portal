@@ -7,14 +7,29 @@
   <meta name="description" content="내가 요청한 보안 점검의 결과와 보고서, 보안성검토 요청 상태를 확인합니다.">
   <link rel="stylesheet" href="/shared.css">
   <style>
-    .history-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+    .history-table { width: 100%; min-width: 1000px; table-layout: fixed; border-collapse: collapse; font-size: 13.5px; }
     .history-table th, .history-table td { padding: 10px 12px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
     .history-table th { font-size: 12px; color: var(--muted); font-weight: 900; }
+    .history-table th:nth-child(1) { width: 120px; }
+    .history-table th:nth-child(2) { width: 260px; }
+    .history-table th:nth-child(3) { width: 54px; }
+    .history-table th:nth-child(4) { width: 74px; }
+    .history-table th:nth-child(5) { width: 360px; }
+    .history-table th:nth-child(6) { width: 136px; }
     .history-table .decision { font-weight: 900; }
     .history-table a { color: var(--harbor); font-weight: 800; text-decoration: none; }
     .table-wrap { overflow-x: auto; }
+    .target-name { display: block; color: var(--ink); font-weight: 900; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .target-type { display: block; margin-top: 4px; color: var(--muted); font-size: 12px; font-weight: 800; }
+    .target-source { display: block; margin-top: 3px; color: var(--muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .artifact-list { display: flex; flex-wrap: wrap; gap: 6px; }
+    .artifact-link { display: inline-flex; align-items: center; min-height: 28px; padding: 3px 9px; border: 1px solid var(--line); border-radius: 999px; background: var(--soft); font-size: 12px; line-height: 1.2; }
+    .artifact-link.submission { background: var(--green-soft); border-color: #a9d9cf; color: var(--green); }
     .empty-note { padding: 18px; font-size: 14px; color: var(--muted); font-weight: 700; }
-    .profile-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 10px; }
+    .profile-card { margin-top: 16px; }
+    .profile-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: end; margin-top: 14px; }
+    .profile-field { display: grid; gap: 6px; min-width: 180px; }
+    .profile-field span { font-size: 12px; color: var(--muted); font-weight: 900; }
     .profile-row input { padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius-md); font-size: 14px; min-width: 160px; }
     .mini-note { font-size: 12.5px; color: var(--muted); font-weight: 700; margin-top: 8px; }
     .review-button { padding: 6px 12px; font-size: 12.5px; border-radius: var(--radius-md); border: 1px solid var(--line); background: var(--panel); cursor: pointer; font-weight: 800; }
@@ -33,24 +48,14 @@
       </a>
       <div style="display:flex; gap:8px; align-items:center;">
         <a class="pill" href="/scan">새 점검</a>
-        <button class="pill" id="logoutButton" type="button" style="cursor:pointer; border:1px solid var(--line); background:var(--panel);">로그아웃</button>
+        <button class="pill" id="toggleProfile" type="button" style="cursor:pointer; border:1px solid var(--line); background:var(--panel);" hidden>소속 수정</button>
+        <button class="pill" id="logoutButton" type="button" style="cursor:pointer; border:1px solid var(--line); background:var(--panel);" hidden>로그아웃</button>
       </div>
     </header>
 
     <section class="panel-card" id="loginNeeded" hidden>
-      <h2 class="section-title">로그인이 필요합니다</h2>
-      <p class="empty-note">이력은 본인만 볼 수 있습니다. <a href="/scan" style="color: var(--harbor); font-weight: 800;">점검 화면</a>에서 기관 메일로 로그인해 주세요.</p>
-    </section>
-
-    <section class="panel-card" id="profileCard" hidden aria-labelledby="profile-title">
-      <h2 class="section-title" id="profile-title">내 정보</h2>
-      <p class="mini-note" id="profileWho">확인 중</p>
-      <div class="profile-row">
-        <input id="profileOrganization" aria-label="기관명" placeholder="기관명">
-        <input id="profileDepartment" aria-label="부서명" placeholder="부서명">
-        <button class="ghost-button" id="saveProfile" type="button">소속 정보 수정</button>
-      </div>
-      <p class="mini-note">소속은 “사용자가 등록한 정보”로 표시되며, 이미 만들어진 보고서의 소속 기록은 바뀌지 않습니다.</p>
+      <h2 class="section-title">접속 인증을 확인하지 못했습니다</h2>
+      <p class="empty-note">이력은 본인만 볼 수 있습니다. 새로고침한 뒤 다시 시도해 주세요.</p>
     </section>
 
     <section class="panel-card" id="historyCard" hidden aria-labelledby="history-title">
@@ -66,7 +71,16 @@
       <p class="empty-note" id="historyEmpty" hidden>아직 점검 이력이 없습니다. 첫 점검을 시작해 보세요.</p>
     </section>
 
-    <footer class="footnote">라이브러리 메타값은 점검 완료 시 화이트리스트 근거로 자동 반영됩니다. 소스 코드 원본은 서버에 남지 않습니다.</footer>
+    <section class="panel-card profile-card" id="profileCard" hidden aria-labelledby="profile-title">
+      <h2 class="section-title" id="profile-title">소속 정보 수정</h2>
+      <p class="mini-note" id="profileWho">확인 중</p>
+      <div class="profile-row">
+        <label class="profile-field"><span>기관명</span><input id="profileOrganization" aria-label="기관명" placeholder="예: 경기도청"></label>
+        <label class="profile-field"><span>부서명</span><input id="profileDepartment" aria-label="부서명" placeholder="예: AI산업육성과"></label>
+        <button class="ghost-button" id="saveProfile" type="button">저장</button>
+      </div>
+      <p class="mini-note">이미 만든 점검 이력의 소속 기록은 바뀌지 않습니다.</p>
+    </section>
   </main>
 
   <script>
@@ -79,7 +93,9 @@
     const profileOrganization = document.querySelector("#profileOrganization");
     const profileDepartment = document.querySelector("#profileDepartment");
     const saveProfile = document.querySelector("#saveProfile");
+    const toggleProfile = document.querySelector("#toggleProfile");
     const logoutButton = document.querySelector("#logoutButton");
+    let accessLoginInFlight = false;
 
     const decisionLabels = {
       allow: "제출 가능",
@@ -113,23 +129,53 @@
       return `<button class="review-button" data-review="${scan.id}" type="button">검토 요청</button>`;
     }
 
+    function artifactDisplayName(report) {
+      if (report.kind === "html_report") return "결과 리포트";
+      if (report.kind === "json_report") return "패키지 목록·점검 데이터";
+      if (report.kind === "sbom") return "소프트웨어 명세서";
+      if (report.kind === "review_request") return "보안성검토 요청서";
+      if (report.kind === "submission_package") return "보안성검토 제출자료 ZIP";
+      if (String(report.file_name || "").endsWith(".md")) return "결과 요약";
+      return "점검 산출물";
+    }
+
+    function targetDetails(scan) {
+      const source = String(scan.target_name || scan.target_label || "");
+      if (scan.target_type === "github_url") {
+        const parts = source.split(/[\\/\s]+/).filter(Boolean);
+        const normalizedSource = parts[0] === "https" && parts[1]?.includes(".")
+          ? `https://${parts.slice(1).join("/")}`
+          : source;
+        const repository = normalizedSource.split("/").filter(Boolean).at(-1) || "Git 저장소";
+        return { name: repository, type: "Git 저장소", source: normalizedSource };
+      }
+      if (scan.target_type === "browser_archive") return { name: source || "압축파일", type: "압축파일", source: "" };
+      return { name: source || "프로젝트 폴더", type: "프로젝트 폴더", source: "" };
+    }
+
     function renderScans(scans) {
       historyBody.innerHTML = "";
       historyEmpty.hidden = scans.length > 0;
       for (const scan of scans) {
         const row = document.createElement("tr");
-        const reports = (scan.reports || [])
-          .map((report) => `<a href="${escapeHtml(report.url)}" download>${escapeHtml(report.file_name.split("_").pop())}</a>`)
-          .join(" ");
+        const artifacts = scan.artifacts || scan.reports || [];
+        const reports = artifacts.map((report) => {
+          const packageFile = report.kind === "submission_package" || String(report.file_name || "").endsWith(".zip");
+          const href = packageFile ? report.url : `${report.url}?view=1`;
+          const attributes = packageFile ? "download" : 'target="_blank" rel="noreferrer"';
+          const className = packageFile ? "artifact-link submission" : "artifact-link";
+          return `<a class="${className}" href="${escapeHtml(href)}" ${attributes} title="${escapeHtml(report.file_name)}">${escapeHtml(artifactDisplayName(report))}</a>`;
+        }).join("");
+        const target = targetDetails(scan);
         const decision = scan.status === "failed" ? "점검 실패"
           : scan.status !== "completed" ? "진행 중"
           : decisionLabels[scan.decision] || scan.decision;
         row.innerHTML = `
           <td>${escapeHtml(formatDate(scan.created_at))}</td>
-          <td>${escapeHtml(scan.target_name || scan.target_label || "-")}</td>
+          <td><span class="target-name" title="${escapeHtml(target.name)}">${escapeHtml(target.name)}</span><span class="target-type">${escapeHtml(target.type)}</span>${target.source ? `<span class="target-source" title="${escapeHtml(target.source)}">${escapeHtml(target.source)}</span>` : ""}</td>
           <td>${scan.mode === "quick" ? "간편" : "표준"}</td>
           <td class="decision">${escapeHtml(decision)}</td>
-          <td>${reports || "-"}</td>
+          <td>${reports ? `<div class="artifact-list">${reports}</div>` : "-"}</td>
           <td>${reviewCell(scan)}</td>`;
         historyBody.appendChild(row);
       }
@@ -185,6 +231,11 @@
       window.location.href = "/scan";
     });
 
+    toggleProfile.addEventListener("click", () => {
+      profileCard.hidden = !profileCard.hidden;
+      if (!profileCard.hidden) profileOrganization.focus();
+    });
+
     async function loadScans() {
       const response = await fetch("/api/my/scans", { cache: "no-store" });
       if (!response.ok) return;
@@ -192,22 +243,56 @@
       renderScans(data.scans || []);
     }
 
+    async function establishAccessSession() {
+      if (accessLoginInFlight) return null;
+      accessLoginInFlight = true;
+      try {
+        let response = await fetch("/api/auth/access-login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({})
+        });
+        if (response.status === 404) {
+          response = await fetch("/api/auth/development-login", { method: "POST" });
+        }
+        if (!response.ok) return null;
+        return await (await fetch("/api/auth/session", { cache: "no-store" })).json();
+      } catch {
+        return null;
+      } finally {
+        accessLoginInFlight = false;
+      }
+    }
+
+    async function applySession(session) {
+      if (!session?.logged_in) {
+        loginNeeded.hidden = false;
+        historyCard.hidden = true;
+        profileCard.hidden = true;
+        toggleProfile.hidden = true;
+        logoutButton.hidden = true;
+        return;
+      }
+      loginNeeded.hidden = true;
+      historyCard.hidden = false;
+      toggleProfile.hidden = false;
+      logoutButton.hidden = false;
+      profileWho.dataset.email = session.email;
+      profileWho.textContent = session.email;
+      profileOrganization.value = session.organization || "";
+      profileDepartment.value = session.department || "";
+      await loadScans();
+    }
+
     (async function init() {
       try {
-        const session = await (await fetch("/api/auth/session", { cache: "no-store" })).json();
-        if (!session.logged_in) {
-          loginNeeded.hidden = false;
-          return;
+        let session = await (await fetch("/api/auth/session", { cache: "no-store" })).json();
+        if (!session.logged_in && (session.access_email || window.location.hostname === "127.0.0.1" || window.location.hostname === "localhost")) {
+          session = await establishAccessSession() || session;
         }
-        profileCard.hidden = false;
-        historyCard.hidden = false;
-        profileWho.dataset.email = session.email;
-        profileWho.textContent = [session.email, [session.organization, session.department].filter(Boolean).join(" ")].filter(Boolean).join(" · ");
-        profileOrganization.value = session.organization || "";
-        profileDepartment.value = session.department || "";
-        await loadScans();
+        await applySession(session);
       } catch {
-        loginNeeded.hidden = false;
+        await applySession(null);
       }
     })();
   </script>

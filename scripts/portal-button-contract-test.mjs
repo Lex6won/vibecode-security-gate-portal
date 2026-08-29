@@ -2,6 +2,7 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
+import { readFileSync } from "node:fs";
 
 const port = Number(process.env.PORTAL_BUTTON_TEST_PORT || 8793);
 const baseUrl = `http://127.0.0.1:${port}`;
@@ -12,7 +13,6 @@ const pages = [
   "/scan",
   "/my",
   "/harness",
-  "/help",
   "/admin/login",
   "/admin"
 ];
@@ -199,13 +199,30 @@ async function assertLocalPickerContract() {
   assert.ok(html.includes('error.name === "AbortError"') && html.includes('저장 위치 선택을 취소했습니다.'), "save-location cancellation must be shown as guidance, not a browser error");
   assert.ok(html.includes('targetSelectionInFlight'), "native target picker must prevent duplicate picker windows");
 
-  // P3: 로그인 게이트와 데이터 고지 — 매직링크 요소와 "남는 것/남지 않는 것" 문구가 있어야 한다.
-  assert.ok(html.includes('id="loginGate"') && html.includes('id="requestLoginLink"'), "scan page must expose the magic-link login gate");
-  assert.ok(html.includes('id="devLoginArea"'), "dev mode must show the login link on screen until SMTP is wired");
-  assert.ok(html.includes("소스 코드 원본은 서버에 남지 않으며"), "scan page must state that source is never retained on the server");
-  assert.ok(html.includes("화이트리스트 구축용"), "scan page must disclose the automatic metadata accumulation");
+  // 외부 포털은 Cloudflare Access가 인증하므로 별도 로그인·상단 보관 안내를 노출하지 않는다.
+  assert.ok(!html.includes('id="loginGate"') && !html.includes('id="requestLoginLink"'),
+    "scan page must not duplicate Cloudflare Access with a portal email-login card");
+  assert.ok(html.includes('async function establishAccessSession()') && html.includes('"/api/auth/access-login"'),
+    "scan page must automatically establish a portal session from Cloudflare Access");
+  assert.ok(!html.includes('id="dataNotice"'), "scan page must not repeat the top-level retention notice");
   assert.ok(!html.includes("submit-observations"), "the manual observation submission must be gone from the user flow");
   assert.ok(html.includes('id="requestReview"'), "completed scans must offer a security-review request action");
+  assert.ok(html.includes('aria-label="보안점검 4단계"')
+    && [1, 2, 3, 4].every((step) => html.includes(`data-flow-item="${step}"`)),
+  "scan page must expose preparation, scan, report, and review-submission as four top-level steps");
+  assert.ok(html.includes("GitHub · GitLab URL") && html.includes("gitlab.aigov.go.kr"),
+    "scan page must expose the approved government GitLab option");
+  assert.ok(html.includes('id="requestReview"') && html.includes('function saveSubmissionPackage(submissionPackage)')
+    && html.includes('보안성검토 자료 제출') && html.includes('하나의 제출자료 ZIP'),
+  "review submission must create one downloadable package containing the request form and reports");
+  assert.ok(!html.includes('openSubmissionFolder') && !html.includes('저장 폴더 열기')
+    && html.includes('finish.id = "finishSubmission"') && html.includes('window.location.assign("/")'),
+  "completed submission must not mislabel a directory picker as opening the saved folder");
+  assert.ok(!html.includes('.filter((item) => item.kind !== "sbom")'),
+    "saving scan artifacts to the selected directory must include the SBOM when it was generated");
+  assert.ok(html.includes('id="resultSbom"') && html.includes('function artifactDisplayName(report)')
+    && html.includes('소프트웨어 명세서') && html.includes('?view=1'),
+  "scan results must expose human-readable artifacts as view-only links");
 
   // P5: 원본 삭제·보존기한이 화면에 사실대로 표시되어야 한다.
   assert.ok(html.includes('id="resultSource"') && html.includes('id="resultRetention"'), "result card must show source deletion and retention facts");
@@ -216,18 +233,74 @@ async function assertLocalPickerContract() {
 async function assertToolsGuidePage() {
   // S1(서버 전환): /harness 는 안내형 화면이다. 웹에서 설치·업데이트 버튼을 제공하지 않는다.
   const html = await fetchText("/harness");
-  assert.ok(html.includes("하네스 내려받기") && html.includes("install.ps1"), "tools page must present install guidance");
+  assert.ok(html.includes("하네스 내려받기") && html.includes('id="heroDownloadArea"'), "tools page must present one focused installer download action");
+  assert.ok(html.includes("무엇을 설치하나요?") && html.includes("Harness Manager")
+    && html.includes("AI로 만드는 프로젝트에 공통 개발 기준과 보안 점검 절차"),
+  "tools page must explain what the harness installs and why users need it");
   assert.ok(html.includes("Codex") && html.includes("Claude Code"), "tools page must state which AI tools the harness supports");
   assert.ok(html.includes("Python, JavaScript, TypeScript 외"), "tools page must state the allowed-language boundary honestly");
   assert.ok(html.includes('fetch("/api/tools/versions"'), "tools page must load the server checker version");
   assert.ok(html.includes("확인할 수 없습니다"), "version load failure must be shown honestly, never as up-to-date");
   assert.ok(!/data-action="(harness|checker)-(install|update)"/.test(html), "web page must not expose PC install/update actions after the tool-manager split");
 
-  // 하네스 release-index.json 을 실시간으로 소비하는 설치 파일 카드 — PowerShell 없는 설치 경로.
-  assert.ok(html.includes('id="exeCardArea"') && html.includes('fetch("/api/harness/release"'), "tools page must offer a live installer card sourced from the harness release feed");
+  // 하네스 release-index.json을 소비해 설치 파일을 내려받고, 클릭 후 설치 단계로 자동 전환한다.
+  assert.ok(html.includes('id="harnessInstallerDownload"') && html.includes('fetch("/api/harness/release"')
+    && html.includes('window.setTimeout(() => showHarnessStep(2), 250)'), "installer download must advance directly to the installation step");
   assert.ok(html.includes("시작 메뉴</b>에서 <b>VibeCode Harness Manager"), "install guidance must say where the Manager actually is (Start Menu) — the demo installer does not auto-launch it");
-  assert.ok(html.includes("data.is_demo") && html.includes("서명되지 않음"), "installer card must honestly label an unsigned demo build");
+  assert.ok(html.includes('id="unsignedInstallNotice"') && html.includes("알 수 없는 게시자") && html.includes("추가 정보 → 실행"), "unsigned installer guidance must tell users the exact Windows action");
+  assert.ok(html.includes("설치 완료 · 설정하기") && html.includes("3단계 · 설정"), "installation completion must lead users into project setup");
   assert.ok(!html.includes("lovable"), "unapproved tool (Lovable) must not be named in the harness install guidance");
+}
+
+async function assertMyHistoryPage() {
+  const html = await fetchText("/my");
+  assert.ok(html.includes('async function establishAccessSession()') && html.includes('"/api/auth/access-login"')
+    && html.includes('"/api/auth/development-login"'),
+  "my history must establish the same Access or local development session as the scan page");
+  assert.ok(html.includes('id="historyCard"') && html.indexOf('id="historyCard"') < html.indexOf('id="profileCard"'),
+  "scan history must appear before the optional profile editor");
+  assert.ok(html.includes('function artifactDisplayName(report)') && html.includes('보안성검토 제출자료 ZIP')
+    && html.includes('scan.artifacts || scan.reports || []'),
+  "scan history must show readable artifact names, including temporary reports before submission");
+  assert.ok(html.includes('id="toggleProfile"') && html.includes('소속 정보 수정')
+    && html.includes('접속 인증을 확인하지 못했습니다'),
+  "history page must keep profile editing optional and never redirect users to a duplicate email-login flow");
+}
+
+async function assertRemovedHelpSurface() {
+  const home = await fetchText("/");
+  const adminLogin = await fetchText("/admin/login");
+  assert.ok(!home.includes('href="/help"') && !home.includes("도움말 · FAQ")
+    && !home.includes("도구 설치") && !home.includes('vibecode-security-gate-portal\" target="_blank"'),
+  "home must not retain the removed help or duplicate quick-link row");
+  assert.ok(!adminLogin.includes('href="/help"'), "admin login must not link to the removed help page");
+  for (const path of ["/help", "/help.html"]) {
+    const response = await fetch(`${baseUrl}${path}`, { redirect: "manual" });
+    assert.equal(response.status, 302, `${path} must redirect away from the retired help surface`);
+    assert.equal(response.headers.get("location"), "/", `${path} must redirect to the home page`);
+  }
+}
+
+async function assertAdminDashboardSurface() {
+  const html = readFileSync(new URL("../design/html-prototype/admin.html", import.meta.url), "utf8");
+  assert.ok(html.includes('id="monthlyChart"') && html.includes('id="languageChart"') && html.includes('id="packageChart"'),
+    "admin page must expose monthly, language, and package visualizations");
+  assert.ok(html.includes('id="ecosystem"') && html.includes('id="language"') && html.includes('id="whitelistStatus"'),
+    "admin dashboard must expose ecosystem, language, and whitelist filters");
+  assert.ok(html.includes('fetch(`/api/admin/dashboard?${dashboardQuery().toString()}') && html.includes('renderLineChart') && html.includes('renderPieChart'),
+    "admin dashboard charts must be rendered from the filtered API response");
+  assert.ok(html.includes('id="filterResetButton"') && html.includes("function resetFilters()")
+    && html.includes('metric.classList.add("active")') && html.includes("loadAdminData();"),
+  "metric filters must reload immediately and give administrators a visible reset path");
+  assert.ok(html.includes('data-filter-status="확인 필요"') && html.includes('"attention"')
+    && html.includes('["needs_review", "incomplete"]'),
+  "the attention metric must include incomplete scans as well as human-review scans");
+  assert.ok(html.includes("grid-column: 1 / -1") && html.includes("조건에 맞는 점검 이력이 없습니다."),
+    "monthly dashboard chart must use the full width and show an honest empty state for zero-result filters");
+  assert.ok(["currentPassword", "newPassword", "confirmPassword"].every((id) => html.includes(`data-password-toggle="${id}"`))
+    && html.includes('function updatePasswordMatchHint()') && html.includes("새 비밀번호가 일치합니다.")
+    && html.includes("새 비밀번호가 일치하지 않습니다."),
+  "password change must support visibility controls and immediate confirmation matching feedback");
 }
 
 const child = spawn(process.execPath, ["src/server.js"], {
@@ -256,6 +329,9 @@ try {
   await assertApiBackedButtons();
   await assertLocalPickerContract();
   await assertToolsGuidePage();
+  await assertMyHistoryPage();
+  await assertRemovedHelpSurface();
+  await assertAdminDashboardSurface();
   console.log(JSON.stringify({ status: "passed", base_url: baseUrl, pages: results }, null, 2));
 } catch (error) {
   console.error(stdout);

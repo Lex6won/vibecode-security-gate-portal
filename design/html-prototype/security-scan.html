@@ -4,29 +4,21 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>개발소스 보안 점검</title>
-  <meta name="description" content="공공 바이브코딩 보안 체커로 폴더, 압축파일, GitHub URL을 점검하고 보고서를 생성합니다.">
+  <meta name="description" content="공공 바이브코딩 보안 체커로 폴더, 압축파일, GitHub 또는 정부 GitLab 저장소를 점검하고 보고서를 생성합니다.">
   <link rel="stylesheet" href="/shared.css">
   <style>
     .screen {
       width: min(1180px, calc(100% - 32px));
-      /* 화면 고정(100vh + overflow:hidden)은 내용이 화면보다 길면 스크롤 없이 잘린다 —
-         실기기(1080p 노트북)에서 3단계가 안 보였던 원인. 문서 흐름대로 두고 페이지가 스크롤되게 한다. */
+      /* 화면 고정(100vh + overflow:hidden)은 내용이 화면보다 길면 스크롤 없이 잘린다.
+         실기기에서도 4단계 내용이 모두 보이도록 문서 흐름대로 스크롤되게 한다. */
       min-height: 100vh;
       margin: 0 auto;
       display: grid;
       grid-template-columns: minmax(0, 1fr);
       padding: 8px 0 10px;
     }
-    /* 로그인 전에는 3단계 그리드가 숨겨져 1fr 트랙이 통째로 비어 화면이 위로 쏠린다.
+    /* 로그인 전에는 점검 흐름이 숨겨져 1fr 트랙이 통째로 비어 화면이 위로 쏠린다.
        그때는 채움 트랙을 없애고 남는 공간을 위아래로 나눠 세로 균형을 잡는다. */
-    body.logged-out .workspace {
-      grid-template-rows: auto auto auto;
-      align-content: start;
-      gap: 18px;
-    }
-    body.logged-out .hero { margin-top: clamp(12px, 7vh, 80px); }
-    body.logged-out .hero { max-width: 860px; margin: 0 auto; width: 100%; }
-    body.logged-out #loginGate { max-width: 860px; margin: 0 auto; width: 100%; }
     .workspace {
       min-width: 0;
       min-height: 100%;
@@ -275,6 +267,175 @@
     .selection-progress p { margin: 7px 0 0; color: var(--muted); font-size: 14px; line-height: 1.55; font-weight: 800; }
     .selection-progress .progress-track { margin-top: 16px; }
 
+    /* 실제 기능 계약을 유지한 4단계 업무 흐름 */
+    .flow-progress {
+      grid-column: 1 / -1;
+      padding: 22px 28px 18px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-lg);
+      background: var(--panel);
+      box-shadow: var(--shadow-sm);
+    }
+    .flow-progress-list {
+      margin: 0;
+      padding: 0;
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      list-style: none;
+    }
+    .flow-progress-item {
+      position: relative;
+      min-width: 0;
+      display: grid;
+      justify-items: center;
+      gap: 8px;
+    }
+    .flow-progress-item:not(:last-child)::after {
+      content: "";
+      position: absolute;
+      top: 20px;
+      left: calc(50% + 28px);
+      right: calc(-50% + 28px);
+      height: 3px;
+      border-radius: 999px;
+      background: var(--line);
+    }
+    .flow-progress-item[data-state="done"]:not(:last-child)::after { background: var(--green); }
+    .flow-step-button {
+      position: relative;
+      z-index: 1;
+      width: 100%;
+      min-width: 0;
+      padding: 0 8px;
+      display: grid;
+      justify-items: center;
+      gap: 8px;
+      border: 0;
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+    }
+    .flow-step-button:disabled { cursor: not-allowed; opacity: .58; }
+    .flow-step-button:focus-visible { outline: 3px solid rgba(55,112,191,.28); outline-offset: 4px; border-radius: 8px; }
+    .flow-step-number {
+      width: 42px;
+      height: 42px;
+      display: grid;
+      place-items: center;
+      border: 3px solid var(--line);
+      border-radius: 999px;
+      background: var(--panel);
+      color: var(--muted);
+      font-size: 15px;
+      font-weight: 900;
+    }
+    .flow-step-label { font-size: 14px; line-height: 20px; font-weight: 900; text-align: center; }
+    .flow-progress-item[data-state="active"] .flow-step-number {
+      border-color: var(--green-line);
+      background: var(--green);
+      color: #fff;
+      box-shadow: 0 0 0 5px var(--green-soft);
+    }
+    .flow-progress-item[data-state="active"] .flow-step-label { color: var(--green); }
+    .flow-progress-item[data-state="done"] .flow-step-number { border-color: var(--green); color: var(--green); }
+    .flow-progress-item[data-state="done"] .flow-step-label { color: var(--green); }
+    .scan-grid { grid-template-columns: minmax(0, 1fr); }
+    .panel.flow-panel {
+      min-height: 460px;
+      padding: 28px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-sm);
+    }
+    .step-section.flow-stage {
+      padding: 0;
+      outline: 0;
+      border-radius: 0;
+      box-shadow: none;
+      background: transparent;
+    }
+    .step-section.flow-stage[data-step-state="active"],
+    .step-section.flow-stage[data-step-state="done"],
+    .step-section.flow-stage[data-step-state="pending"] {
+      outline: 0;
+      background: transparent;
+      box-shadow: none;
+      opacity: 1;
+    }
+    .flow-stage > .stage-title { font-size: 27px; line-height: 36px; }
+    .flow-stage > .stage-lead { max-width: 820px; color: var(--muted); font-size: 15px; font-weight: 700; line-height: 1.65; }
+    .stage-kicker {
+      margin-bottom: 8px;
+      color: var(--green);
+      font-size: 13px;
+      font-weight: 900;
+    }
+    .stage-actions {
+      margin-top: 22px;
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .target-next-button:disabled, .review-next-button:disabled { display: inline-flex; }
+    .prepare-grid {
+      margin-top: 20px;
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 18px;
+      align-items: start;
+    }
+    .setup-block { min-height: 280px; }
+    .setup-block .flow-title { font-size: 18px; line-height: 26px; }
+    .mode-block { max-width: 900px; margin-top: 20px; }
+    .mode-block .sequence { display: none; }
+    .result-stage-layout { margin-top: 20px; display: grid; gap: 16px; }
+    .result-stage-layout .result-list { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .result-stage-layout .result-list li { min-width: 0; }
+    .result-card {
+      border: 1px solid var(--line);
+      box-shadow: none;
+      background: #fbfdff;
+    }
+    .result-card .flow-title { font-size: 16px; line-height: 24px; }
+    .review-grid {
+      margin-top: 20px;
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 16px;
+      align-items: start;
+    }
+    .review-box {
+      min-height: 250px;
+      padding: 20px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-md);
+      background: #fbfdff;
+    }
+    .review-box h3 { font-size: 17px; font-weight: 900; }
+    .review-summary { margin: 14px 0 0; display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: 9px 14px; }
+    .review-summary dt { color: var(--muted); font-size: 13px; font-weight: 800; }
+    .review-summary dd { margin: 0; min-width: 0; color: var(--ink); font-size: 13px; font-weight: 900; overflow-wrap: anywhere; }
+    .attachment-list { margin: 14px 0 0; padding: 0; display: grid; gap: 8px; list-style: none; }
+    .attachment-list li { padding: 10px 12px; border-radius: var(--radius-sm); background: var(--moon); color: var(--muted); font-size: 13px; font-weight: 800; }
+    .attachment-list a { color: var(--info); text-decoration: none; }
+    .review-action {
+      margin-top: 16px;
+      padding: 18px;
+      display: grid;
+      gap: 12px;
+      border: 1px solid var(--green-line);
+      border-radius: var(--radius-md);
+      background: var(--green-soft);
+    }
+    .review-action strong { color: var(--green); font-size: 16px; }
+    .review-action span { color: var(--muted); font-size: 13px; font-weight: 700; line-height: 1.6; }
+    .submission-explanation { padding: 2px 0 2px 14px; border-left: 3px solid var(--harbor); }
+    .submission-explanation strong { color: var(--ink); font-size: 15px; }
+    .submission-explanation p { margin: 5px 0 0; color: var(--muted); font-size: 14px; font-weight: 700; line-height: 1.65; }
+    .submission-completion-actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+    .review-scope-note { padding: 12px 14px; border-left: 4px solid var(--harbor); background: var(--soft); color: var(--muted); font-size: 13px; font-weight: 700; line-height: 1.6; }
+
     @media (max-width: 960px) {
       .screen, .steps, .mode-grid { grid-template-columns: 1fr; }
       .screen { width: calc(100% - 28px); padding: 8px 0 12px; height: auto; min-height: 100vh; overflow: visible; }
@@ -283,6 +444,25 @@
       .scan-grid { grid-template-columns: 1fr; }
       .result-card { grid-row: auto; }
       .topbar { align-items: stretch; flex-direction: column; padding: 16px; }
+      .prepare-grid, .review-grid { grid-template-columns: 1fr; }
+      .result-stage-layout .result-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .panel.flow-panel { min-height: 0; padding: 22px; }
+    }
+    @media (max-width: 620px) {
+      .flow-stage, .prepare-grid, .setup-block, .step-section, .target-panel { min-width: 0; }
+      .flow-stage > .stage-lead, .step-section > p, .target-help { overflow-wrap: anywhere; word-break: normal; }
+      .flow-progress { padding: 18px 8px 14px; }
+      .flow-progress-item:not(:last-child)::after { left: calc(50% + 21px); right: calc(-50% + 21px); top: 17px; }
+      .flow-step-number { width: 36px; height: 36px; font-size: 13px; }
+      .flow-step-label { font-size: 12px; line-height: 17px; }
+      .panel.flow-panel { padding: 18px 16px; }
+      .flow-stage > .stage-title { font-size: 23px; line-height: 31px; }
+      .source-tabs { grid-template-columns: 1fr; }
+      .stage-actions .button { width: 100%; }
+      .submission-completion-actions .button { width: 100%; }
+      .result-stage-layout .result-list { grid-template-columns: 1fr; }
+      .review-summary { grid-template-columns: 1fr; gap: 3px; }
+      .review-summary dd { margin-bottom: 7px; }
     }
     @media (max-height: 720px) {
       .screen { height: auto; min-height: 100vh; overflow-x: hidden; overflow-y: auto; scrollbar-gutter: stable; }
@@ -322,105 +502,154 @@
         <div aria-label="현재 상태" aria-live="polite">
           <span class="pill" id="checkerBadge">체커 확인 중</span>
           <span class="pill" id="serverBadge">서버 확인 중</span>
+          <a class="pill" href="/my">내 점검 이력</a>
           <a class="pill" href="https://github.com/Lex6won/vibecode-checker" target="_blank" rel="noreferrer">체커 GitHub</a>
         </div>
       </header>
 
-      <section class="hero panel-card" aria-labelledby="scan-title">
-        <div>
-          <div class="eyebrow">개발소스 보안 점검</div>
-          <h1 id="scan-title">3단계로 소스를 점검하세요.</h1>
-          <p class="lead">저장 위치 → 검사 대상 → 점검 방식을 선택하면 바로 시작합니다.</p>
-          <p class="lead" id="dataNotice" style="margin-top: 8px; font-size: 13px;">점검 시 서버에는 점검 이력·보고서와 라이브러리 메타값(경기도 화이트리스트 구축용)만 남습니다. <b>소스 코드 원본은 서버에 남지 않으며 점검 직후 즉시 삭제됩니다.</b></p>
-        </div>
-        <div id="sessionBar" aria-label="로그인 정보" style="display:none; gap:8px; align-items:center; flex-wrap:wrap;">
-          <span class="pill" id="sessionWho">확인 중</span>
-          <a class="pill" href="/my">내 점검 이력</a>
-          <button class="pill" id="logoutButton" type="button" style="cursor:pointer; border:1px solid var(--line); background:var(--panel);">로그아웃</button>
-        </div>
-      </section>
+      <nav class="flow-progress" id="scanFlowProgress" aria-label="보안점검 4단계" hidden>
+        <ol class="flow-progress-list">
+          <li class="flow-progress-item" data-flow-item="1" data-state="active">
+            <button class="flow-step-button" type="button" data-flow-step="1" aria-current="step">
+              <span class="flow-step-number">1</span><span class="flow-step-label">점검 준비</span>
+            </button>
+          </li>
+          <li class="flow-progress-item" data-flow-item="2" data-state="pending">
+            <button class="flow-step-button" type="button" data-flow-step="2" disabled>
+              <span class="flow-step-number">2</span><span class="flow-step-label">점검 실행</span>
+            </button>
+          </li>
+          <li class="flow-progress-item" data-flow-item="3" data-state="pending">
+            <button class="flow-step-button" type="button" data-flow-step="3" disabled>
+              <span class="flow-step-number">3</span><span class="flow-step-label">결과·리포트</span>
+            </button>
+          </li>
+          <li class="flow-progress-item" data-flow-item="4" data-state="pending">
+            <button class="flow-step-button" type="button" data-flow-step="4" disabled>
+              <span class="flow-step-number">4</span><span class="flow-step-label">검토 제출</span>
+            </button>
+          </li>
+        </ol>
+      </nav>
 
-      <section class="panel-card" id="loginGate" hidden aria-labelledby="login-title">
-        <h2 class="flow-title" id="login-title"><span class="sequence">✓</span><span>기관 메일로 로그인</span></h2>
-        <p style="margin: 8px 0 4px;">비밀번호가 없습니다. 기관 메일 주소로 1회용 로그인 링크를 받아 접속합니다.</p>
-        <p id="loginNote" style="margin: 0 0 10px; font-size: 13px; color: var(--muted);">허용 메일: @gg.go.kr, @korea.kr</p>
-        <div id="accessLoginArea" hidden>
-          <p style="margin: 0 0 10px;" id="accessLoginWho">확인 중</p>
-          <button class="button save-button" id="accessLoginButton" type="button">바로 시작하기</button>
-          <p id="accessLoginNote" style="margin: 8px 0 0; font-size: 13px; color: var(--muted);"></p>
-        </div>
-        <div class="input-row" id="magicLoginRow" style="flex-wrap: wrap; gap: 10px; align-items: end;">
-          <label class="login-field" style="flex: 1 1 260px;"><span>기관 이메일</span>
-            <input id="loginEmail" type="email" placeholder="이름@gg.go.kr" autocomplete="email"></label>
-          <button class="button save-button" id="requestLoginLink" type="button" style="min-height:46px;">로그인 링크 받기</button>
-        </div>
-        <div id="devLoginArea" hidden style="margin-top: 10px;">
-          <p style="font-size: 13px; color: var(--muted); margin-bottom: 6px;">메일 발송이 연결되기 전이라 링크를 화면에 표시합니다. 아래를 누르면 로그인됩니다.</p>
-          <a class="button save-button" id="devLoginLink" href="/auth/complete">로그인 완료하기</a>
-        </div>
-      </section>
+      <section class="scan-grid" aria-live="polite">
+        <div class="panel flow-panel panel-card">
+          <section class="flow-stage" data-flow-panel="1" aria-labelledby="prepare-stage-title">
+            <div class="stage-kicker">1단계 · 점검 준비</div>
+            <h2 class="stage-title" id="prepare-stage-title">저장 위치와 검사 대상을 준비하세요.</h2>
+            <p class="stage-lead">보고서를 저장할 폴더를 정하고, 내 PC의 프로젝트 폴더·ZIP 파일 또는 공개 GitHub 저장소를 선택합니다.</p>
+            <div class="prepare-grid">
+              <section class="step-section setup-block" aria-labelledby="save-step-title">
+                <h2 class="flow-title" id="save-step-title"><span class="sequence">1</span><span>결과 저장 위치</span></h2>
+                <p>점검이 끝나면 HTML·MD·JSON 보고서를 선택한 폴더에 저장합니다.</p>
+                <div class="save-row">
+                  <span id="savePath">저장 위치를 선택하면 HTML·MD·JSON 보고서를 해당 위치에 저장합니다.</span>
+                  <button class="button save-button" id="saveButton" type="button">저장 위치 선택</button>
+                </div>
+              </section>
 
-      <section class="scan-grid">
-        <div class="panel panel-card">
-          <section class="step-section" aria-labelledby="save-step-title">
-            <h2 class="flow-title" id="save-step-title"><span class="sequence">1</span><span>결과 저장 위치 선택</span></h2>
-            <p>점검 보고서를 저장할 폴더를 먼저 선택하세요.</p>
-            <div class="save-row">
-              <span id="savePath">저장 위치를 선택하면 HTML·MD·JSON 보고서를 해당 위치에 저장합니다.</span>
-              <button class="button save-button" id="saveButton" type="button">저장 위치 선택</button>
+              <section class="step-section setup-block" aria-labelledby="target-step-title">
+                <h2 class="flow-title" id="target-step-title"><span class="sequence">2</span><span>검사 대상</span></h2>
+                <p>서버로 보낸 원본은 점검 직후 즉시 삭제됩니다.</p>
+                <div class="source-tabs" role="tablist" aria-label="검사 대상 유형">
+                  <button class="tab active" type="button" data-target="folder">프로젝트 폴더</button>
+                  <button class="tab" type="button" data-target="zip">ZIP 압축파일</button>
+                  <button class="tab" type="button" data-target="url">GitHub · GitLab URL</button>
+                </div>
+                <input id="folderPickerInput" type="file" webkitdirectory multiple hidden>
+                <input id="archivePickerInput" type="file" accept=".zip,application/zip" hidden>
+                <div class="target-help" id="targetHelp">클릭하면 Windows 탐색기에서 검사할 프로젝트 폴더를 선택합니다.</div>
+                <div class="input-row">
+                  <input id="targetInput" aria-label="검사 대상 경로 또는 URL" value="선택된 폴더 없음" placeholder="https://github.com/organization/project" readonly>
+                  <button class="button scan-button" id="scanButton" type="button">폴더 선택</button>
+                </div>
+              </section>
+            </div>
+            <div class="stage-actions">
+              <button class="button target-next-button" id="targetNextButton" type="button" disabled>다음: 점검 실행</button>
             </div>
           </section>
 
-          <section class="step-section" aria-labelledby="target-step-title">
-            <h2 class="flow-title" id="target-step-title"><span class="sequence">2</span><span>검사 대상 선택</span></h2>
-            <p>검사할 소스를 선택하세요. 서버로 보낸 원본은 점검 직후 즉시 삭제됩니다.</p>
-            <div class="source-tabs" role="tablist" aria-label="검사 대상 유형">
-              <button class="tab active" type="button" data-target="folder">폴더 선택</button>
-              <button class="tab" type="button" data-target="zip">압축파일 선택</button>
-              <button class="tab" type="button" data-target="url">GitHub URL</button>
-            </div>
-            <input id="folderPickerInput" type="file" webkitdirectory multiple hidden>
-            <input id="archivePickerInput" type="file" accept=".zip,application/zip" hidden>
-            <div class="target-help" id="targetHelp">클릭하면 Windows 탐색기에서 검사할 프로젝트 폴더를 선택합니다.</div>
-            <div class="input-row">
-              <input id="targetInput" aria-label="검사 대상 경로 또는 URL" value="선택된 폴더 없음" placeholder="https://github.com/organization/project" readonly>
-              <button class="button scan-button" id="scanButton" type="button">폴더 선택</button>
+          <section class="flow-stage" data-flow-panel="2" aria-labelledby="scan-stage-title" hidden>
+            <div class="stage-kicker">2단계 · 보안 점검 실행</div>
+            <h2 class="stage-title" id="scan-stage-title">점검 방식을 선택해 실행하세요.</h2>
+            <p class="stage-lead">개발 중에는 간편 점검을, 제출 전에는 전체 규칙을 확인하는 표준 점검을 권장합니다.</p>
+            <section class="step-section mode-block" aria-labelledby="scan-mode-title">
+              <h2 class="flow-title" id="scan-mode-title"><span class="sequence">3</span><span>점검 방식</span></h2>
+              <div class="mode-grid" aria-label="검사 방식">
+                <button class="mode" type="button" data-mode="quick" data-mode-title="간편 점검"><strong>간편 점검</strong><span>개발 중 빠르게 고위험 규칙과 의존성을 확인합니다.</span><em>개발 중</em></button>
+                <button class="mode active" type="button" data-mode="standard" data-mode-title="표준 점검"><strong>표준 점검</strong><span>전체 규칙을 검사하고 제출·검토용 보고서를 생성합니다.</span><em>제출 전 권장</em></button>
+              </div>
+            </section>
+            <div class="stage-actions" style="justify-content:flex-start;">
+              <button class="button secondary" type="button" data-flow-back="1">이전</button>
             </div>
           </section>
 
-          <section class="step-section" aria-labelledby="scan-mode-title">
-            <h2 class="flow-title" id="scan-mode-title"><span class="sequence">3</span><span>점검 방식 선택</span></h2>
-            <p>소스 상태에 맞는 점검 방식을 선택하면 즉시 점검이 시작됩니다.</p>
-            <div class="mode-grid" aria-label="검사 방식">
-              <button class="mode" type="button" data-mode="quick" data-mode-title="간편 점검"><strong>간편 점검</strong><span>고위험 규칙 위주로 빠르게 봅니다. 개발 중 반복 확인용 — 낮은 심각도 항목은 건너뜁니다.</span><em>개발 중</em></button>
-              <button class="mode active" type="button" data-mode="standard" data-mode-title="표준 점검"><strong>표준 점검</strong><span>전체 규칙으로 낮은 심각도까지 모두 검사합니다. 제출·검토 요청 전 필수.</span><em>제출 전</em></button>
+          <section class="flow-stage" data-flow-panel="3" aria-labelledby="result-stage-title" hidden>
+            <div class="stage-kicker">3단계 · 결과와 리포트</div>
+            <h2 class="stage-title" id="result-stage-title">점검 결과를 확인하고 리포트를 저장하세요.</h2>
+            <p class="stage-lead">발견 항목과 제출 가능 여부를 확인하고, 생성된 보고서를 PC에 저장하거나 다시 내려받을 수 있습니다.</p>
+            <div class="result-stage-layout">
+              <aside class="result-card">
+                <h2>점검 결과 요약</h2>
+                <ul class="result-list">
+                  <li><span>점검 방식</span><b id="resultMode">-</b></li>
+                  <li><span>제출 가능 여부</span><b id="resultDecision">대기</b></li>
+                  <li><span>수정 필요 항목</span><b id="resultFindings">0건</b></li>
+                  <li><span>사람 검토 필요</span><b id="resultReview">0건</b></li>
+                  <li><span>의존성 취약 패키지</span><b id="resultDeps">0건</b></li>
+                  <li><span>결과 리포트</span><b id="resultHtml">점검 전</b></li>
+                  <li><span>패키지 목록·점검 데이터</span><b id="resultJson">점검 전</b></li>
+                  <li><span>소프트웨어 명세서</span><b id="resultSbom">점검 전</b></li>
+                  <li><span>서버 원본 소스</span><b id="resultSource">업로드 전</b></li>
+                  <li><span>서버 보고서 보관</span><b id="resultRetention">확인 중</b></li>
+                </ul>
+                <div class="save-row" id="reportDownloadRow" hidden>
+                  <span><b>산출물 확인</b> · 항목을 누르면 새 창에서 볼 수 있습니다.</span>
+                  <div id="reportDownloadLinks" style="display:flex; flex-wrap:wrap; gap:8px;"></div>
+                </div>
+              </aside>
+            </div>
+            <div class="stage-actions">
+              <button class="button secondary" type="button" data-flow-back="2">이전</button>
+              <button class="button review-next-button" id="reviewNextButton" type="button" disabled>다음: 검토 제출</button>
+            </div>
+          </section>
+
+          <section class="flow-stage" data-flow-panel="4" aria-labelledby="review-stage-title" hidden>
+            <div class="stage-kicker">4단계 · 보안성검토 제출</div>
+            <h2 class="stage-title" id="review-stage-title">요청 정보와 리포트를 확인한 뒤 제출하세요.</h2>
+            <p class="stage-lead">점검 정보와 생성된 리포트가 함께 보안담당자 검토 대기열에 접수됩니다. 최종 판단은 담당자가 수행합니다.</p>
+            <div class="review-grid">
+              <section class="review-box" aria-labelledby="review-summary-title">
+                <h3 id="review-summary-title">보안성검토 요청서</h3>
+                <dl class="review-summary">
+                  <dt>점검 번호</dt><dd id="reviewScanId">점검 완료 후 표시</dd>
+                  <dt>검사 대상</dt><dd id="reviewTarget">-</dd>
+                  <dt>요청 기관·부서</dt><dd id="reviewOrganization">로그인 정보에서 확인</dd>
+                  <dt>요청자</dt><dd id="reviewRequester">로그인 정보에서 확인</dd>
+                  <dt>점검 판정</dt><dd id="reviewDecision">-</dd>
+                  <dt>접수 상태</dt><dd id="reviewSubmissionStatus">제출 전</dd>
+                </dl>
+              </section>
+              <section class="review-box" aria-labelledby="review-attachments-title">
+                <h3 id="review-attachments-title">함께 제출되는 리포트</h3>
+                <ul class="attachment-list" id="reviewSubmissionReports"><li>점검 완료 후 리포트가 표시됩니다.</li></ul>
+                <p class="target-help">포털이 생성한 보고서를 다시 업로드할 필요 없이 검토 요청에 자동으로 연결합니다.</p>
+              </section>
+            </div>
+            <p class="review-scope-note">현재는 포털 접수 요청서와 점검 리포트를 제출합니다. 기관 표준 HWPX 요청서 파일 생성은 공식 양식이 연결된 뒤 제공됩니다.</p>
+            <div class="review-action" id="scanFollowUpRow" hidden>
+              <strong>제출 준비 완료</strong>
+              <span id="observationAutoNote">라이브러리 목록과 검사 결과 메타값이 화이트리스트 근거로 자동 반영됩니다. 소스 코드는 포함되지 않습니다.</span>
+              <button class="button save-button" id="requestReview" type="button">요청서와 리포트 제출</button>
+            </div>
+            <div class="stage-actions" style="justify-content:flex-start;">
+              <button class="button secondary" type="button" data-flow-back="3">이전</button>
             </div>
           </section>
         </div>
-
-        <aside class="result-card panel-card">
-          <h2>점검 후 확인</h2>
-          <ul class="result-list">
-            <li><span>점검 방식</span><b id="resultMode">-</b></li>
-            <li><span>제출 가능 여부</span><b id="resultDecision">대기</b></li>
-            <li><span>수정 필요 항목</span><b id="resultFindings">0건</b></li>
-            <li><span>사람 검토 필요</span><b id="resultReview">0건</b></li>
-            <li><span>의존성 취약점</span><b id="resultDeps">0건</b></li>
-            <li><span>HTML 보고서</span><b id="resultHtml">생성 대기</b></li>
-            <li><span>JSON 증거 보고서</span><b id="resultJson">생성 대기</b></li>
-            <li><span>서버 원본 소스</span><b id="resultSource">업로드 전</b></li>
-            <li><span>서버 보고서 보관</span><b id="resultRetention">확인 중</b></li>
-          </ul>
-          <div class="save-row" id="reportDownloadRow" hidden>
-            <span><b>보고서 내려받기</b> — 서버 보관본을 파일로 저장합니다.</span>
-            <div id="reportDownloadLinks" style="display:flex; flex-wrap:wrap; gap:8px;"></div>
-          </div>
-          <div class="save-row" id="scanFollowUpRow" hidden>
-            <div class="flow-title"><span class="sequence">4</span><span>점검 후 처리</span></div>
-            <span id="observationAutoNote">라이브러리 목록과 검사 결과 메타값이 화이트리스트 근거로 자동 반영됩니다. 소스 코드는 포함되지 않습니다.</span>
-            <button class="button save-button" id="requestReview" type="button">보안성검토 요청</button>
-          </div>
-        </aside>
       </section>
     </main>
   </div>
@@ -561,8 +790,16 @@
     const resultDeps = document.querySelector("#resultDeps");
     const resultHtml = document.querySelector("#resultHtml");
     const resultJson = document.querySelector("#resultJson");
+    const resultSbom = document.querySelector("#resultSbom");
     const scanCompleteActions = document.querySelector("#scanCompleteActions");
     const closeCompletedScan = document.querySelector("#closeCompletedScan");
+    const targetNextButton = document.querySelector("#targetNextButton");
+    const reviewNextButton = document.querySelector("#reviewNextButton");
+    const reviewStage = document.querySelector('[data-flow-panel="4"]');
+    const flowItems = Array.from(document.querySelectorAll("[data-flow-item]"));
+    const flowButtons = Array.from(document.querySelectorAll("[data-flow-step]"));
+    const flowPanels = Array.from(document.querySelectorAll("[data-flow-panel]"));
+    const scanFlowProgress = document.querySelector("#scanFlowProgress");
     let saveLocationSelectionInFlight = false;
 
     // ── 모달 포커스 관리: 열리면 첫 행동 버튼으로, Tab 은 모달 안에서 순환, 닫히면 제자리로 ──
@@ -598,11 +835,11 @@
       });
     });
     // 폴더 직접 저장(showDirectoryPicker)은 https 또는 127.0.0.1 에서만 존재한다.
-    // LAN IP(http://192.168...)로 접속하면 API 자체가 없어, 폴백으로 "화면에서 내려받기" 모드로 진행한다.
+    // LAN IP(http://192.168...)로 접속하면 API 자체가 없어, 폴백으로 결과 파일을 여는 모드로 진행한다.
     // ?save=download 로 강제해 폴백 화면을 시험할 수 있다.
     const canPickFolder = typeof window.showDirectoryPicker === "function"
       && new URLSearchParams(window.location.search).get("save") !== "download";
-    const DOWNLOAD_MODE_LABEL = "화면에서 내려받기";
+    const DOWNLOAD_MODE_LABEL = "화면에서 열기";
     let targetSelectionInFlight = false;
     let activeTarget = "folder";
     let selectedReady = false;
@@ -614,10 +851,14 @@
     let selectedSaveDirectoryHandle = null;
     let browserSavedReports = [];
     let lastScanMode = null;
+    let currentFlowStep = 1;
+    let scanCompleted = false;
+    let reviewSubmitted = false;
+    let sessionSnapshot = null;
     const targetText = {
       folder: { help: "클릭하면 Windows 탐색기에서 검사할 프로젝트 폴더를 선택합니다.", value: "선택된 폴더 없음", button: "폴더 선택", readOnly: true, placeholder: "" },
       zip: { help: "클릭하면 Windows 탐색기에서 검사할 ZIP 파일을 선택합니다.", value: "선택된 압축파일 없음", button: "압축파일 선택", readOnly: true, placeholder: "" },
-      url: { help: "GitHub 저장소 URL을 입력한 뒤 원하는 점검 방식을 누르면 바로 시작합니다.", value: "", button: "URL 입력", readOnly: false, placeholder: "https://github.com/organization/project" }
+      url: { help: "GitHub 또는 정부 GitLab 저장소 URL을 입력한 뒤 원하는 점검 방식을 누르면 바로 시작합니다. GitLab은 https://gitlab.aigov.go.kr/그룹/저장소 형식입니다.", value: "", button: "URL 입력", readOnly: false, placeholder: "https://github.com/organization/project 또는 https://gitlab.aigov.go.kr/그룹/저장소" }
     };
 
     function updateTarget(target, openPicker = true) {
@@ -634,6 +875,7 @@
       targetInput.placeholder = next.placeholder;
       targetInput.readOnly = next.readOnly;
       scanButton.textContent = next.button;
+      updateStepStates();
       if (!openPicker) return;
       openTargetPicker();
     }
@@ -741,7 +983,7 @@
       }
     }
 
-    // 단계 카드 1·2·3 의 진행 상태를 계산해 표시한다.
+    // 준비 화면 안의 저장·대상·점검 방식 상태와 상단 4단계 흐름을 함께 계산한다.
     const stepSections = {
       save: document.querySelector("#save-step-title")?.closest(".step-section"),
       target: document.querySelector("#target-step-title")?.closest(".step-section"),
@@ -756,13 +998,64 @@
         else if (badge.dataset.number) badge.textContent = badge.dataset.number;
       }
     }
+    function maxAvailableFlowStep() {
+      if (!selectedSaveDir || !selectedReady) return 1;
+      return scanCompleted ? 4 : 2;
+    }
+    function syncFlowNavigation() {
+      const maxStep = maxAvailableFlowStep();
+      if (currentFlowStep > maxStep) currentFlowStep = maxStep;
+      flowPanels.forEach((panel) => {
+        panel.hidden = Number(panel.dataset.flowPanel) !== currentFlowStep;
+      });
+      flowItems.forEach((item) => {
+        const step = Number(item.dataset.flowItem);
+        const completed = step === 1 ? Boolean(selectedSaveDir && selectedReady)
+          : step === 2 ? scanCompleted
+          : step === 3 ? scanCompleted
+          : reviewSubmitted;
+        item.dataset.state = step === currentFlowStep ? "active" : completed ? "done" : "pending";
+      });
+      flowButtons.forEach((button) => {
+        const step = Number(button.dataset.flowStep);
+        button.disabled = step > maxStep;
+        if (step === currentFlowStep) button.setAttribute("aria-current", "step");
+        else button.removeAttribute("aria-current");
+      });
+      targetNextButton.disabled = !(selectedSaveDir && selectedReady);
+      reviewNextButton.disabled = !scanCompleted;
+    }
+    function showFlowStep(step, { focus = true } = {}) {
+      const nextStep = Math.max(1, Math.min(Number(step) || 1, maxAvailableFlowStep()));
+      currentFlowStep = nextStep;
+      syncFlowNavigation();
+      if (focus) {
+        const heading = flowPanels.find((panel) => Number(panel.dataset.flowPanel) === nextStep)?.querySelector("h2");
+        heading?.setAttribute("tabindex", "-1");
+        heading?.focus({ preventScroll: true });
+      }
+    }
     function updateStepStates() {
       const saveDone = Boolean(selectedSaveDir);
       const targetDone = Boolean(selectedReady);
       markStep(stepSections.save, saveDone ? "done" : "active");
       markStep(stepSections.target, !saveDone ? "pending" : targetDone ? "done" : "active");
-      markStep(stepSections.mode, saveDone && targetDone ? (scanEverStarted ? "done" : "active") : "pending");
+      markStep(stepSections.mode, saveDone && targetDone ? (scanCompleted ? "done" : "active") : "pending");
+      syncFlowNavigation();
     }
+
+    flowButtons.forEach((button) => {
+      button.addEventListener("click", () => showFlowStep(Number(button.dataset.flowStep)));
+    });
+    document.querySelectorAll("[data-flow-back]").forEach((button) => {
+      button.addEventListener("click", () => showFlowStep(Number(button.dataset.flowBack)));
+    });
+    targetNextButton.addEventListener("click", () => {
+      if (selectedSaveDir && selectedReady) showFlowStep(2);
+    });
+    reviewNextButton.addEventListener("click", () => {
+      if (scanCompleted) showFlowStep(4);
+    });
 
     function getTargetLabel() {
       if (activeTarget === "folder") return "선택한 폴더";
@@ -820,6 +1113,7 @@
       resultDeps.textContent = "확인 중";
       resultHtml.textContent = "생성 중";
       resultJson.textContent = "생성 중";
+      resultSbom.textContent = "생성 중";
     }
 
     function setResultBlocked(message) {
@@ -831,6 +1125,7 @@
       resultDeps.textContent = "-";
       resultHtml.textContent = "생성 안 됨";
       resultJson.textContent = "생성 안 됨";
+      resultSbom.textContent = "생성 안 됨";
       finishScanProgress({
         success: false,
         message: "문제를 확인한 뒤 다시 시도하거나 확인을 눌러 점검 화면으로 돌아가세요.",
@@ -841,9 +1136,48 @@
     // P3 전환: 관측 축적은 완료 시 서버가 자동으로 한다(화면 상단 고지). 여기서는
     // 반영 사실 표시와 보안성검토 요청만 다룬다.
     const scanFollowUpRow = document.querySelector("#scanFollowUpRow");
-    const observationAutoNote = document.querySelector("#observationAutoNote");
-    const requestReview = document.querySelector("#requestReview");
     let lastCompletedScanId = null;
+
+    function configureReviewStage() {
+      reviewStage.querySelector(".stage-kicker").textContent = "4단계 · 보안성검토 자료 제출";
+      reviewStage.querySelector(".stage-title").textContent = "요청서와 리포트를 한 번에 준비합니다.";
+      reviewStage.querySelector(".stage-lead").textContent = "제출하면 보안성검토에 필요한 두 자료를 하나의 제출자료 ZIP으로 저장합니다.";
+      reviewStage.querySelector(".review-grid")?.remove();
+      reviewStage.querySelector(".review-scope-note")?.remove();
+      const action = reviewStage.querySelector("#scanFollowUpRow");
+      action.replaceChildren();
+      const user = document.createElement("div");
+      user.className = "submission-explanation";
+      user.innerHTML = "<strong>사용자에게</strong><p>보안성검토 요청서와 점검 리포트가 담긴 제출자료 ZIP을 자동으로 만듭니다. 한 번 내려받아 바로 제출할 수 있습니다.</p>";
+      const admin = document.createElement("div");
+      admin.className = "submission-explanation";
+      admin.innerHTML = "<strong>안전한 개발을 위해</strong><p>제출 자료는 사용자 동의에 따라 90일 동안 서버에 보관됩니다. 패키지 이름·버전 메타값은 안전한 패키지 목록과 화이트리스트 검토의 근거로만 축적되며, 원본 소스 코드는 보관하지 않습니다.</p>";
+      const completion = document.createElement("span");
+      completion.id = "observationAutoNote";
+      completion.textContent = "제출 자료를 만들 준비가 되었습니다.";
+      const button = document.createElement("button");
+      button.className = "button save-button";
+      button.id = "requestReview";
+      button.type = "button";
+      button.textContent = "보안성검토 자료 제출";
+      const completionActions = document.createElement("div");
+      completionActions.className = "submission-completion-actions";
+      completionActions.id = "submissionCompletionActions";
+      completionActions.hidden = true;
+      const finish = document.createElement("button");
+      finish.className = "button primary";
+      finish.id = "finishSubmission";
+      finish.type = "button";
+      finish.textContent = "확인하고 마치기";
+      completionActions.append(finish);
+      action.append(user, admin, completion, button, completionActions);
+    }
+
+    configureReviewStage();
+    const submissionNotice = document.querySelector("#observationAutoNote");
+    const requestReview = document.querySelector("#requestReview");
+    const submissionCompletionActions = document.querySelector("#submissionCompletionActions");
+    const finishSubmission = document.querySelector("#finishSubmission");
 
     function showScanFollowUp(job) {
       if (job.status !== "completed") {
@@ -852,180 +1186,131 @@
       }
       lastCompletedScanId = job.id;
       scanFollowUpRow.hidden = false;
-      observationAutoNote.textContent = job.observations_submitted_at
-        ? "라이브러리 목록과 검사 결과 메타값이 화이트리스트 근거로 자동 반영되었습니다. 소스 코드는 포함되지 않습니다."
-        : "라이브러리 메타값 반영을 확인하지 못했습니다. 내 점검 이력에서 다시 확인해 주세요.";
+      reviewSubmitted = Boolean(job.review_request);
+      submissionNotice.textContent = job.review_request?.submission_package
+        ? `제출 완료: ${job.review_request.submission_package.file_name}을 만들었습니다. 선택한 저장 위치에 저장했으며, 내 점검 이력에서 다시 확인할 수 있습니다.`
+        : "제출하면 요청서와 점검 리포트를 하나의 ZIP으로 만들고, 선택한 저장 폴더 또는 브라우저 기본 다운로드 위치에 저장합니다.";
       if (job.review_request) {
         requestReview.disabled = true;
-        requestReview.textContent = "검토 요청됨";
+        requestReview.textContent = "제출 완료";
+        submissionCompletionActions.hidden = false;
       } else {
         requestReview.disabled = false;
-        requestReview.textContent = "보안성검토 요청";
+        requestReview.textContent = "보안성검토 자료 제출";
+        submissionCompletionActions.hidden = true;
       }
+      syncFlowNavigation();
     }
+
+    async function saveSubmissionPackage(submissionPackage) {
+      if (!submissionPackage?.url || !submissionPackage?.file_name) {
+        throw new Error("제출자료 파일 정보를 찾지 못했습니다.");
+      }
+      if (canPickFolder && selectedSaveDirectoryHandle) {
+        const response = await fetch(submissionPackage.url, { cache: "no-store" });
+        if (!response.ok) throw new Error("제출자료를 저장하지 못했습니다.");
+        const destination = await selectedSaveDirectoryHandle.getFileHandle(submissionPackage.file_name, { create: true });
+        const writable = await destination.createWritable();
+        await writable.write(await response.blob());
+        await writable.close();
+        return `${selectedSaveDir} 폴더에 제출자료 ZIP을 저장했습니다.`;
+      }
+      const download = document.createElement("a");
+      download.href = submissionPackage.url;
+      download.download = submissionPackage.file_name;
+      document.body.append(download);
+      download.click();
+      download.remove();
+      return "브라우저 기본 다운로드 위치로 제출자료 ZIP 저장을 요청했습니다.";
+    }
+
+    finishSubmission.addEventListener("click", () => {
+      window.location.assign("/");
+    });
 
     requestReview.addEventListener("click", async () => {
       if (!lastCompletedScanId) {
-        // 새로고침 등으로 이 화면이 완료된 점검을 기억하지 못하는 상태 — 조용히 무시하지 않는다.
-        observationAutoNote.innerHTML = '이 화면에서 방금 완료한 점검이 없습니다. <a href="/my" style="color: var(--harbor); font-weight: 800;">내 점검 이력</a>에서 해당 점검의 검토 요청을 눌러 주세요.';
+        submissionNotice.textContent = "이 화면에서 방금 완료한 점검이 없습니다. 내 점검 이력에서 해당 점검을 다시 확인해 주세요.";
         return;
       }
       requestReview.disabled = true;
-      requestReview.textContent = "요청 중";
+      requestReview.textContent = "제출 자료 만드는 중";
       try {
         const response = await fetch(`/api/scan/${lastCompletedScanId}/request-review`, { method: "POST" });
         const result = await response.json();
-        if (response.ok || result.error === "already_requested") {
-          requestReview.textContent = "검토 요청됨 ✓";
-          observationAutoNote.innerHTML = (result.message ? `${result.message} ` : "보안성검토를 요청했습니다. ") + '진행 상태는 <a href="/my" style="color: var(--harbor); font-weight: 800;">내 점검 이력</a>에서 확인할 수 있습니다.';
+        if (response.ok) {
+          const saveResult = await saveSubmissionPackage(result.submission_package);
+          reviewSubmitted = true;
+          requestReview.textContent = "제출 완료";
+          submissionCompletionActions.hidden = false;
+          submissionNotice.textContent = `제출 완료: 요청서와 점검 리포트를 하나의 ZIP으로 만들었습니다. ${saveResult}`;
+          syncFlowNavigation();
+        } else if (result.error === "already_requested") {
+          reviewSubmitted = true;
+          requestReview.textContent = "제출 완료";
+          submissionCompletionActions.hidden = false;
+          submissionNotice.textContent = "이미 제출 자료를 만들었습니다. 내 점검 이력에서 제출자료를 다시 확인할 수 있습니다.";
+          syncFlowNavigation();
         } else {
           requestReview.disabled = false;
-          requestReview.textContent = "보안성검토 요청";
-          observationAutoNote.textContent = result.message || "요청하지 못했습니다. 잠시 후 다시 시도해 주세요.";
+          requestReview.textContent = "보안성검토 자료 제출";
+          submissionNotice.textContent = result.message || "제출 자료를 만들지 못했습니다. 잠시 후 다시 시도해 주세요.";
         }
-      } catch {
+      } catch (error) {
         requestReview.disabled = false;
-        requestReview.textContent = "보안성검토 요청";
-        observationAutoNote.textContent = "요청하지 못했습니다. 연결을 확인한 뒤 다시 시도해 주세요.";
+        requestReview.textContent = "보안성검토 자료 제출";
+        submissionNotice.textContent = String(error.message || error);
       }
     });
 
-    // ---- P3: 세션 확인과 로그인 게이트 (매직링크) ----
-    const loginGate = document.querySelector("#loginGate");
-    const sessionBar = document.querySelector("#sessionBar");
-    const sessionWho = document.querySelector("#sessionWho");
-    const logoutButton = document.querySelector("#logoutButton");
-    const loginEmail = document.querySelector("#loginEmail");
-    const requestLoginLink = document.querySelector("#requestLoginLink");
-    const devLoginArea = document.querySelector("#devLoginArea");
-    const devLoginLink = document.querySelector("#devLoginLink");
-    const loginNote = document.querySelector("#loginNote");
+    // Cloudflare Access가 검증한 이메일로 포털 세션을 자동 생성한다.
     const scanGrid = document.querySelector(".scan-grid");
-
-    const accessLoginArea = document.querySelector("#accessLoginArea");
-    const accessLoginWho = document.querySelector("#accessLoginWho");
-    const accessLoginButton = document.querySelector("#accessLoginButton");
-    const accessLoginNote = document.querySelector("#accessLoginNote");
-    const magicLoginRow = document.querySelector("#magicLoginRow");
-
-    // 관문(Access)을 통과해 들어온 사람은 이메일 소유가 이미 증명됐다 —
-    // 매직링크 대신 한 번의 클릭(신규는 소속 입력)으로 시작한다.
-    function applyAccessShortcut(session) {
-      const accessEmail = session && !session.logged_in ? session.access_email : null;
-      accessLoginArea.hidden = !accessEmail;
-      magicLoginRow.hidden = Boolean(accessEmail);
-      if (loginNote) loginNote.hidden = Boolean(accessEmail);
-      if (!accessEmail) return;
-      accessLoginWho.innerHTML = `보안 관문에서 <b>${accessEmail}</b> 인증을 확인했습니다. 별도 로그인 없이 시작할 수 있습니다.`;
-    }
-
     let sessionProfileComplete = false;
+    let accessLoginInFlight = false;
 
     function applySession(session) {
       const loggedIn = Boolean(session && session.logged_in);
+      sessionSnapshot = loggedIn ? session : null;
       sessionProfileComplete = Boolean(loggedIn && String(session.organization || "").trim() && String(session.department || "").trim());
-      applyAccessShortcut(session);
-      // 로그인 전/후로 세로 레이아웃이 달라진다 — CSS 가 판단할 수 있게 상태를 표시한다.
-      document.body.classList.toggle("logged-out", !loggedIn);
-      loginGate.hidden = loggedIn;
-      // hidden 속성은 인라인 display 에 지므로 display 로 직접 제어한다.
-      sessionBar.style.display = loggedIn ? "flex" : "none";
       scanGrid.style.display = loggedIn ? "" : "none";
-      if (loggedIn) {
-        sessionWho.textContent = [session.email, [session.organization, session.department].filter(Boolean).join(" ")]
-          .filter(Boolean).join(" · ");
+      scanFlowProgress.hidden = !loggedIn;
+    }
+
+    async function establishAccessSession() {
+      if (accessLoginInFlight) return null;
+      accessLoginInFlight = true;
+      try {
+        let response = await fetch("/api/auth/access-login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({})
+        });
+        if (response.status === 404) {
+          response = await fetch("/api/auth/development-login", { method: "POST" });
+        }
+        if (!response.ok) return null;
+        return await (await fetch("/api/auth/session", { cache: "no-store" })).json();
+      } catch {
+        return null;
+      } finally {
+        accessLoginInFlight = false;
       }
     }
 
     async function loadSession() {
       try {
         const response = await fetch("/api/auth/session", { cache: "no-store" });
-        applySession(await response.json());
+        const session = await response.json();
+        if (!session.logged_in && (session.access_email || window.location.hostname === "127.0.0.1" || window.location.hostname === "localhost")) {
+          const established = await establishAccessSession();
+          applySession(established || session);
+          return;
+        }
+        applySession(session);
       } catch {
         applySession(null);
       }
-      if (new URLSearchParams(window.location.search).get("auth") === "expired") {
-        loginNote.textContent = "로그인 링크가 만료되었거나 이미 사용되었습니다. 새 링크를 다시 받아 주세요.";
-      }
     }
-
-    async function loadRetentionNotice() {
-      try {
-        const session = await (await fetch("/api/auth/session", { cache: "no-store" })).json();
-        const days = session.report_retention_days;
-        if (Number.isFinite(days) && days > 0) {
-          dataNoticeElement.innerHTML = `점검 시 서버에는 점검 이력·보고서와 라이브러리 메타값(경기도 화이트리스트 구축용)만 남으며, 보고서는 <b>${days}일 보관 후 자동 삭제</b>됩니다. <b>소스 코드 원본은 서버에 남지 않으며 점검 직후 즉시 삭제됩니다.</b>`;
-          resultRetention.textContent = retentionText(days);
-        }
-      } catch {
-        // 고지 갱신 실패는 기본 문구로 둔다.
-      }
-    }
-    const dataNoticeElement = document.querySelector("#dataNotice");
-    loadRetentionNotice();
-
-    requestLoginLink.addEventListener("click", async () => {
-      requestLoginLink.disabled = true;
-      requestLoginLink.textContent = "요청 중";
-      try {
-        const response = await fetch("/api/auth/request-link", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email: loginEmail.value.trim() })
-        });
-        const result = await response.json();
-        if (response.ok) {
-          if (result.dev_login_url) {
-            devLoginArea.hidden = false;
-            devLoginLink.href = result.dev_login_url;
-            loginNote.textContent = `링크는 ${result.expires_in_minutes}분 동안 1회만 쓸 수 있습니다.`;
-          } else {
-            loginNote.textContent = result.message || "메일로 보낸 링크를 열면 로그인됩니다.";
-          }
-        } else {
-          loginNote.textContent = result.message || "요청하지 못했습니다. 입력을 확인해 주세요.";
-        }
-      } catch {
-        loginNote.textContent = "요청하지 못했습니다. 연결을 확인해 주세요.";
-      } finally {
-        requestLoginLink.disabled = false;
-        requestLoginLink.textContent = "로그인 링크 받기";
-      }
-    });
-
-    accessLoginButton.addEventListener("click", async () => {
-      accessLoginButton.disabled = true;
-      accessLoginNote.textContent = "";
-      try {
-        const response = await fetch("/api/auth/access-login", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({})
-        });
-        const result = await response.json();
-        if (response.ok) {
-          window.location.reload();
-          return;
-        }
-        accessLoginNote.textContent = result.message || "시작하지 못했습니다. 다시 시도해 주세요.";
-      } catch {
-        accessLoginNote.textContent = "연결을 확인해 주세요.";
-      } finally {
-        accessLoginButton.disabled = false;
-      }
-    });
-
-    // Enter 로도 로그인 링크를 요청할 수 있게 한다 (form 이 아니라 기본 제출이 없음).
-    [loginEmail].forEach((field) => {
-      field.addEventListener("keydown", (event) => {
-        if (event.key === "Enter" && !requestLoginLink.disabled) requestLoginLink.click();
-      });
-    });
-
-    logoutButton.addEventListener("click", async () => {
-      try { await fetch("/api/auth/logout", { method: "POST" }); } catch {}
-      window.location.reload();
-    });
 
     loadSession();
     updateStepStates();
@@ -1062,29 +1347,43 @@
       return Number.isFinite(days) && days > 0 ? `${days}일 후 자동 삭제` : "무기한 보관 안 함";
     }
 
+    function artifactDisplayName(report) {
+      if (report.kind === "html_report") return "결과 리포트";
+      if (report.kind === "json_report") return "패키지 목록·점검 데이터";
+      if (report.kind === "sbom") return "소프트웨어 명세서";
+      return "점검 요약";
+    }
+
     function renderReportDownloads(job) {
       const row = document.querySelector("#reportDownloadRow");
       const links = document.querySelector("#reportDownloadLinks");
-      const reports = job.reports || [];
+      const reports = job.artifacts || job.reports || [];
       if (!reports.length) { row.hidden = true; return; }
       links.replaceChildren(...reports.map((report) => {
-        const anchor = document.createElement("a");
-        anchor.className = "pill";
-        anchor.href = report.url;
-        anchor.download = report.file_name;
-        anchor.textContent = report.file_name.split("_").pop();
-        anchor.title = report.file_name;
-        return anchor;
+        const view = document.createElement("a");
+        view.className = "pill";
+        view.href = `${report.url}?view=1`;
+        view.target = "_blank";
+        view.rel = "noreferrer";
+        view.textContent = artifactDisplayName(report);
+        view.title = `${report.file_name} 열기`;
+        return view;
       }));
       row.hidden = false;
     }
 
     function setResultDone(job, saveError = null) {
+      scanCompleted = true;
+      updateStepStates();
       showScanFollowUp(job);
       renderReportDownloads(job);
       // P5(신뢰 표시): 서버가 준 사실(source_retained·retention)만 그대로 보여준다.
       resultSource.textContent = job.source_retained === false ? "점검 직후 삭제됨" : "확인 필요";
-      resultRetention.textContent = retentionText(job.report_retention_days);
+      resultRetention.textContent = job.artifact_storage === "submitted"
+        ? retentionText(job.report_retention_days)
+        : job.draft_expired
+          ? "제출 전 임시 보관 종료"
+          : "제출 전 임시 보관";
       // 화면 요약은 보고서와 같은 숫자를 말해야 한다 — 체커 실측값(block/warn) 그대로.
       const findingCount = job.summary?.finding_count ?? 0;
       const blockCount = job.summary?.block_count ?? null;
@@ -1092,9 +1391,10 @@
       const checkerBlocked = Boolean(job.summary?.blocked);
       const dependencyCount = job.summary?.dependency_finding_count ?? 0;
       const dependencyIncomplete = Boolean(job.summary?.dependency_incomplete);
-      const reportNames = (job.reports || []).map((item) => item.file_name);
-      const hasJson = reportNames.some((name) => name.endsWith(".json") || !name.includes("."));
+      const reportNames = (job.artifacts || job.reports || []).map((item) => item.file_name);
+      const hasJson = reportNames.some((name) => name.endsWith(".json") && !name.endsWith(".sbom.cdx.json"));
       const hasHtml = reportNames.some((name) => name.endsWith(".html"));
+      const hasSbom = reportNames.some((name) => name.endsWith(".sbom.cdx.json"));
       const decision = job.status === "failed"
         ? "점검 실패"
         : checkerBlocked
@@ -1120,14 +1420,15 @@
         : `${warnCount}건`;
       // "못 본 것"과 "봤는데 0건"은 다르다 — 불완전이면 0건이라고 말하지 않는다.
       resultDeps.textContent = dependencyIncomplete ? "확인 불충분" : `${dependencyCount}건`;
-      resultHtml.textContent = hasHtml ? "생성됨" : "생성 대기";
-      resultJson.textContent = hasJson ? "생성됨" : "생성 대기";
+      resultHtml.textContent = hasHtml ? "준비됨" : job.report_render_error ? "생성 실패" : "생성 안 됨";
+      resultJson.textContent = hasJson ? "준비됨" : "생성 안 됨";
+      resultSbom.textContent = hasSbom ? "준비됨" : "생성 안 됨";
       const saveStep = (job.steps || []).find((step) => step.name === "save_reports");
       if (saveError) {
         savePath.textContent = `점검은 완료되었지만 결과 파일 저장에 실패했습니다. ${saveError}`;
         progressSaveDetail.textContent = "결과 저장을 확인한 뒤 저장 위치를 다시 선택하세요.";
       } else if (!canPickFolder) {
-        savePath.textContent = "점검이 완료되었습니다. 결과 카드의 보고서 내려받기에서 저장하세요.";
+        savePath.textContent = "점검이 완료되었습니다. 결과 카드의 산출물을 열어 확인하세요.";
       } else if (browserSavedReports.length) {
         savePath.textContent = `${selectedSaveDir} 폴더에 결과물 ${browserSavedReports.length}개를 저장했습니다.`;
       } else if (saveStep?.status === "skipped") {
@@ -1137,13 +1438,13 @@
 
     async function saveReportsToSelectedDirectory(job) {
       if (!canPickFolder) {
-        // 내려받기 모드: 폴더 저장 없음. 링크는 결과 카드에서 제공한다.
-        progressSaveDetail.textContent = "결과 카드의 보고서 내려받기에서 저장하세요.";
+        // 폴더 저장을 지원하지 않으면 결과 항목을 새 창에서 열어 확인한다.
+        progressSaveDetail.textContent = "결과 카드의 산출물을 열어 확인하세요.";
         return;
       }
       if (!selectedSaveDirectoryHandle) throw new Error("결과 저장 위치를 먼저 선택하세요.");
       browserSavedReports = [];
-      for (const report of job.reports || []) {
+      for (const report of (job.artifacts || job.reports || [])) {
         const response = await fetch(report.url, { cache: "no-store" });
         if (!response.ok) throw new Error(`${report.file_name}을 저장하지 못했습니다.`);
         const destination = await selectedSaveDirectoryHandle.getFileHandle(report.file_name, { create: true });
@@ -1242,7 +1543,7 @@
       if (!response.ok) {
         if (response.status === 401) {
           applySession(null);
-          throw new Error("로그인이 필요합니다. 이메일 인증 후 다시 시도해 주세요.");
+          throw new Error("보안 관문 인증을 확인한 뒤 다시 시도해 주세요.");
         }
         throw new Error(started.message || started.error || "점검을 시작하지 못했습니다.");
       }
@@ -1304,6 +1605,9 @@
       activateMode(mode);
       lastScanMode = mode;
       scanEverStarted = true;
+      scanCompleted = false;
+      reviewSubmitted = false;
+      showFlowStep(2, { focus: false });
       updateStepStates();
       setScanRunning(mode);
       progressTarget.textContent = `${getTargetLabel()} 접근 가능 여부 확인 중`;
@@ -1354,6 +1658,8 @@
         const mode = pendingMode;
         pendingMode = null;
         await runScan(mode);
+      } else if (selectedSaveDir && selectedReady) {
+        showFlowStep(2);
       }
     });
 
@@ -1380,10 +1686,13 @@
     if (!canPickFolder) {
       // 저장 위치 단계가 성립하지 않는 환경 — 정직하게 안내하고 점검은 막지 않는다.
       selectedSaveDir = DOWNLOAD_MODE_LABEL;
-      queueMicrotask(updateStepStates);
-      savePath.innerHTML = "이 접속 환경에서는 폴더 직접 저장을 지원하지 않습니다. 점검이 끝나면 <b>결과 카드의 보고서 내려받기</b>로 저장하세요. 보고서는 서버에도 보관됩니다.";
+      queueMicrotask(() => {
+        updateStepStates();
+        showFlowStep(1, { focus: false });
+      });
+      savePath.innerHTML = "이 접속 환경에서는 폴더 직접 저장을 지원하지 않습니다. 점검이 끝나면 <b>결과 카드의 산출물</b>을 열어 확인하세요. 보고서는 서버에도 보관됩니다.";
       saveButton.hidden = true;
-      progressSaveDetail.textContent = "점검 후 결과 카드에서 보고서를 내려받으세요.";
+      progressSaveDetail.textContent = "점검 후 결과 카드에서 산출물을 열어 확인하세요.";
     }
 
     async function chooseSaveLocation() {
@@ -1448,6 +1757,7 @@
       pendingMode = null;
       closeModal(saveLocationPrompt);
       if (queuedMode) await runScan(queuedMode);
+      else showFlowStep(selectedReady ? 2 : 1);
     });
     closeSaveLocationPrompt.addEventListener("click", closeSavePrompt);
     cancelSaveLocation.addEventListener("click", closeSavePrompt);
@@ -1455,6 +1765,7 @@
     closeScanProgress.addEventListener("click", () => closeModal(scanProgress));
     closeCompletedScan.addEventListener("click", () => {
       closeModal(scanProgress);
+      showFlowStep(3, { focus: false });
       document.querySelector(".result-card").scrollIntoView({ behavior: "smooth", block: "nearest" });
     });
     retryScan.addEventListener("click", async () => {

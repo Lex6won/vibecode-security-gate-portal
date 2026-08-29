@@ -35,10 +35,9 @@
     .metric.review-metric b { color: var(--harbor); }
 
     .filters {
-      min-height: 64px;
-      padding: 12px;
+      padding: 16px;
       display: grid;
-      grid-template-columns: minmax(260px, 1fr) 170px 170px auto;
+      grid-template-columns: minmax(280px, 2fr) repeat(5, minmax(130px, 1fr)) auto;
       gap: 10px;
       align-items: center;
       border-radius: var(--radius-lg);
@@ -46,7 +45,13 @@
       border: 1px solid var(--line);
       box-shadow: var(--shadow-sm);
     }
-    .filters .field { background: var(--soft); }
+    .filters .field { min-height: 72px; padding: 10px 12px; display: grid; grid-template-columns: 1fr; gap: 5px; background: var(--soft); }
+    .filters .field label { color: var(--info); font-size: 12px; font-weight: 900; }
+    .filters .field input, .filters .field select { min-width: 0; min-height: 26px; padding: 0; border: 0; border-radius: 0; background: transparent; color: var(--ink); font: inherit; font-size: 14px; font-weight: 800; outline: none; }
+    .filters .field input::placeholder { color: var(--muted); opacity: 1; }
+    .filter-actions { align-self: stretch; display: grid; grid-template-columns: 1fr; gap: 8px; }
+    .filter-actions .button, .filter-actions .ghost-button { min-width: 104px; }
+    .filter-summary { grid-column: 1 / -1; margin: 0; color: var(--muted); font-size: 12px; font-weight: 800; }
 
     .content-grid { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: var(--space-gap); align-items: start; }
     .table-panel { border-color: var(--ice); box-shadow: var(--shadow); }
@@ -103,7 +108,29 @@
     .password-card p { color: var(--muted); font-size: 13px; font-weight: 700; line-height: 1.55; }
     .password-fields { display: grid; gap: 10px; }
     .password-fields label { display: grid; gap: 5px; color: var(--info); font-size: 12px; font-weight: 900; }
-    .password-fields input { min-height: 42px; padding: 0 12px; border: 1px solid var(--line); border-radius: 12px; color: var(--ink); background: var(--moon); font: inherit; }
+    .password-input { position: relative; }
+    .password-fields input { width: 100%; min-height: 42px; padding: 0 50px 0 12px; border: 1px solid var(--line); border-radius: 12px; color: var(--ink); background: var(--moon); font: inherit; }
+    .password-visibility {
+      position: absolute;
+      top: 50%;
+      right: 7px;
+      width: 36px;
+      height: 30px;
+      display: grid;
+      place-items: center;
+      transform: translateY(-50%);
+      border: 0;
+      border-radius: 8px;
+      background: transparent;
+      cursor: pointer;
+    }
+    .password-visibility::before { content: ""; width: 18px; height: 11px; border: 2px solid var(--info); border-radius: 60% 60% 55% 55%; }
+    .password-visibility::after { content: ""; position: absolute; width: 5px; height: 5px; border-radius: 50%; background: var(--info); }
+    .password-visibility:hover, .password-visibility[data-visible="true"] { background: var(--ice); }
+    .password-visibility:focus-visible { outline: 3px solid rgba(55, 112, 191, 0.28); outline-offset: 2px; }
+    .password-match { min-height: 18px; margin: -2px 0 0; color: var(--muted); font-size: 12px; font-weight: 800; }
+    .password-match[data-state="match"] { color: var(--green); }
+    .password-match[data-state="mismatch"] { color: var(--danger); }
     .password-actions { display: flex; justify-content: flex-end; gap: 8px; }
     .password-message { min-height: 20px; color: var(--warn); font-size: 12px; font-weight: 900; }
     .password-message[data-tone="success"] { color: var(--green); }
@@ -125,9 +152,37 @@
     .wl-excluded { background: var(--warn-soft); color: var(--warn); }
     .pkg-filter.active { outline: 2px solid var(--harbor); }
     .table-scroll { overflow-x: auto; }
+    .dashboard-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-gap); align-items: stretch; }
+    .chart-panel { min-height: 350px; display: grid; grid-template-rows: auto minmax(250px, 1fr); gap: 14px; }
+    .chart-panel:first-child { grid-column: 1 / -1; min-height: 410px; grid-template-rows: auto minmax(310px, 1fr); }
+    .chart-frame { min-height: 250px; position: relative; }
+    .chart-frame svg { width: 100%; height: 100%; min-height: 250px; overflow: visible; }
+    .chart-empty { min-height: 250px; display: grid; place-items: center; color: var(--muted); font-size: 13px; font-weight: 800; background: var(--soft); border: 1px dashed var(--line); }
+    .chart-legend { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 0; padding: 0; list-style: none; font-size: 12px; font-weight: 800; color: var(--muted); }
+    .chart-legend li { display: flex; align-items: center; gap: 7px; min-width: 0; }
+    .chart-legend span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .legend-dot { width: 10px; height: 10px; border-radius: 50%; flex: 0 0 auto; }
+    .analytics-summary { color: var(--muted); font-size: 12px; font-weight: 800; }
+    .dimension-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-gap); }
+    .dimension-panel { min-height: 200px; }
+    .dimension-list { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+    .dimension-list li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--line); }
+    .dimension-list li:last-child { border-bottom: 0; }
+    .dimension-list b, .dimension-list time { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .dimension-list b { color: var(--ink); font-size: 13px; font-weight: 900; }
+    .dimension-list time { margin-top: 3px; color: var(--muted); font-size: 11px; font-weight: 800; }
+    .dimension-count { min-width: 44px; color: var(--harbor); font-size: 15px; font-weight: 900; text-align: right; white-space: nowrap; }
 
+    @media (max-width: 1320px) {
+      .filters { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+      .filters .field:first-child { grid-column: span 2; }
+      .filter-actions { grid-template-columns: 1fr 1fr; }
+    }
     @media (max-width: 960px) {
-      .filters, .content-grid, .metrics { grid-template-columns: 1fr; }
+      .filters, .content-grid, .metrics, .dashboard-grid, .dimension-grid { grid-template-columns: 1fr; }
+      .filters .field:first-child { grid-column: auto; }
+      .filter-actions { grid-template-columns: 1fr 1fr; }
+      .chart-panel, .chart-panel:first-child { grid-column: auto; min-height: 0; grid-template-rows: auto minmax(250px, 1fr); }
       .history-item { grid-template-columns: 1fr; align-items: start; }
     }
   </style>
@@ -160,21 +215,58 @@
       <button class="metric" type="button" data-filter-period="오늘"><span>오늘 점검</span><b>12건</b></button>
       <button class="metric" type="button" data-filter-status="제출 가능"><span>제출 가능</span><b>8건</b></button>
       <button class="metric needs" type="button" data-filter-status="수정 필요"><span>수정 필요</span><b>3건</b></button>
-      <button class="metric review-metric" type="button" data-filter-status="사람 검토"><span>사람 검토</span><b>1건</b></button>
+      <button class="metric review-metric" type="button" data-filter-status="확인 필요"><span>확인 필요</span><b>1건</b></button>
     </section>
 
     <section class="filters" aria-label="점검 이력 필터">
       <div class="field"><label for="keyword">검색</label><input id="keyword" placeholder="GitHub URL, 프로젝트명, 파일명"></div>
-      <div class="field"><label for="status">결과</label><select id="status"><option>전체 결과</option><option>제출 가능</option><option>고위험 없음</option><option>수정 필요</option><option>사람 검토</option></select></div>
+      <div class="field"><label for="status">결과</label><select id="status"><option>전체 결과</option><option>제출 가능</option><option>고위험 없음</option><option>수정 필요</option><option>확인 필요</option></select></div>
       <div class="field"><label for="period">기간</label><select id="period"><option>최근 30일</option><option>오늘</option><option>이번 달</option></select></div>
-      <button class="button" type="button">조회</button>
+      <div class="field"><label for="ecosystem">패키지 생태계</label><select id="ecosystem"><option value="">전체</option><option value="npm">npm</option><option value="pypi">PyPI</option><option value="maven">Maven</option><option value="nuget">NuGet</option></select></div>
+      <div class="field"><label for="language">개발언어</label><select id="language"><option value="">전체</option></select></div>
+      <div class="field"><label for="whitelistStatus">화이트리스트</label><select id="whitelistStatus"><option value="">전체</option><option value="included">담김</option><option value="excluded">제외</option><option value="unlisted">미분류</option></select></div>
+      <div class="filter-actions">
+        <button class="button" id="filterApplyButton" type="button">조회</button>
+        <button class="ghost-button" id="filterResetButton" type="button">초기화</button>
+      </div>
+      <p class="filter-summary" id="filterSummary" aria-live="polite">최근 30일 전체 이력을 불러오는 중입니다.</p>
+    </section>
+
+    <section class="dashboard-grid" aria-label="점검 분석 대시보드">
+      <section class="panel-card chart-panel" aria-labelledby="monthly-chart-title">
+        <div class="section-head"><h2 id="monthly-chart-title">월별 점검 건수</h2><span id="analyticsSummary">불러오는 중</span></div>
+        <div class="chart-frame" id="monthlyChart" role="img" aria-label="월별 점검 건수 꺾은선 그래프"></div>
+      </section>
+      <section class="panel-card chart-panel" aria-labelledby="language-chart-title">
+        <div class="section-head"><h2 id="language-chart-title">개발언어</h2><span>점검 파일 기준</span></div>
+        <div class="chart-frame" id="languageChart" role="img" aria-label="개발언어 분포 원그래프"></div>
+      </section>
+      <section class="panel-card chart-panel" aria-labelledby="package-chart-title">
+        <div class="section-head"><h2 id="package-chart-title">패키지</h2><span>제출된 SBOM·의존성 기준</span></div>
+        <div class="chart-frame" id="packageChart" role="img" aria-label="패키지 분포 원그래프"></div>
+      </section>
+    </section>
+
+    <section class="dimension-grid" aria-label="점검 이력 통계">
+      <section class="panel-card dimension-panel" aria-labelledby="user-stats-title">
+        <div class="section-head"><h2 id="user-stats-title">이메일별 점검 이력</h2><span>건수 · 최근 점검일</span></div>
+        <ul class="dimension-list" id="userStats" aria-live="polite"></ul>
+      </section>
+      <section class="panel-card dimension-panel" aria-labelledby="organization-stats-title">
+        <div class="section-head"><h2 id="organization-stats-title">기관별 점검 이력</h2><span>건수 · 최근 점검일</span></div>
+        <ul class="dimension-list" id="organizationStats" aria-live="polite"></ul>
+      </section>
+      <section class="panel-card dimension-panel" aria-labelledby="department-stats-title">
+        <div class="section-head"><h2 id="department-stats-title">부서별 점검 이력</h2><span>건수 · 최근 점검일</span></div>
+        <ul class="dimension-list" id="departmentStats" aria-live="polite"></ul>
+      </section>
     </section>
 
     <section class="content-grid">
       <div class="panel-card table-panel">
         <div class="section-head">
           <h2>점검 이력</h2>
-          <span>최근 점검 12건</span>
+          <span id="scanHistoryCount">최근 점검 12건</span>
         </div>
         <ul class="history-list">
           <li class="history-item active">
@@ -298,9 +390,16 @@
       <h2 id="passwordTitle">관리자 비밀번호 변경</h2>
       <p>변경 후에는 새 비밀번호로 다시 사용할 수 있습니다. 12자 이상으로 설정하세요.</p>
       <div class="password-fields">
-        <label for="currentPassword">현재 비밀번호<input id="currentPassword" type="password" autocomplete="current-password" required></label>
-        <label for="newPassword">새 비밀번호<input id="newPassword" type="password" autocomplete="new-password" minlength="12" required></label>
-        <label for="confirmPassword">새 비밀번호 확인<input id="confirmPassword" type="password" autocomplete="new-password" minlength="12" required></label>
+        <label for="currentPassword">현재 비밀번호
+          <span class="password-input"><input id="currentPassword" type="password" autocomplete="current-password" required><button class="password-visibility" type="button" data-password-toggle="currentPassword" aria-label="현재 비밀번호 표시" title="현재 비밀번호 표시"></button></span>
+        </label>
+        <label for="newPassword">새 비밀번호
+          <span class="password-input"><input id="newPassword" type="password" autocomplete="new-password" minlength="12" required><button class="password-visibility" type="button" data-password-toggle="newPassword" aria-label="새 비밀번호 표시" title="새 비밀번호 표시"></button></span>
+        </label>
+        <label for="confirmPassword">새 비밀번호 확인
+          <span class="password-input"><input id="confirmPassword" type="password" autocomplete="new-password" minlength="12" required><button class="password-visibility" type="button" data-password-toggle="confirmPassword" aria-label="새 비밀번호 확인 표시" title="새 비밀번호 확인 표시"></button></span>
+        </label>
+        <p class="password-match" id="passwordMatchHint" aria-live="polite">새 비밀번호를 두 번 입력하면 일치 여부를 확인합니다.</p>
       </div>
       <p class="password-message" id="passwordMessage" role="alert" aria-live="polite"></p>
       <div class="password-actions">
@@ -314,20 +413,81 @@
     const adminExportButton = document.querySelector("#adminExportButton");
     const statusSelect = document.querySelector("#status");
     const periodSelect = document.querySelector("#period");
+    const keywordInput = document.querySelector("#keyword");
+    const ecosystemSelect = document.querySelector("#ecosystem");
+    const languageSelect = document.querySelector("#language");
+    const whitelistStatusSelect = document.querySelector("#whitelistStatus");
+    const filterApplyButton = document.querySelector("#filterApplyButton");
+    const filterResetButton = document.querySelector("#filterResetButton");
+    const filterSummary = document.querySelector("#filterSummary");
+    const monthlyChart = document.querySelector("#monthlyChart");
+    const languageChart = document.querySelector("#languageChart");
+    const packageChart = document.querySelector("#packageChart");
+    const analyticsSummary = document.querySelector("#analyticsSummary");
+    const userStats = document.querySelector("#userStats");
+    const organizationStats = document.querySelector("#organizationStats");
+    const departmentStats = document.querySelector("#departmentStats");
     const historyList = document.querySelector(".history-list");
     const detailList = document.querySelector(".detail-list");
-    const sectionCount = document.querySelector(".section-head span");
+    const sectionCount = document.querySelector("#scanHistoryCount");
     const metricValues = Array.from(document.querySelectorAll(".metric b"));
     const passwordModal = document.querySelector("#passwordModal");
     const passwordForm = document.querySelector("#passwordForm");
     const passwordMessage = document.querySelector("#passwordMessage");
     const passwordSaveButton = document.querySelector("#passwordSaveButton");
     const passwordCloseButton = document.querySelector("#passwordCloseButton");
+    const passwordMatchHint = document.querySelector("#passwordMatchHint");
+    const passwordInputs = Array.from(passwordForm.querySelectorAll('input[type="password"]'));
+    const passwordVisibilityButtons = Array.from(passwordForm.querySelectorAll("[data-password-toggle]"));
+
+    function updatePasswordMatchHint() {
+      const newPassword = document.querySelector("#newPassword").value;
+      const confirmation = document.querySelector("#confirmPassword").value;
+      passwordMatchHint.dataset.state = "";
+      if (!newPassword && !confirmation) {
+        passwordMatchHint.textContent = "새 비밀번호를 두 번 입력하면 일치 여부를 확인합니다.";
+      } else if (!newPassword || !confirmation) {
+        passwordMatchHint.textContent = "새 비밀번호를 한 번 더 입력하세요.";
+      } else if (newPassword === confirmation) {
+        passwordMatchHint.textContent = "새 비밀번호가 일치합니다.";
+        passwordMatchHint.dataset.state = "match";
+      } else {
+        passwordMatchHint.textContent = "새 비밀번호가 일치하지 않습니다.";
+        passwordMatchHint.dataset.state = "mismatch";
+      }
+    }
+
+    function resetPasswordVisibility() {
+      passwordInputs.forEach((input) => { input.type = "password"; });
+      passwordVisibilityButtons.forEach((button) => {
+        const input = document.querySelector(`#${button.dataset.passwordToggle}`);
+        button.dataset.visible = "false";
+        button.setAttribute("aria-label", `${input.labels[0].childNodes[0].textContent.trim()} 표시`);
+        button.title = button.getAttribute("aria-label");
+      });
+      updatePasswordMatchHint();
+    }
+
+    passwordVisibilityButtons.forEach((button) => {
+      button.addEventListener("click", () => {
+        const input = document.querySelector(`#${button.dataset.passwordToggle}`);
+        const visible = input.type === "password";
+        input.type = visible ? "text" : "password";
+        button.dataset.visible = String(visible);
+        const label = input.labels[0].childNodes[0].textContent.trim();
+        button.setAttribute("aria-label", `${label} ${visible ? "숨기기" : "표시"}`);
+        button.title = button.getAttribute("aria-label");
+      });
+    });
+
+    [document.querySelector("#newPassword"), document.querySelector("#confirmPassword")]
+      .forEach((input) => input.addEventListener("input", updatePasswordMatchHint));
 
     document.querySelector("#passwordChangeButton").addEventListener("click", () => {
       passwordMessage.textContent = "";
       passwordMessage.dataset.tone = "";
       passwordForm.reset();
+      resetPasswordVisibility();
       passwordSaveButton.hidden = false;
       passwordCloseButton.textContent = "취소";
       passwordModal.hidden = false;
@@ -363,6 +523,7 @@
         passwordMessage.textContent = "비밀번호가 변경되었습니다.";
         passwordMessage.dataset.tone = "success";
         passwordForm.reset();
+        resetPasswordVisibility();
         passwordSaveButton.hidden = true;
         passwordCloseButton.textContent = "확인";
       } catch (error) {
@@ -379,16 +540,40 @@
       });
     }
 
+    function resetFilters() {
+      keywordInput.value = "";
+      statusSelect.value = "전체 결과";
+      periodSelect.value = "최근 30일";
+      ecosystemSelect.value = "";
+      languageSelect.value = "";
+      whitelistStatusSelect.value = "";
+      document.querySelectorAll(".metric").forEach((item) => item.classList.remove("active"));
+    }
+
     document.querySelectorAll(".metric").forEach((metric) => {
       metric.addEventListener("click", () => {
-        document.querySelectorAll(".metric").forEach((item) => item.classList.remove("active"));
+        resetFilters();
         metric.classList.add("active");
         if (metric.dataset.filterStatus) selectOptionByText(statusSelect, metric.dataset.filterStatus);
         if (metric.dataset.filterPeriod) selectOptionByText(periodSelect, metric.dataset.filterPeriod);
+        loadAdminData();
       });
     });
 
-    document.querySelector(".filters .button")?.addEventListener("click", () => loadAdminData());
+    filterApplyButton.addEventListener("click", () => loadAdminData());
+    filterResetButton.addEventListener("click", () => {
+      resetFilters();
+      loadAdminData();
+    });
+    [keywordInput, statusSelect, periodSelect, ecosystemSelect, languageSelect, whitelistStatusSelect].forEach((control) => {
+      control.addEventListener("change", () => {
+        document.querySelectorAll(".metric").forEach((item) => item.classList.remove("active"));
+        loadAdminData();
+      });
+    });
+    keywordInput.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") loadAdminData();
+    });
 
     document.querySelectorAll(".history-item").forEach((item) => {
       item.addEventListener("click", () => {
@@ -414,6 +599,168 @@
         .replaceAll("'", "&#39;");
     }
 
+    const chartColors = ["#0f766e", "#2f6fb2", "#d97706", "#9f3a38", "#6b8e23", "#7556a8", "#277a62", "#5276a3"];
+
+    function svgNode(name, attributes = {}, text = "") {
+      const node = document.createElementNS("http://www.w3.org/2000/svg", name);
+      Object.entries(attributes).forEach(([key, value]) => node.setAttribute(key, String(value)));
+      if (text) node.textContent = text;
+      return node;
+    }
+
+    function emptyChart(container, message) {
+      container.replaceChildren(Object.assign(document.createElement("div"), { className: "chart-empty", textContent: message }));
+    }
+
+    function renderLineChart(points) {
+      if (!points.length || !points.some((point) => point.count > 0)) return emptyChart(monthlyChart, "조건에 맞는 점검 이력이 없습니다.");
+      const width = 640;
+      const height = 220;
+      const padding = { top: 20, right: 20, bottom: 36, left: 38 };
+      const max = Math.max(1, ...points.map((point) => point.count));
+      const chartWidth = width - padding.left - padding.right;
+      const chartHeight = height - padding.top - padding.bottom;
+      const svg = svgNode("svg", { viewBox: `0 0 ${width} ${height}`, role: "img", "aria-label": "월별 점검 건수" });
+      [0, Math.ceil(max / 2), max].forEach((value) => {
+        const y = padding.top + chartHeight - (value / max) * chartHeight;
+        svg.append(svgNode("line", { x1: padding.left, x2: width - padding.right, y1: y, y2: y, stroke: "#d9e4f2", "stroke-width": 1 }));
+        svg.append(svgNode("text", { x: 2, y: y + 4, fill: "#58708f", "font-size": 11, "font-weight": 700 }, String(value)));
+      });
+      const coordinates = points.map((point, index) => ({
+        ...point,
+        x: padding.left + (points.length === 1 ? chartWidth / 2 : (index / (points.length - 1)) * chartWidth),
+        y: padding.top + chartHeight - (point.count / max) * chartHeight
+      }));
+      svg.append(svgNode("path", { d: coordinates.map((point, index) => `${index ? "L" : "M"}${point.x} ${point.y}`).join(" "), fill: "none", stroke: "#0f766e", "stroke-width": 3, "stroke-linecap": "round", "stroke-linejoin": "round" }));
+      coordinates.forEach((point) => {
+        const circle = svgNode("circle", { cx: point.x, cy: point.y, r: 4.5, fill: "#ffffff", stroke: "#0f766e", "stroke-width": 3 });
+        circle.append(svgNode("title", {}, `${point.label} ${point.count}건`));
+        svg.append(circle);
+        svg.append(svgNode("text", { x: point.x, y: height - 10, "text-anchor": "middle", fill: "#58708f", "font-size": 11, "font-weight": 700 }, point.label));
+      });
+      monthlyChart.replaceChildren(svg);
+    }
+
+    function piePath(cx, cy, radius, start, end) {
+      const startRadians = (start - 90) * Math.PI / 180;
+      const endRadians = (end - 90) * Math.PI / 180;
+      const startPoint = [cx + radius * Math.cos(startRadians), cy + radius * Math.sin(startRadians)];
+      const endPoint = [cx + radius * Math.cos(endRadians), cy + radius * Math.sin(endRadians)];
+      return `M ${cx} ${cy} L ${startPoint[0]} ${startPoint[1]} A ${radius} ${radius} 0 ${end - start > 180 ? 1 : 0} 1 ${endPoint[0]} ${endPoint[1]} Z`;
+    }
+
+    function renderPieChart(container, entries, emptyMessage) {
+      if (!entries.length || entries.reduce((sum, entry) => sum + entry.value, 0) === 0) return emptyChart(container, emptyMessage);
+      const total = entries.reduce((sum, entry) => sum + entry.value, 0);
+      const svg = svgNode("svg", { viewBox: "0 0 240 180", role: "img" });
+      let angle = 0;
+      entries.forEach((entry, index) => {
+        const next = angle + (entry.value / total) * 360;
+        const slice = svgNode("path", { d: piePath(88, 86, 64, angle, next), fill: chartColors[index % chartColors.length], stroke: "#ffffff", "stroke-width": 2 });
+        slice.append(svgNode("title", {}, `${entry.label} ${entry.value}건`));
+        svg.append(slice);
+        angle = next;
+      });
+      svg.append(svgNode("circle", { cx: 88, cy: 86, r: 34, fill: "#ffffff" }));
+      svg.append(svgNode("text", { x: 88, y: 82, "text-anchor": "middle", fill: "#173a67", "font-size": 11, "font-weight": 800 }, "합계"));
+      svg.append(svgNode("text", { x: 88, y: 100, "text-anchor": "middle", fill: "#173a67", "font-size": 16, "font-weight": 900 }, String(total)));
+      const legend = document.createElement("ul");
+      legend.className = "chart-legend";
+      entries.forEach((entry, index) => {
+        const item = document.createElement("li");
+        const dot = document.createElement("span");
+        dot.className = "legend-dot";
+        dot.style.backgroundColor = chartColors[index % chartColors.length];
+        const label = document.createElement("span");
+        label.textContent = `${entry.label} ${entry.value}`;
+        item.append(dot, label);
+        legend.append(item);
+      });
+      container.replaceChildren(svg, legend);
+    }
+
+    function periodDates() {
+      const today = koreaDateKey();
+      if (periodSelect.value === "오늘") return { from: today, to: today };
+      if (periodSelect.value === "이번 달") return { from: `${today.slice(0, 7)}-01`, to: today };
+      const now = new Date();
+      const from = new Date(now);
+      from.setDate(from.getDate() - 29);
+      return { from: koreaDateKey(from), to: today };
+    }
+
+    function koreaDateKey(value = new Date()) {
+      const parts = Object.fromEntries(new Intl.DateTimeFormat("en-US", {
+        timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit"
+      }).formatToParts(value).filter((part) => part.type !== "literal").map((part) => [part.type, part.value]));
+      return `${parts.year}-${parts.month}-${parts.day}`;
+    }
+
+    function dashboardQuery() {
+      const dates = periodDates();
+      const query = new URLSearchParams({ ...dates });
+      if (keywordInput.value.trim()) query.set("query", keywordInput.value.trim());
+      const decisionByStatus = { "제출 가능": "allow", "고위험 없음": "quick_complete", "수정 필요": "blocked", "확인 필요": "attention" };
+      if (decisionByStatus[statusSelect.value]) query.set("status", decisionByStatus[statusSelect.value]);
+      if (ecosystemSelect.value) query.set("ecosystem", ecosystemSelect.value);
+      if (languageSelect.value) query.set("language", languageSelect.value);
+      if (whitelistStatusSelect.value) query.set("whitelist", whitelistStatusSelect.value);
+      return query;
+    }
+
+    function populateLanguageFilter(languages) {
+      const selected = languageSelect.value;
+      languageSelect.replaceChildren(new Option("전체", ""), ...languages.map((entry) => new Option(entry.label, entry.label)));
+      languageSelect.value = Array.from(languageSelect.options).some((option) => option.value === selected) ? selected : "";
+    }
+
+    function renderDimensionList(container, entries, valueKey, emptyMessage) {
+      if (!entries.length) {
+        container.replaceChildren(Object.assign(document.createElement("li"), { textContent: emptyMessage }));
+        return;
+      }
+      container.replaceChildren();
+      entries.forEach((entry) => {
+        const item = document.createElement("li");
+        const copy = document.createElement("div");
+        const label = document.createElement("b");
+        label.textContent = entry[valueKey] || "미입력";
+        label.title = label.textContent;
+        const latest = document.createElement("time");
+        latest.textContent = entry.latest_scanned_at
+          ? `최근 ${new Date(entry.latest_scanned_at).toLocaleDateString("ko-KR")}`
+          : "최근 점검일 없음";
+        copy.append(label, latest);
+        const count = document.createElement("span");
+        count.className = "dimension-count";
+        count.textContent = `${entry.scan_count || 0}건`;
+        item.append(copy, count);
+        container.append(item);
+      });
+    }
+
+    async function loadDashboard() {
+      try {
+        const data = await fetch(`/api/admin/dashboard?${dashboardQuery().toString()}`, { cache: "no-store" }).then((response) => response.json());
+        analyticsSummary.textContent = `조건 적용 ${data.scan_count ?? 0}건`;
+        renderLineChart(data.monthly_scans || []);
+        renderPieChart(languageChart, data.languages || [], "조건에 맞는 개발언어가 없습니다.");
+        renderPieChart(packageChart, (data.packages || []).map((entry) => ({ label: entry.package_name, value: entry.observation_count })), "조건에 맞는 제출 패키지가 없습니다.");
+        renderDimensionList(userStats, data.users || [], "email", "조건에 맞는 이메일 이력이 없습니다.");
+        renderDimensionList(organizationStats, data.organizations || [], "organization", "조건에 맞는 기관 이력이 없습니다.");
+        renderDimensionList(departmentStats, data.departments || [], "department", "조건에 맞는 부서 이력이 없습니다.");
+        populateLanguageFilter(data.languages || []);
+      } catch {
+        analyticsSummary.textContent = "분석 API 연결 필요";
+        emptyChart(monthlyChart, "그래프를 불러오지 못했습니다.");
+        emptyChart(languageChart, "그래프를 불러오지 못했습니다.");
+        emptyChart(packageChart, "그래프를 불러오지 못했습니다.");
+        renderDimensionList(userStats, [], "email", "통계를 불러오지 못했습니다.");
+        renderDimensionList(organizationStats, [], "organization", "통계를 불러오지 못했습니다.");
+        renderDimensionList(departmentStats, [], "department", "통계를 불러오지 못했습니다.");
+      }
+    }
+
     function updateDetail(scan) {
       const reports = scan.reports || [];
       const html = reports.find((item) => item.file_name.endsWith(".html"));
@@ -430,7 +777,11 @@
     }
 
     function renderScans(scans) {
-      if (!scans.length) return;
+      if (!scans.length) {
+        historyList.replaceChildren(Object.assign(document.createElement("li"), { className: "history-item", textContent: "조건에 맞는 점검 이력이 없습니다." }));
+        detailList.replaceChildren();
+        return;
+      }
       historyList.replaceChildren();
       scans.forEach((scan, index) => {
         const [label, klass] = statusLabel(scan.decision);
@@ -462,6 +813,24 @@
       updateDetail(scans[0]);
     }
 
+    function filteredScans(scans) {
+      const keyword = keywordInput.value.trim().toLowerCase();
+      const decisionByStatus = { "제출 가능": "allow", "고위험 없음": "quick_complete", "수정 필요": "blocked", "확인 필요": "attention" };
+      const expectedDecision = decisionByStatus[statusSelect.value];
+      const dates = periodDates();
+      const from = Date.parse(`${dates.from}T00:00:00+09:00`);
+      const to = Date.parse(`${dates.to}T23:59:59.999+09:00`);
+      return scans.filter((scan) => {
+        const createdAt = Date.parse(scan.created_at || "");
+        if (!Number.isFinite(createdAt) || createdAt < from || createdAt > to) return false;
+        if (expectedDecision === "attention" && !["needs_review", "incomplete"].includes(scan.decision)) return false;
+        if (expectedDecision && expectedDecision !== "attention" && scan.decision !== expectedDecision) return false;
+        if (languageSelect.value && !Object.hasOwn(scan.summary?.language_counts || {}, languageSelect.value)) return false;
+        if (!keyword) return true;
+        return `${scan.id} ${scan.target_type} ${scan.target_label || ""} ${scan.owner_organization || ""} ${scan.owner_department || ""}`.toLowerCase().includes(keyword);
+      });
+    }
+
     // ---- P4: 서버 상태·패키지 근거·검토 대기열 ----
     const packageBody = document.querySelector("#packageBody");
     const packagesCount = document.querySelector("#packagesCount");
@@ -487,6 +856,12 @@
 
     function renderPackages() {
       const filtered = packageCache.filter((entry) => {
+        const keyword = keywordInput.value.trim().toLowerCase();
+        if (keyword && !`${entry.ecosystem} ${entry.package_name} ${entry.latest_version || ""}`.toLowerCase().includes(keyword)) return false;
+        if (ecosystemSelect.value && entry.ecosystem !== ecosystemSelect.value) return false;
+        if (whitelistStatusSelect.value === "included" && entry.whitelist_status !== "included") return false;
+        if (whitelistStatusSelect.value === "excluded" && entry.whitelist_status !== "excluded") return false;
+        if (whitelistStatusSelect.value === "unlisted" && entry.whitelist_status) return false;
         if (packageFilter === "risky") return entry.has_vulnerable_observation || entry.has_malicious_observation;
         if (packageFilter === "included") return entry.whitelist_status === "included";
         return true;
@@ -619,14 +994,24 @@
         metricValues[0].textContent = `${summary.today}건`;
         metricValues[1].textContent = `${summary.allow}건`;
         metricValues[2].textContent = `${summary.blocked}건`;
-        metricValues[3].textContent = `${summary.needs_review}건`;
-        sectionCount.textContent = `현재 세션 ${summary.total}건`;
+        metricValues[3].textContent = `${summary.attention}건`;
+        const filtered = filteredScans(scansData.scans || []);
+        sectionCount.textContent = `표시 ${filtered.length}건 / 전체 ${summary.total}건`;
         renderOps(summary);
-        renderScans(scansData.scans || []);
+        renderScans(filtered);
+        const labels = [];
+        if (periodSelect.value !== "최근 30일") labels.push(periodSelect.value);
+        if (statusSelect.value !== "전체 결과") labels.push(statusSelect.value);
+        if (keywordInput.value.trim()) labels.push(`검색: ${keywordInput.value.trim()}`);
+        if (ecosystemSelect.value) labels.push(ecosystemSelect.value);
+        if (languageSelect.value) labels.push(languageSelect.value);
+        if (whitelistStatusSelect.value) labels.push(whitelistStatusSelect.options[whitelistStatusSelect.selectedIndex].text);
+        filterSummary.textContent = `${labels.length ? labels.join(" · ") : "최근 30일 전체 이력"} · ${filtered.length}건 표시`;
       } catch (error) {
         sectionCount.textContent = "이력 API 연결 필요";
+        filterSummary.textContent = "필터 결과를 불러오지 못했습니다.";
       }
-      await Promise.all([loadPackages(), loadReviewQueue()]);
+      await Promise.all([loadDashboard(), loadPackages(), loadReviewQueue()]);
     }
 
     loadAdminData();

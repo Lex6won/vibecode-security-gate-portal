@@ -1,20 +1,22 @@
 import { createServer } from "node:http";
 import { spawn } from "node:child_process";
 import { createReadStream, createWriteStream, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
-import { appendFile, rm, readdir, readFile, stat, statfs } from "node:fs/promises";
+import { appendFile, rename, rm, readdir, readFile, stat, statfs, writeFile } from "node:fs/promises";
 import { cpus } from "node:os";
 import { pipeline } from "node:stream/promises";
 import { basename, dirname, extname, isAbsolute, join, normalize, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createPublicKey, randomBytes, randomUUID, scryptSync, timingSafeEqual, verify as cryptoVerify } from "node:crypto";
 import Busboy from "busboy";
-import { initObservationStore, toObservationRecord, hasSubmission, recordSubmission, observationSummary, usageStatsSnapshot } from "./observation-store.mjs";
+import { initObservationStore, toObservationRecord, hasSubmission, recordSubmission, observationSummary, usageStatsSnapshot, observationRecordsSnapshot } from "./observation-store.mjs";
 import { initWhitelistStore, whitelistStatus, setWhitelistEntry, whitelistSnapshot, whitelistSummary, recordWhitelistExport } from "./whitelist-store.mjs";
 import {
   initAccountStore, recordAuthAudit, normalizeEmail, isValidEmail, emailDomainAllowed,
   linkRequestAllowed, getAccount, createLoginToken, consumeLoginToken,
   upsertAccountOnLogin, updateAccountProfile, accountSummary
 } from "./account-store.mjs";
+import { writeZipEntries } from "./hwpx-template.mjs";
+import { dependencyRiskSummary } from "./scan-summary.mjs";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 const ROOT = resolve(__dirname, "..");
@@ -37,6 +39,8 @@ const PORT = Number(runtimeEnv.PORT || 8787);
 const BIND_HOST = runtimeEnv.PORTAL_BIND_HOST || "127.0.0.1";
 const EXTRA_ALLOWED_HOSTS = String(runtimeEnv.PORTAL_ALLOWED_HOSTS || "")
   .split(",").map((value) => value.trim().toLowerCase()).filter(Boolean);
+// External Git URLs stay constrained to approved hosts, not arbitrary network locations.
+const ALLOWED_GIT_REPOSITORY_HOSTS = new Set(["github.com", "gitlab.aigov.go.kr"]);
 const POWERSHELL = join(runtimeEnv.SystemRoot || "C:\\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
 const MAX_BROWSER_UPLOAD_BYTES = 500 * 1024 * 1024;
 const MAX_BROWSER_UPLOAD_FILES = 10000;
@@ -51,6 +55,28 @@ const MIN_FREE_DISK_BYTES = Number(runtimeEnv.PORTAL_MIN_FREE_DISK_BYTES || 2 * 
 // P5(보존정책): 보고서는 기본 90일 보관 후 자동 삭제한다. 0 이면 자동 삭제 없음.
 // 기관 정책이 확정되면 이 값(PORTAL_REPORT_RETENTION_DAYS)만 바꾼다 — 화면 고지도 함께 바뀐다.
 const REPORT_RETENTION_DAYS = Math.max(0, Number(runtimeEnv.PORTAL_REPORT_RETENTION_DAYS ?? 90) || 0);
+const DRAFT_REPORT_RETENTION_HOURS = Math.max(1, Number(runtimeEnv.PORTAL_DRAFT_REPORT_RETENTION_HOURS ?? 24) || 24);
+const KOREA_TIME_ZONE = "Asia/Seoul";
+const koreaDateFormatter = new Intl.DateTimeFormat("en-US", {
+  timeZone: KOREA_TIME_ZONE,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit"
+});
+
+function koreaDateKey(value = new Date()) {
+  const date = value instanceof Date ? value : new Date(value);
+  if (!Number.isFinite(date.getTime())) return "";
+  const parts = Object.fromEntries(koreaDateFormatter.formatToParts(date)
+    .filter((part) => part.type !== "literal")
+    .map((part) => [part.type, part.value]));
+  return `${parts.year}-${parts.month}-${parts.day}`;
+}
+
+function koreaDayBoundary(dateKey, endOfDay = false) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) return NaN;
+  return Date.parse(`${dateKey}T${endOfDay ? "23:59:59.999" : "00:00:00"}+09:00`);
+}
 
 function runtimePath(name, fallback) {
   const value = runtimeEnv[name];
@@ -60,7 +86,11 @@ const ADMIN_ID = runtimeEnv.ADMIN_ID || "gg0018@gg.go.kr";
 const ADMIN_AUTH_FILE = isAbsolute(runtimeEnv.ADMIN_AUTH_FILE || "")
   ? runtimeEnv.ADMIN_AUTH_FILE
   : join(ROOT, runtimeEnv.ADMIN_AUTH_FILE || ".local/admin-auth.json");
+// 기본값은 기존 해시를 유지한다. 두 환경의 관리자 계정을 같은 .env 값으로
+// 맞춰야 할 때에만 명시적으로 동기화한다.
+const ADMIN_CREDENTIALS_SYNC = runtimeEnv.ADMIN_CREDENTIALS_SYNC === "true";
 const ADMIN_SESSION_TTL_MS = 8 * 60 * 60 * 1000;
+const DEVELOPMENT_PLACEHOLDER_PROFILE = { organization: "개발 검증", department: "보안점검" };
 const adminSessions = new Map();
 const LOCAL_API_TOKEN = runtimeEnv.PORTAL_LOCAL_API_TOKEN || randomBytes(32).toString("hex");
 const LOCAL_HOSTS = new Set([
@@ -74,6 +104,7 @@ const MAX_ARCHIVE_ENTRIES = 50000;
 const MAX_COMPRESSION_RATIO = 200;
 const SCAN_HISTORY_FILE = runtimePath("PORTAL_SCAN_HISTORY_FILE", join(ROOT, ".local", "scan-history.jsonl"));
 const REPORT_DIR = runtimePath("PORTAL_REPORT_DIR", join(ROOT, "reports"));
+const DRAFT_REPORT_DIR = runtimePath("PORTAL_DRAFT_REPORT_DIR", join(ROOT, "tmp", "scan-reports"));
 const LOGIN_LOCK_THRESHOLD = 5;
 const LOGIN_LOCK_MS = 5 * 60 * 1000;
 const loginFailures = { count: 0, locked_until: 0 };
@@ -83,6 +114,7 @@ const ALLOWED_EMAIL_DOMAINS = String(runtimeEnv.PORTAL_ALLOWED_EMAIL_DOMAINS || 
   .split(",").map((value) => value.trim().toLowerCase()).filter(Boolean);
 // SMTP 미확정(§9): 개발 모드는 링크를 응답으로 돌려줘 화면에 표시한다. 실발송 어댑터는 SMTP 확정 후.
 const AUTH_DEV_MODE = runtimeEnv.PORTAL_AUTH_MODE !== "smtp";
+const LOCAL_DEVELOPMENT_AUTH = AUTH_DEV_MODE && ["127.0.0.1", "localhost", "::1"].includes(BIND_HOST);
 
 // ---- Cloudflare Access 연동(선택) -------------------------------------------
 // 터널(portal.<도메인>) 관문을 통과한 요청에는 Cloudflare 가 서명한 JWT 헤더
@@ -182,6 +214,18 @@ function loadAdminCredentials() {
     if (stored.id !== ADMIN_ID || !stored.salt || !stored.hash) {
       throw new Error("관리자 인증 설정이 올바르지 않습니다.");
     }
+    if (ADMIN_CREDENTIALS_SYNC) {
+      const initialPassword = runtimeEnv.ADMIN_INITIAL_PASSWORD;
+      if (!initialPassword || initialPassword.length < 12) {
+        throw new Error("ADMIN_CREDENTIALS_SYNC=true에는 12자 이상의 ADMIN_INITIAL_PASSWORD가 필요합니다.");
+      }
+      if (!verifyPassword(initialPassword, stored)) {
+        const { salt, hash } = passwordRecord(initialPassword);
+        const synced = { ...stored, salt, hash, password_changed_at: new Date().toISOString() };
+        saveAdminCredentials(synced);
+        return synced;
+      }
+    }
     return stored;
   }
 
@@ -204,13 +248,20 @@ function persistedJobRecord(job) {
     id: job.id,
     mode: job.mode,
     target_type: job.target_type,
+    // Repository addresses are retained only as normalized Git targets so a user's own history
+    // can identify the scanned project after a server restart. Local source paths are never kept.
+    target_ref: job.target_type === "github_url" ? String(job.target_ref || "") : undefined,
     target_label: job.target_label || "",
     status: job.status,
     decision: job.decision,
     summary: job.summary || null,
     steps: job.steps || [],
     reports: (job.reports || []).map(({ file_name, path, url }) => ({ file_name, path, url })),
+    draft_reports: (job.draft_reports || []).map(({ file_name, path, url }) => ({ file_name, path, url })),
     report_stem: job.report_stem || null,
+    draft_expires_at: job.draft_expires_at || null,
+    draft_expired: job.draft_expired === true,
+    report_render_error: job.report_render_error || null,
     observations_submitted_at: job.observations_submitted_at || null,
     // P3: 소유자와 점검 시점의 소속 스냅샷. 이후 프로필을 바꿔도 이 값은 불변이다(연동합의).
     owner_email: job.owner_email || null,
@@ -239,13 +290,41 @@ function loadScanHistory() {
     for (const line of lines) {
       try {
         const record = JSON.parse(line);
-        if (record?.id) jobs.set(record.id, { temporary_paths: [], ...record });
+        if (record?.id) {
+          const job = { temporary_paths: [], ...record };
+          refreshDependencySummaryFromStoredReport(job);
+          jobs.set(record.id, job);
+        }
       } catch {
         // Skip corrupted lines instead of losing the whole history.
       }
     }
   } catch {
     // A broken history file must not prevent the portal from starting.
+  }
+}
+
+function refreshDependencySummaryFromStoredReport(job) {
+  const artifacts = [...(job.draft_reports || []), ...(job.reports || [])];
+  const jsonReport = artifacts.find((report) => (
+    String(report?.file_name || "").endsWith(".json")
+      && !String(report?.file_name || "").endsWith(".sbom.cdx.json")
+      && typeof report?.path === "string"
+      && [REPORT_DIR, DRAFT_REPORT_DIR].some((directory) => pathInside(directory, report.path))
+  ));
+  if (!jsonReport || !existsSync(jsonReport.path)) return;
+
+  try {
+    const parsed = JSON.parse(readFileSync(jsonReport.path, "utf8"));
+    const dependencyRisk = dependencyRiskSummary(parsed?.dependency_audit);
+    job.summary = {
+      ...(job.summary || {}),
+      dependency_finding_count: dependencyRisk.vulnerable_package_count,
+      dependency_advisory_count: dependencyRisk.advisory_count,
+      dependency_review_count: dependencyRisk.review_package_count
+    };
+  } catch {
+    // A missing or malformed historical report must not hide the scan history.
   }
 }
 
@@ -297,9 +376,73 @@ async function purgeExpiredReports() {
   if (removed) console.log(`보존기한(${REPORT_RETENTION_DAYS}일)이 지난 보고서 ${removed}개를 삭제했습니다.`);
 }
 
+function artifactKind(fileName) {
+  if (fileName.endsWith("_보안성검토제출자료.zip")) return "submission_package";
+  if (fileName.endsWith("_보안성검토요청서.html")) return "review_request";
+  if (fileName.endsWith(".sbom.cdx.json")) return "sbom";
+  if (fileName.endsWith(".html")) return "html_report";
+  if (fileName.endsWith(".md")) return "markdown_report";
+  return "json_report";
+}
+
+const LANGUAGE_BY_EXTENSION = new Map([
+  [".js", "JavaScript"], [".mjs", "JavaScript"], [".cjs", "JavaScript"],
+  [".ts", "TypeScript"], [".tsx", "TypeScript"], [".jsx", "JavaScript"],
+  [".py", "Python"], [".java", "Java"], [".kt", "Kotlin"],
+  [".cs", "C#"], [".go", "Go"], [".rb", "Ruby"], [".php", "PHP"],
+  [".rs", "Rust"], [".c", "C"], [".h", "C"], [".cc", "C++"], [".cpp", "C++"],
+  [".vue", "Vue"], [".svelte", "Svelte"], [".swift", "Swift"], [".sql", "SQL"]
+]);
+
+function languageCountsFromReport(parsed) {
+  const counts = {};
+  const reported = parsed?.language;
+  if (reported && typeof reported === "object" && !Array.isArray(reported)) {
+    for (const [language, count] of Object.entries(reported)) {
+      if (Number(count) > 0) counts[String(language)] = Number(count);
+    }
+  }
+  for (const file of parsed?.scanned_files || []) {
+    const extension = extname(String(file || "")).toLowerCase();
+    const language = LANGUAGE_BY_EXTENSION.get(extension);
+    if (language) counts[language] = (counts[language] || 0) + 1;
+  }
+  return counts;
+}
+
+function isSafeReportFileName(fileName) {
+  return /^[\p{L}\p{N} ._-]+$/u.test(fileName) && !fileName.includes("..");
+}
+
+function pathInside(directory, candidate) {
+  const root = resolve(directory);
+  const target = resolve(candidate);
+  return target.startsWith(root + sep);
+}
+
+async function purgeExpiredDraftReports() {
+  const now = Date.now();
+  const expiredJobs = Array.from(jobs.values()).filter((job) => {
+    if (job.review_request || !(job.draft_reports || []).length) return false;
+    const expiry = Date.parse(job.draft_expires_at || "");
+    return Number.isFinite(expiry) && expiry <= now;
+  });
+  for (const job of expiredJobs) {
+    await Promise.all((job.draft_reports || []).map(async (report) => {
+      if (report.path && pathInside(DRAFT_REPORT_DIR, report.path)) {
+        await rm(report.path, { force: true }).catch(() => {});
+      }
+    }));
+    updateJob(job, { draft_reports: [], draft_expired: true });
+    await persistJob(job);
+  }
+}
+
 await purgeExpiredReports().catch(() => {});
+await purgeExpiredDraftReports().catch(() => {});
 setInterval(() => {
   purgeExpiredReports().catch(() => {});
+  purgeExpiredDraftReports().catch(() => {});
 }, 6 * 60 * 60 * 1000).unref();
 
 const staticRoutes = new Map([
@@ -309,7 +452,6 @@ const staticRoutes = new Map([
   ["/my", "my-scans.html"],
   ["/harness", "tools.html"],
   ["/tools", "tools.html"],
-  ["/help", "help.html"],
   ["/admin", "admin.html"],
   ["/admin/login", "admin-login.html"]
 ]);
@@ -508,7 +650,7 @@ function serveStatic(request, response, pathname) {
   createReadStream(target).pipe(response);
 }
 
-function serveReport(response, filename) {
+function serveStoredArtifact(response, directory, filename, viewInline = false) {
   let decoded = "";
   try {
     decoded = decodeURIComponent(filename || "");
@@ -518,12 +660,12 @@ function serveReport(response, filename) {
   }
   // 공백 허용: 보고서 파일명은 사용자가 붙인 라벨(공백 포함)로 만들어진다.
   // 경로 문자는 여전히 불허 — 아래 resolve 경계 검사와 이중 방어.
-  if (!/^[\p{L}\p{N} ._-]+$/u.test(decoded) || decoded.includes("..")) {
+  if (!isSafeReportFileName(decoded)) {
     notFound(response);
     return;
   }
-  const target = resolve(join(REPORT_DIR, decoded));
-  if (!target.startsWith(resolve(REPORT_DIR)) || !existsSync(target) || !statSync(target).isFile()) {
+  const target = resolve(join(directory, decoded));
+  if (!pathInside(directory, target) || !existsSync(target) || !statSync(target).isFile()) {
     notFound(response);
     return;
   }
@@ -532,9 +674,17 @@ function serveReport(response, filename) {
   response.writeHead(200, {
     "Content-Type": type,
     "X-Content-Type-Options": "nosniff",
-    "Content-Disposition": `attachment; filename="${asciiFilename}"; filename*=UTF-8''${encodeURIComponent(decoded)}`
+    "Content-Disposition": `${viewInline ? "inline" : "attachment"}; filename="${asciiFilename}"; filename*=UTF-8''${encodeURIComponent(decoded)}`
   });
   createReadStream(target).pipe(response);
+}
+
+function serveReport(response, filename, viewInline = false) {
+  serveStoredArtifact(response, REPORT_DIR, filename, viewInline);
+}
+
+function serveDraftArtifact(response, filename, viewInline = false) {
+  serveStoredArtifact(response, DRAFT_REPORT_DIR, filename, viewInline);
 }
 
 function runCommand(command, args, options = {}) {
@@ -831,6 +981,19 @@ function safeReportNamePart(value) {
     .slice(0, 48);
 }
 
+function targetLabelForDisplay(targetType, targetRef, targetLabel = "") {
+  if (targetType === "github_url") {
+    try {
+      const url = new URL(String(targetRef || ""));
+      const path = url.pathname.replace(/\.git$/i, "").replace(/\/$/, "");
+      if (url.hostname && path) return `${url.hostname}${path}`;
+    } catch {
+      // The scan request validates repository URLs later. Keep the supplied label for the error path.
+    }
+  }
+  return String(targetLabel || "").trim().slice(0, 160);
+}
+
 function koreaReportTimestamp(date = new Date()) {
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Seoul",
@@ -848,7 +1011,8 @@ function reportStemForJob(job, targetPath) {
   let targetName = "";
   if (job.target_type === "github_url") {
     try {
-      targetName = safeReportNamePart(new URL(String(job.target_ref)).pathname.split("/").filter(Boolean).join("_"));
+      const pathParts = new URL(String(job.target_ref)).pathname.split("/").filter(Boolean);
+      targetName = safeReportNamePart(String(pathParts.at(-1) || "").replace(/\.git$/i, ""));
     } catch {
       targetName = "";
     }
@@ -858,14 +1022,49 @@ function reportStemForJob(job, targetPath) {
   // 점검 방식을 파일명에 남긴다 — 간편/표준 보고서가 이름부터 구분돼야
   // "차이가 없다"는 오해가 생기지 않는다(실제로는 프로파일·규칙 수가 다르다).
   const modeName = job.mode === "quick" ? "간편점검" : "표준점검";
-  const base = [koreaReportTimestamp(new Date()), targetName, modeName].filter(Boolean).join("_");
+  const base = [targetName, koreaReportTimestamp(new Date()), modeName].filter(Boolean).join("_");
   let candidate = base;
   let suffix = 2;
-  while ([".json", ".html", ".md"].some((extension) => existsSync(join(REPORT_DIR, `${candidate}${extension}`)))) {
+  while ([".json", ".html", ".md", ".sbom.cdx.json"].some((extension) =>
+    existsSync(join(REPORT_DIR, `${candidate}${extension}`)) || existsSync(join(DRAFT_REPORT_DIR, `${candidate}${extension}`))
+  )) {
     candidate = `${base}_${suffix}`;
     suffix += 1;
   }
   return candidate;
+}
+
+async function renderReadableReports(job, jsonPath, outputBase) {
+  const renderDir = join(TMP_DIR, `${job.id}-render`);
+  await rm(renderDir, { recursive: true, force: true });
+  mkdirSync(renderDir, { recursive: true });
+  job.temporary_paths.push(renderDir);
+
+  // gvskb report can use report metadata for its own filename. Render inside an
+  // isolated directory first, then the portal assigns the user-facing filename.
+  const rendered = await runCommand("gvskb", ["report", jsonPath, "--format", "html", "--output", join(renderDir, "report")], { timeout_ms: 120000 });
+  if (!rendered.ok) {
+    return { error: "결과 리포트를 생성하지 못했습니다. 점검 데이터와 SBOM은 확인할 수 있습니다." };
+  }
+
+  const files = await readdir(renderDir).catch(() => []);
+  const moveGenerated = async (extension) => {
+    const sourceName = files.find((file) => file.toLowerCase().endsWith(`.${extension}`));
+    if (!sourceName) return false;
+    await rename(join(renderDir, sourceName), `${outputBase}.${extension}`);
+    return true;
+  };
+  try {
+    const hasHtml = await moveGenerated("html");
+    const hasMarkdown = await moveGenerated("md");
+    return {
+      has_html: hasHtml,
+      has_markdown: hasMarkdown,
+      error: hasHtml ? null : "결과 리포트를 생성하지 못했습니다. 점검 데이터와 SBOM은 확인할 수 있습니다."
+    };
+  } catch {
+    return { error: "결과 리포트 파일을 준비하지 못했습니다. 점검 데이터와 SBOM은 확인할 수 있습니다." };
+  }
 }
 
 function createJob(mode, targetType, targetRef, targetLabel = "") {
@@ -875,11 +1074,12 @@ function createJob(mode, targetType, targetRef, targetLabel = "") {
     mode,
     target_type: targetType,
     target_ref: targetRef,
-    target_label: safeReportNamePart(targetLabel),
+    target_label: targetLabelForDisplay(targetType, targetRef, targetLabel),
     status: "queued",
     decision: "incomplete",
     steps: [],
     reports: [],
+    draft_reports: [],
     created_at: new Date().toISOString(),
     temporary_paths: []
   };
@@ -956,10 +1156,14 @@ function progressForJob(job) {
   return { percent: 0, message: "검사를 기다리고 있습니다." };
 }
 
-function isAllowedGithubUrl(value) {
+function isAllowedGitRepositoryUrl(value) {
   try {
     const url = new URL(value);
-    return url.protocol === "https:" && url.hostname.toLowerCase() === "github.com" && url.pathname.split("/").filter(Boolean).length >= 2;
+    return url.protocol === "https:"
+      && !url.username
+      && !url.password
+      && ALLOWED_GIT_REPOSITORY_HOSTS.has(url.hostname.toLowerCase())
+      && url.pathname.split("/").filter(Boolean).length >= 2;
   } catch {
     return false;
   }
@@ -1008,15 +1212,15 @@ async function prepareScanTarget(job) {
 
   if (job.target_type === "github_url") {
     const targetUrl = String(job.target_ref || "").trim();
-    if (!isAllowedGithubUrl(targetUrl)) {
-      throw new Error("GitHub URL은 https://github.com/소유자/저장소 형식만 지원합니다.");
+    if (!isAllowedGitRepositoryUrl(targetUrl)) {
+      throw new Error("GitHub 또는 승인된 GitLab URL만 지원합니다. https://github.com/소유자/저장소 또는 https://gitlab.aigov.go.kr/그룹/저장소 형식으로 입력해 주세요.");
     }
     mkdirSync(TMP_DIR, { recursive: true });
     const cloneDir = join(TMP_DIR, job.id);
     await rm(cloneDir, { recursive: true, force: true });
     const clone = await runCommand("git", ["clone", "--depth", "1", targetUrl, cloneDir]);
     if (!clone.ok) {
-      throw new Error(`GitHub 저장소를 가져오지 못했습니다: ${redactLocalPath(clone.stderr || clone.stdout)}`);
+      throw new Error(`Git 저장소를 가져오지 못했습니다: ${redactLocalPath(clone.stderr || clone.stdout)}`);
     }
     job.temporary_paths.push(cloneDir);
     return cloneDir;
@@ -1046,14 +1250,16 @@ async function runScanJob(job) {
     return;
   }
 
-  mkdirSync(REPORT_DIR, { recursive: true });
+  mkdirSync(DRAFT_REPORT_DIR, { recursive: true });
   mkdirSync(TMP_DIR, { recursive: true });
   const reportStem = reportStemForJob(job, targetPath);
-  const outputBase = join(REPORT_DIR, reportStem);
+  const outputBase = join(DRAFT_REPORT_DIR, reportStem);
   const jsonOutput = `${outputBase}.json`;
+  const sbomOutput = `${outputBase}.sbom.cdx.json`;
   updateJob(job, { report_stem: reportStem });
   const maxFiles = job.mode === "quick" ? "700" : "20000";
-  const args = ["scan", targetPath, "--format", "json", "--output", jsonOutput, "--max-files", maxFiles, "--check-deps", "--fail-on", "never"];
+  const sbomProjectName = safeReportNamePart(job.target_label) || safeReportNamePart(basename(targetPath)) || "security-scan";
+  const args = ["scan", targetPath, "--format", "json", "--output", jsonOutput, "--max-files", maxFiles, "--check-deps", "--sbom", sbomOutput, "--project-name", sbomProjectName, "--fail-on", "never"];
   if (job.mode === "quick") {
     args.push("--profile", "dev-quick");
   } else {
@@ -1086,6 +1292,7 @@ async function runScanJob(job) {
     }
   }
 
+  let reportRender = { error: null };
   if (parsed && jsonPath) {
     updateJob(job, {
       steps: [
@@ -1094,12 +1301,13 @@ async function runScanJob(job) {
         { name: "render_report", status: "running" }
       ]
     });
-    await runCommand("gvskb", ["report", jsonPath, "--format", "html", "--output", outputBase], { timeout_ms: 120000 });
+    reportRender = await renderReadableReports(job, jsonPath, outputBase);
   }
 
   const findingCount = parsed?.summary?.finding_count ?? parsed?.findings?.length ?? 0;
   const scannedFileCount = parsed?.summary?.scanned_file_count ?? parsed?.scanned_file_count ?? parsed?.scanned_files?.length ?? 0;
-  const dependencyFindingCount = parsed?.summary?.dependency_finding_count ?? parsed?.dependency_audit?.summary?.finding_count ?? 0;
+  const dependencyRisk = dependencyRiskSummary(parsed?.dependency_audit);
+  const dependencyFindingCount = dependencyRisk.vulnerable_package_count;
   const profileFallback = parsed?.profile_fallback || null;
   const coverageTruncated = (parsed?.skipped_files || []).some((item) => String(item.reason || "").includes("max_files="));
   const dependencyIncomplete = (parsed?.dependency_audit?.audits || []).some((audit) => Number(audit.unchecked_count || 0) > 0 || Number(audit.truncated_count || 0) > 0);
@@ -1115,21 +1323,17 @@ async function runScanJob(job) {
     const limitMinutes = Math.round(scanTimeoutMs / 60000);
     job.error = `검사 시간이 ${limitMinutes}분을 넘어 중단했습니다. 대상을 나누어 올리거나, 불필요한 폴더(node_modules 등)를 빼고 다시 시도해 주세요.`;
   }
-  const finalReportFiles = await readdir(REPORT_DIR).catch(() => []);
-  const finalReportItems = [];
-  for (const file of finalReportFiles) {
-    if (file === `${reportStem}.json` || file === `${reportStem}.html` || file === `${reportStem}.md`) {
-      finalReportItems.push({
+  const draftReportFiles = await readdir(DRAFT_REPORT_DIR).catch(() => []);
+  const draftReportItems = [];
+  for (const file of draftReportFiles) {
+    if (file === `${reportStem}.json` || file === `${reportStem}.html` || file === `${reportStem}.md` || file === `${reportStem}.sbom.cdx.json`) {
+      draftReportItems.push({
         file_name: file,
-        path: join(REPORT_DIR, file),
-        url: `/reports/${encodeURIComponent(file)}`
+        path: join(DRAFT_REPORT_DIR, file),
+        url: `/artifacts/${encodeURIComponent(file)}`,
+        kind: artifactKind(file)
       });
     }
-  }
-
-  // 관측 적재는 상태 전환보다 먼저 — 완료 응답에는 항상 적재 결과가 실려 있어야 한다.
-  if (scan.ok || parsed) {
-    await recordObservationsForJob(job, finalReportItems);
   }
 
   updateJob(job, {
@@ -1138,9 +1342,15 @@ async function runScanJob(job) {
     steps: [
       { name: "prepare_target", status: "completed" },
       { name: "code_scan", status: scan.ok || parsed ? "completed" : "failed" },
-      { name: "render_report", status: finalReportItems.length > 0 ? "completed" : "pending" }
+      { name: "render_report", status: reportRender.error ? "failed" : "completed" }
     ],
-    reports: finalReportItems,
+    reports: [],
+    draft_reports: draftReportItems,
+    draft_expires_at: draftReportItems.length
+      ? new Date(Date.now() + DRAFT_REPORT_RETENTION_HOURS * 60 * 60 * 1000).toISOString()
+      : null,
+    draft_expired: false,
+    report_render_error: reportRender.error,
     checker_exit_code: scan.code,
     checker_stdout_tail: scan.stdout.split(/\r?\n/).filter(Boolean).slice(-12).map(redactLocalPath),
     checker_stderr_tail: scan.stderr.split(/\r?\n/).filter(Boolean).slice(-12).map(redactLocalPath),
@@ -1154,6 +1364,9 @@ async function runScanJob(job) {
       blocked: Boolean(parsed?.summary?.blocked),
       highest_severity: parsed?.summary?.highest_severity || null,
       dependency_finding_count: dependencyFindingCount,
+      dependency_advisory_count: dependencyRisk.advisory_count,
+      dependency_review_count: dependencyRisk.review_package_count,
+      language_counts: languageCountsFromReport(parsed),
       profile_fallback: profileFallback,
       coverage_truncated: coverageTruncated,
       dependency_incomplete: dependencyIncomplete
@@ -1165,23 +1378,152 @@ async function runScanJob(job) {
 
 function adminSummary() {
   const scans = Array.from(jobs.values());
-  const todayPrefix = new Date().toISOString().slice(0, 10);
-  const today = scans.filter((job) => String(job.created_at || "").startsWith(todayPrefix));
+  const todayKey = koreaDateKey();
+  const today = scans.filter((job) => koreaDateKey(job.created_at) === todayKey);
   const allow = scans.filter((job) => job.decision === "allow").length;
   const quickComplete = scans.filter((job) => job.decision === "quick_complete").length;
   const needsReview = scans.filter((job) => job.decision === "needs_review").length;
   const blocked = scans.filter((job) => job.decision === "blocked").length;
+  const incomplete = scans.filter((job) => job.decision === "incomplete").length;
   return {
     total: scans.length,
     today: today.length,
     allow,
     quick_complete: quickComplete,
     needs_review: needsReview,
+    incomplete,
+    attention: needsReview + incomplete,
     blocked,
     observations: observationSummary(),
     accounts: accountSummary(),
-    pending_review_requests: scans.filter((job) => job.review_request?.status === "requested").length,
+    pending_review_requests: scans.filter((job) => job.review_request?.status === "submitted").length,
     generated_at: new Date().toISOString()
+  };
+}
+
+function dashboardFilters(searchParams) {
+  return {
+    from: String(searchParams.get("from") || ""),
+    to: String(searchParams.get("to") || ""),
+    query: String(searchParams.get("query") || "").trim().toLowerCase(),
+    status: String(searchParams.get("status") || ""),
+    ecosystem: String(searchParams.get("ecosystem") || ""),
+    language: String(searchParams.get("language") || ""),
+    whitelist: String(searchParams.get("whitelist") || "")
+  };
+}
+
+function matchesDashboardDate(value, filters) {
+  const timestamp = Date.parse(value || "");
+  if (!Number.isFinite(timestamp)) return false;
+  if (filters.from && timestamp < koreaDayBoundary(filters.from)) return false;
+  if (filters.to && timestamp > koreaDayBoundary(filters.to, true)) return false;
+  return true;
+}
+
+function monthBuckets() {
+  const months = [];
+  const [year, month] = koreaDateKey().split("-").map(Number);
+  for (let index = 5; index >= 0; index -= 1) {
+    const value = new Date(Date.UTC(year, month - 1 - index, 1, 12));
+    months.push({ key: koreaDateKey(value).slice(0, 7), label: `${value.getUTCMonth() + 1}월`, count: 0 });
+  }
+  return months;
+}
+
+function dashboardDimensionStats(scans, field, outputKey) {
+  const groups = new Map();
+  for (const scan of scans) {
+    const value = String(scan[field] || "미입력");
+    const entry = groups.get(value) || { [outputKey]: value, scan_count: 0, latest_scanned_at: null };
+    entry.scan_count += 1;
+    if (!entry.latest_scanned_at || String(scan.created_at || "") > entry.latest_scanned_at) {
+      entry.latest_scanned_at = scan.created_at || null;
+    }
+    groups.set(value, entry);
+  }
+  return Array.from(groups.values())
+    .sort((a, b) => b.scan_count - a.scan_count || String(a[outputKey]).localeCompare(String(b[outputKey])))
+    .slice(0, 20);
+}
+
+function adminDashboardSnapshot(searchParams) {
+  const filters = dashboardFilters(searchParams);
+  const query = filters.query;
+  const whitelist = whitelistSnapshot();
+  const observations = observationRecordsSnapshot().filter((record) => {
+    if (!matchesDashboardDate(record.observed_at, filters)) return false;
+    if (filters.ecosystem && record.ecosystem !== filters.ecosystem) return false;
+    const listStatus = whitelistStatus(record.ecosystem, record.package_name) || "unlisted";
+    return !filters.whitelist || listStatus === filters.whitelist;
+  });
+  const matchingObservationScanIds = new Set(observations
+    .filter((record) => !query || `${record.ecosystem} ${record.package_name} ${record.package_version}`.toLowerCase().includes(query))
+    .map((record) => record.scan_id));
+  const scans = Array.from(jobs.values()).filter((job) => {
+    if (!matchesDashboardDate(job.created_at, filters)) return false;
+    if (filters.status === "attention" && !["needs_review", "incomplete"].includes(job.decision)) return false;
+    if (filters.status && filters.status !== "attention" && job.decision !== filters.status) return false;
+    if (filters.language && !Object.hasOwn(job.summary?.language_counts || {}, filters.language)) return false;
+    if ((filters.ecosystem || filters.whitelist) && !matchingObservationScanIds.has(job.id)) return false;
+    if (!query) return true;
+    const searchable = [job.id, job.target_label, job.owner_email, job.owner_organization, job.owner_department, job.target_type, job.decision]
+      .filter(Boolean).join(" ").toLowerCase();
+    return searchable.includes(query) || matchingObservationScanIds.has(job.id);
+  });
+  const months = monthBuckets();
+  const monthsByKey = new Map(months.map((month) => [month.key, month]));
+  const languageCounts = new Map();
+  for (const job of scans) {
+    const bucket = monthsByKey.get(koreaDateKey(job.created_at).slice(0, 7));
+    if (bucket) bucket.count += 1;
+    for (const [language, count] of Object.entries(job.summary?.language_counts || {})) {
+      languageCounts.set(language, (languageCounts.get(language) || 0) + Number(count || 0));
+    }
+  }
+
+  const packageGroups = new Map();
+  for (const record of observations) {
+    const listStatus = whitelistStatus(record.ecosystem, record.package_name) || "unlisted";
+    if (query && !`${record.ecosystem} ${record.package_name} ${record.package_version}`.toLowerCase().includes(query)) continue;
+    const key = `${record.ecosystem}:${record.package_name}`;
+    const entry = packageGroups.get(key) || {
+      ecosystem: record.ecosystem,
+      package_name: record.package_name,
+      observation_count: 0,
+      versions: new Set(),
+      exact_versions: new Set(),
+      whitelist_status: listStatus
+    };
+    entry.observation_count += 1;
+    if (record.package_version) entry.versions.add(record.package_version);
+    if (record.version_exact && record.package_version) entry.exact_versions.add(record.package_version);
+    packageGroups.set(key, entry);
+  }
+  const packages = Array.from(packageGroups.values())
+    .map((entry) => ({
+      ...entry,
+      versions: [...entry.versions].sort(),
+      exact_version_count: entry.exact_versions.size
+    }))
+    .sort((a, b) => b.observation_count - a.observation_count || a.package_name.localeCompare(b.package_name))
+    .slice(0, 8);
+  const whitelistEntries = Object.values(whitelist).filter((entry) => {
+    if (filters.ecosystem && entry.ecosystem !== filters.ecosystem) return false;
+    if (filters.whitelist && entry.status !== filters.whitelist) return false;
+    return !query || `${entry.ecosystem} ${entry.package_name} ${entry.reason || ""}`.toLowerCase().includes(query);
+  }).sort((a, b) => String(b.decided_at).localeCompare(String(a.decided_at)));
+  return {
+    filters,
+    scan_count: scans.length,
+    monthly_scans: months,
+    languages: Array.from(languageCounts, ([label, value]) => ({ label, value }))
+      .filter((entry) => entry.value > 0).sort((a, b) => b.value - a.value).slice(0, 8),
+    packages,
+    users: dashboardDimensionStats(scans, "owner_email", "email"),
+    organizations: dashboardDimensionStats(scans, "owner_organization", "organization"),
+    departments: dashboardDimensionStats(scans, "owner_department", "department"),
+    whitelist: whitelistEntries
   };
 }
 
@@ -1215,8 +1557,12 @@ function adminExportFileName() {
 }
 
 function publicJob(job) {
+  const targetName = targetLabelForDisplay(job.target_type, job.target_ref, job.target_label) || job.target_label || "";
+  const retainedReports = job.reports || [];
+  const draftReports = job.draft_reports || [];
+  const visibleArtifacts = job.review_request || !draftReports.length ? retainedReports : draftReports;
   const targetLabel = job.target_type === "github_url"
-    ? "GitHub repository"
+    ? "Git repository"
     : job.target_type === "browser_archive"
       ? "Uploaded ZIP archive"
       : "Uploaded folder";
@@ -1229,17 +1575,31 @@ function publicJob(job) {
     decision: job.decision,
     summary: job.summary || null,
     steps: job.steps || [],
-    reports: (job.reports || []).map(({ file_name, url }) => ({ file_name, url })),
+    reports: retainedReports.map(({ file_name, url, kind }) => ({ file_name, url, kind: kind || artifactKind(file_name) })),
+    artifacts: visibleArtifacts.map(({ file_name, url, kind }) => ({
+      file_name,
+      url,
+      kind: kind || artifactKind(file_name)
+    })),
+    artifact_storage: job.review_request ? "submitted" : "temporary",
+    draft_expires_at: job.draft_expires_at || null,
+    draft_expired: job.draft_expired === true,
+    report_render_error: job.report_render_error || null,
     // P5(신뢰 표시): 원본 미보관과 보존기한을 응답에 실어 화면이 사실을 말하게 한다.
     source_retained: false,
     report_retention_days: REPORT_RETENTION_DAYS || null,
     observations_submitted_at: job.observations_submitted_at || null,
     // 소유자 검증 뒤에만 응답되므로 본인 라벨·소속 스냅샷·검토요청 상태를 보여줄 수 있다.
-    target_name: job.target_label || "",
+    target_name: targetName,
     owner_organization: job.owner_organization || null,
     owner_department: job.owner_department || null,
     review_request: job.review_request
-      ? { status: job.review_request.status, requested_at: job.review_request.requested_at }
+      ? {
+        status: job.review_request.status,
+        requested_at: job.review_request.requested_at,
+        request_document: job.review_request.request_document || null,
+        submission_package: job.review_request.submission_package || null
+      }
       : null,
     created_at: job.created_at,
     updated_at: job.updated_at || null,
@@ -1304,7 +1664,7 @@ function capacityExhausted(response) {
 // 적재 완료 전의 결과를 읽는 경합을 막는다(2026-08-28 guard 에서 실제로 잡힌 레이스).
 async function recordObservationsForJob(job, reportItems) {
   if (hasSubmission(job.id)) return;
-  const jsonReport = (reportItems || []).find((report) => report.file_name?.endsWith(".json"));
+  const jsonReport = (reportItems || []).find((report) => report.file_name?.endsWith(".json") && !report.file_name.endsWith(".sbom.cdx.json"));
   let audits = [];
   if (jsonReport?.path && existsSync(jsonReport.path)) {
     try {
@@ -1335,6 +1695,125 @@ async function recordObservationsForJob(job, reportItems) {
   }
 }
 
+function escapeRequestHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+function reviewRequestDocument(job) {
+  const rows = [
+    ["점검 대상", job.target_label || "-"],
+    ["점검 방식", job.mode === "quick" ? "간편 점검" : "표준 점검"],
+    ["점검 일시", koreaReportTimestamp(new Date()).replace("_", " ")],
+    ["요청 기관", job.owner_organization || "-"],
+    ["요청 부서", job.owner_department || "-"],
+    ["요청자", job.owner_email || "-"],
+    ["점검 판정", job.decision || "-"]
+  ];
+  const tableRows = rows.map(([label, value]) => `<tr><th>${escapeRequestHtml(label)}</th><td>${escapeRequestHtml(value)}</td></tr>`).join("");
+  return `<!doctype html><html lang="ko"><head><meta charset="utf-8"><title>보안성검토 요청서</title><style>body{font-family:Malgun Gothic,Arial,sans-serif;margin:40px;color:#14253d}h1{font-size:26px}p{line-height:1.6}table{border-collapse:collapse;width:100%;margin-top:24px}th,td{border:1px solid #9eb2c9;padding:12px;text-align:left}th{width:180px;background:#eef5fb}</style></head><body><h1>보안성검토 요청서</h1><p>공공 바이브코딩 보안 게이트 포털에서 생성한 요청서입니다.</p><table>${tableRows}</table><p>첨부: 점검 결과 리포트, 패키지 목록·점검 데이터, 소프트웨어 명세서(SBOM)</p></body></html>`;
+}
+
+async function createSubmissionArtifacts(job, reports) {
+  const stem = safeReportNamePart(job.report_stem) || `${safeReportNamePart(job.target_label) || "security-scan"}_${koreaReportTimestamp()}`;
+  const requestFileName = `${stem}_보안성검토요청서.html`;
+  const packageFileName = `${stem}_보안성검토제출자료.zip`;
+  const requestPath = join(REPORT_DIR, requestFileName);
+  const packagePath = join(REPORT_DIR, packageFileName);
+  if (existsSync(requestPath) || existsSync(packagePath)) {
+    throw new Error("같은 이름의 제출 자료가 있어 생성할 수 없습니다. 점검을 다시 실행해 주세요.");
+  }
+  const requestDocument = reviewRequestDocument(job);
+  try {
+    await writeFile(requestPath, requestDocument, "utf8");
+    const reportEntries = await Promise.all(reports.map(async (report) => ({
+      name: `02_점검리포트/${report.file_name}`,
+      data: await readFile(report.path),
+      method: 8,
+      flags: 0x0800,
+      modTime: 0,
+      modDate: 0
+    })));
+    const packageBuffer = writeZipEntries([
+      { name: "01_보안성검토요청서.html", data: Buffer.from(requestDocument, "utf8"), method: 8, flags: 0x0800, modTime: 0, modDate: 0 },
+      ...reportEntries
+    ]);
+    await writeFile(packagePath, packageBuffer);
+  } catch (error) {
+    await Promise.all([rm(requestPath, { force: true }), rm(packagePath, { force: true })]);
+    throw error;
+  }
+  return [
+    { file_name: requestFileName, path: requestPath, url: `/reports/${encodeURIComponent(requestFileName)}`, kind: "review_request" },
+    { file_name: packageFileName, path: packagePath, url: `/reports/${encodeURIComponent(packageFileName)}`, kind: "submission_package" }
+  ];
+}
+
+async function promoteDraftReports(job) {
+  const drafts = job.draft_reports || [];
+  if (!drafts.length) {
+    throw new Error(job.draft_expired
+      ? "제출 전 임시 보고서 보관 시간이 지나 다시 점검해야 합니다."
+      : "제출할 보고서를 찾지 못했습니다. 점검을 다시 실행해 주세요.");
+  }
+  mkdirSync(REPORT_DIR, { recursive: true });
+  const prepared = drafts.map((draft) => {
+    const fileName = String(draft.file_name || "");
+    const source = resolve(String(draft.path || ""));
+    const destination = resolve(join(REPORT_DIR, fileName));
+    if (!isSafeReportFileName(fileName) || !pathInside(DRAFT_REPORT_DIR, source) || !pathInside(REPORT_DIR, destination) || !existsSync(source)) {
+      throw new Error("제출할 보고서 파일을 확인하지 못했습니다. 점검을 다시 실행해 주세요.");
+    }
+    if (existsSync(destination)) {
+      throw new Error("같은 이름의 보관 보고서가 있어 제출을 완료할 수 없습니다. 점검을 다시 실행해 주세요.");
+    }
+    return { fileName, source, destination };
+  });
+  const moved = [];
+  let submissionArtifacts = [];
+  try {
+    for (const item of prepared) {
+      await rename(item.source, item.destination);
+      moved.push(item);
+    }
+    const originalReports = prepared.map(({ fileName, destination }) => ({
+      file_name: fileName,
+      path: destination,
+      url: `/reports/${encodeURIComponent(fileName)}`,
+      kind: artifactKind(fileName)
+    }));
+    submissionArtifacts = await createSubmissionArtifacts(job, originalReports);
+  } catch (error) {
+    await Promise.all(submissionArtifacts.map(async (artifact) => {
+      if (existsSync(artifact.path)) await rm(artifact.path, { force: true }).catch(() => {});
+    }));
+    await Promise.all(moved.reverse().map(async (item) => {
+      if (existsSync(item.destination)) await rename(item.destination, item.source).catch(() => {});
+    }));
+    throw error;
+  }
+  const reports = [
+    ...prepared.map(({ fileName, destination }) => ({
+      file_name: fileName,
+      path: destination,
+      url: `/reports/${encodeURIComponent(fileName)}`,
+      kind: artifactKind(fileName)
+    })),
+    ...submissionArtifacts
+  ];
+  updateJob(job, {
+    reports,
+    draft_reports: [],
+    draft_expires_at: null,
+    draft_expired: false
+  });
+  return reports;
+}
+
 async function startScan(request, response) {
   const account = requireUser(request, response);
   if (!account) return;
@@ -1348,7 +1827,7 @@ async function startScan(request, response) {
   const mode = ["quick", "standard"].includes(body.scan_mode) ? body.scan_mode : "standard";
   const targetType = ["github_url", "browser_folder", "browser_archive"].includes(body.target_type) ? body.target_type : "";
   if (!targetType) {
-    json(response, 400, { error: "invalid_target_type", message: "폴더나 ZIP을 올리거나 GitHub 주소로 검사할 수 있습니다." });
+    json(response, 400, { error: "invalid_target_type", message: "폴더나 ZIP을 올리거나 승인된 Git 저장소 주소로 검사할 수 있습니다." });
     return;
   }
   // 사용자당 동시 점검 제한(23번 계약) — 큐 독점을 막는다.
@@ -1386,7 +1865,7 @@ async function startScan(request, response) {
   });
 }
 
-async function handleApi(request, response, pathname) {
+async function handleApi(request, response, pathname, searchParams = new URLSearchParams()) {
   if (request.method === "GET" && pathname === "/health") {
     json(response, 200, { status: "ok", app: "vibecode-security-gate-portal" });
     return;
@@ -1469,6 +1948,26 @@ async function handleApi(request, response, pathname) {
     await recordAuthAudit("access_login", email, { new_account: isNew });
     const cookie = createUserSession(email);
     json(response, 200, { status: "logged_in", email }, { "Set-Cookie": cookie });
+    return;
+  }
+
+  // 개발 클론은 외부 Cloudflare Access 관문이 없으므로, 루프백에서만 세션을 자동 생성한다.
+  // 외부 주소에서는 이 경로가 존재하지 않아 Access 인증 외의 우회 수단이 되지 않는다.
+  if (request.method === "POST" && pathname === "/api/auth/development-login") {
+    if (!LOCAL_DEVELOPMENT_AUTH) {
+      notFound(response);
+      return;
+    }
+    const email = normalizeEmail(runtimeEnv.PORTAL_DEV_AUTO_LOGIN_EMAIL || "developer@gg.go.kr");
+    let account = await upsertAccountOnLogin({ email, organization: "", department: "" });
+    // Earlier development builds stored these explanatory labels as if they were real
+    // affiliations. Clear only that exact placeholder pair; real user-entered profiles stay intact.
+    if (account.organization === DEVELOPMENT_PLACEHOLDER_PROFILE.organization
+      && account.department === DEVELOPMENT_PLACEHOLDER_PROFILE.department) {
+      account = await updateAccountProfile(email, "", "");
+    }
+    await recordAuthAudit("development_login", account.email, { loopback: true });
+    json(response, 200, { status: "logged_in", email: account.email, development: true }, { "Set-Cookie": createUserSession(account.email) });
     return;
   }
 
@@ -1625,6 +2124,12 @@ async function handleApi(request, response, pathname) {
     return;
   }
 
+  if (request.method === "GET" && pathname === "/api/admin/dashboard") {
+    if (!requireAdmin(request, response)) return;
+    json(response, 200, adminDashboardSnapshot(searchParams));
+    return;
+  }
+
   // P4: 관측 축적 → 화이트리스트 근거 화면. 이 데이터는 판정이 아니다(역할합의) —
   // 담기·제외는 보안부서 제출용 목록 구성이며 검사 경로는 이 목록을 읽지 않는다.
   if (request.method === "GET" && pathname === "/api/admin/packages") {
@@ -1747,11 +2252,34 @@ async function handleApi(request, response, pathname) {
       json(response, 409, { error: "already_requested", message: "이미 검토를 요청한 점검입니다." });
       return;
     }
-    updateJob(job, { review_request: { status: "requested", requested_at: new Date().toISOString() } });
+    let reports;
+    try {
+      reports = await promoteDraftReports(job);
+      await recordObservationsForJob(job, reports);
+    } catch (error) {
+      json(response, 409, { error: "report_promotion_failed", message: String(error.message || error) });
+      return;
+    }
+    const requestDocument = reports.find((report) => report.kind === "review_request");
+    const submissionPackage = reports.find((report) => report.kind === "submission_package");
+    if (!requestDocument || !submissionPackage) {
+      json(response, 500, { error: "submission_artifacts_missing", message: "제출 자료를 만들지 못했습니다. 다시 시도해 주세요." });
+      return;
+    }
+    updateJob(job, {
+      review_request: {
+        status: "submitted",
+        requested_at: new Date().toISOString(),
+        request_document: { file_name: requestDocument.file_name, url: requestDocument.url },
+        submission_package: { file_name: submissionPackage.file_name, url: submissionPackage.url }
+      }
+    });
     await persistJob(job);
     json(response, 200, {
-      status: "requested",
-      message: "보안성검토를 요청했습니다. 진행 상태는 내 점검 이력에서 확인할 수 있습니다."
+      status: "submitted",
+      request_document: job.review_request.request_document,
+      submission_package: job.review_request.submission_package,
+      message: "보안성검토 요청서와 점검 리포트를 하나의 제출자료 ZIP으로 만들었습니다."
     });
     return;
   }
@@ -1806,7 +2334,7 @@ createServer(async (request, response) => {
     const url = new URL(request.url || "/", `http://127.0.0.1:${PORT}`);
     if (!requireTrustedLocalRequest(request, response, url.pathname)) return;
     if (url.pathname === "/health" || url.pathname.startsWith("/api/")) {
-      await handleApi(request, response, url.pathname);
+      await handleApi(request, response, url.pathname, url.searchParams);
       return;
     }
 
@@ -1825,6 +2353,19 @@ createServer(async (request, response) => {
       return;
     }
 
+    const artifactMatch = url.pathname.match(/^\/artifacts\/(.+)$/);
+    if (artifactMatch) {
+      const fileName = decodeURIComponent(artifactMatch[1]);
+      const owningJob = Array.from(jobs.values())
+        .find((job) => !job.review_request && (job.draft_reports || []).some((report) => report.file_name === fileName));
+      if (!owningJob || !canViewJob(request, owningJob)) {
+        notFound(response);
+        return;
+      }
+      serveDraftArtifact(response, artifactMatch[1], url.searchParams.get("view") === "1");
+      return;
+    }
+
     const reportMatch = url.pathname.match(/^\/reports\/(.+)$/);
     if (reportMatch) {
       // 보고서 파일도 소유자(또는 관리자)만 받는다 — scan_id 를 몰라도 파일명 공유로 새는 것을 막는다.
@@ -1835,12 +2376,17 @@ createServer(async (request, response) => {
         notFound(response);
         return;
       }
-      serveReport(response, reportMatch[1]);
+      serveReport(response, reportMatch[1], url.searchParams.get("view") === "1");
       return;
     }
 
     if ((url.pathname === "/admin" || url.pathname === "/admin.html") && !isAdminAuthenticated(request)) {
       redirect(response, "/admin/login");
+      return;
+    }
+
+    if (url.pathname === "/help" || url.pathname === "/help.html") {
+      redirect(response, "/");
       return;
     }
 

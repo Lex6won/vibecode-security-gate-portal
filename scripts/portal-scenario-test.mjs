@@ -11,6 +11,7 @@ import { mkdir, mkdtemp, readFile, rm, utimes, writeFile } from "node:fs/promise
 import { createServer as createHttpServer, request as httpRequest } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { readZipEntries } from "../src/hwpx-template.mjs";
 
 const port = Number(process.env.PORTAL_TEST_PORT || 8791);
 const baseUrl = `http://127.0.0.1:${port}`;
@@ -23,6 +24,18 @@ let userCookie = "";
 
 function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function koreaDateKey(value = new Date()) {
+  const parts = Object.fromEntries(new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Seoul",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).formatToParts(value)
+    .filter((part) => part.type !== "literal")
+    .map((part) => [part.type, part.value]));
+  return `${parts.year}-${parts.month}-${parts.day}`;
 }
 
 function cookieHeader(extra = "") {
@@ -168,12 +181,11 @@ async function uploadFixtureFolder(fixture, rootName) {
 async function assertPagesLoad() {
   const pages = [
     ["/", "AI로 만든 코드, 제출 전에 보안 점검부터"],
-    ["/scan", "3단계로 소스를 점검하세요."],
+    ["/scan", "저장 위치와 검사 대상을 준비하세요."],
     ["/my", "내 점검 이력"],
     ["/harness", "하네스 내려받기"],
     ["/tools", "하네스 내려받기"],
-    ["/admin/login", "관리자 로그인"],
-    ["/help", "도움말"]
+    ["/admin/login", "관리자 로그인"]
   ];
   for (const [path, marker] of pages) {
     const html = await fetchText(path);
@@ -192,9 +204,14 @@ async function scenarioQuickScan(fixture) {
   assert.equal(result.summary.profile_fallback, null, "quick scan must not silently fall back from dev-quick");
   assert.equal(result.summary.coverage_truncated, false, "quick scan fixture must stay within the intended file limit");
   assert.equal(result.summary.dependency_incomplete, false, "quick scan fixture must complete the dependency check");
-  assert.ok(result.reports.some((report) => /_간편점검(?:_\d+)?\.html$/.test(report.file_name)), "quick scan report names must say 간편점검");
-  assert.ok(result.reports.some((report) => /_간편점검(?:_\d+)?\.md$/.test(report.file_name)), "quick scan report names must say 간편점검");
-  assert.ok(result.reports.some((report) => /_간편점검(?:_\d+)?\.json$/.test(report.file_name)), "quick scan JSON evidence must say 간편점검");
+  assert.equal(result.report_render_error, null, "completed scans must make the user-facing HTML report available");
+  const reportNamePattern = /^민원 조회 도구_\d{4}-\d{2}-\d{2}_\d{4}_간편점검(?:_\d+)?\.(?:html|md|json)$/;
+  assert.ok(result.artifacts.some((report) => reportNamePattern.test(report.file_name) && report.file_name.endsWith(".html")),
+    "quick scan HTML report names must include the target name and Korean scan date");
+  assert.ok(result.artifacts.some((report) => reportNamePattern.test(report.file_name) && report.file_name.endsWith(".md")),
+    "quick scan Markdown report names must include the target name and Korean scan date");
+  assert.ok(result.artifacts.some((report) => reportNamePattern.test(report.file_name) && report.file_name.endsWith(".json")),
+    "quick scan JSON evidence names must include the target name and Korean scan date");
   // P5: 원본 미보관·보존기한 사실이 응답에 실린다.
   assert.equal(result.source_retained, false, "results must state that uploaded source is not retained");
   assert.ok(Number.isFinite(result.report_retention_days) && result.report_retention_days > 0, "results must state the report retention period");
@@ -225,7 +242,7 @@ async function scenarioLocalRequestBoundary(result) {
   assert.equal(directAdmin.status, 302, "direct administrator HTML must redirect to login without a session");
   assert.equal(directAdmin.headers.get("location"), "/admin/login");
 
-  const koreanReport = result.reports.find((report) => /\p{L}/u.test(report.file_name));
+  const koreanReport = result.artifacts.find((report) => /\p{L}/u.test(report.file_name));
   assert.ok(koreanReport, "checker report output must retain the Korean naming rule");
   const download = await fetch(`${baseUrl}${koreanReport.url}`, { headers: localHeaders() });
   assert.equal(download.status, 200, "Korean-named reports must be downloadable");
@@ -240,9 +257,9 @@ async function scenarioStandardScan(fixture) {
   assert.equal(result.summary.profile_fallback, null, "standard scan must not silently fall back from public-default-strict");
   assert.equal(result.summary.coverage_truncated, false, "standard scan fixture must not silently truncate files");
   assert.equal(result.summary.dependency_incomplete, false, "standard scan fixture must complete the dependency check");
-  assert.ok(result.reports.some((report) => /_표준점검(?:_\d+)?\.html$/.test(report.file_name)), "standard scan report names must say 표준점검");
-  assert.ok(result.reports.some((report) => /_표준점검(?:_\d+)?\.md$/.test(report.file_name)), "standard scan report names must say 표준점검");
-  assert.ok(result.reports.some((report) => /_표준점검(?:_\d+)?\.json$/.test(report.file_name)), "standard scan JSON evidence must say 표준점검");
+  assert.equal(result.report_render_error, null, "standard scans must make the user-facing HTML report available");
+  assert.ok(result.artifacts.every((report) => /^standard-fixture_\d{4}-\d{2}-\d{2}_\d{4}_표준점검(?:_\d+)?\./.test(report.file_name)),
+    "standard scan report names must include the selected folder name and Korean scan date");
   return result;
 }
 
@@ -279,7 +296,7 @@ async function scenarioRemovedLocalSurfaces() {
   }
 }
 
-// P3 전환: 관측 축적은 완료 시 자동이다. 수동 제출 라우트는 제거됐다.
+// 제출 전에는 산출물을 임시 보관하고, 관측 적재와 90일 보관은 검토 제출 시점에만 한다.
 async function scenarioAutoObservations(fixture) {
   const packageJsonPath = join(fixture.fixtureDir, "package.json");
   await writeFile(packageJsonPath, `${JSON.stringify({ name: "obs-fixture", version: "1.0.0", dependencies: { busboy: "1.6.0" } }, null, 2)}\n`, "utf8");
@@ -289,7 +306,15 @@ async function scenarioAutoObservations(fixture) {
   ]);
   const result = await startScan("quick", uploaded.target_type, uploaded.path, uploaded.label);
   assert.equal(result.status, "completed");
-  assert.ok(result.observations_submitted_at, "completed scans must record observations automatically");
+  assert.equal(result.observations_submitted_at, null, "completed scans must not record package observations before review submission");
+  assert.equal(result.artifact_storage, "temporary", "completed scans must expose temporary artifacts before submission");
+  assert.equal(result.reports.length, 0, "reports must not enter retained storage before submission");
+  assert.ok(result.artifacts.some((artifact) => artifact.url?.startsWith("/artifacts/") && artifact.file_name.endsWith(".html")),
+    "completed scans must expose a viewable temporary HTML report");
+  assert.ok(result.artifacts.some((artifact) => artifact.kind === "sbom" && artifact.file_name.endsWith(".sbom.cdx.json")),
+    "completed scans must create a CycloneDX SBOM artifact");
+  assert.ok(result.artifacts.some((artifact) => /^obs-fixture_\d{4}-\d{2}-\d{2}_\d{4}_간편점검(?:_\d+)?\.sbom\.cdx\.json$/.test(artifact.file_name)),
+    "SBOM names must include the selected target name and Korean scan date");
 
   const removedRoute = await fetch(`${baseUrl}/api/scan/${result.id}/submit-observations`, { method: "POST", headers: localHeaders() });
   assert.equal(removedRoute.status, 404, "the manual submission route must be gone after the auto-recording switch");
@@ -338,7 +363,7 @@ async function scenarioAuthAndOwnership(existingResult) {
   const otherCookie = await signupOn(baseUrl, "other@korea.kr", "타기관", "타부서");
   const foreignResult = await fetch(`${baseUrl}/api/scan/${existingResult.id}/result`, { headers: withUser(otherCookie) });
   assert.equal(foreignResult.status, 404, "another user's scan result must return 404");
-  const reportUrl = existingResult.reports?.[0]?.url;
+  const reportUrl = existingResult.artifacts?.[0]?.url;
   assert.ok(reportUrl, "fixture scan must have a report to test");
   const foreignReport = await fetch(`${baseUrl}${reportUrl}`, { headers: withUser(otherCookie) });
   assert.equal(foreignReport.status, 404, "another user's report file must return 404");
@@ -365,12 +390,38 @@ async function scenarioAuthAndOwnership(existingResult) {
 // P3: 보안성검토 요청 — 완료된 본인 점검만, 중복 불가, 이력에 상태 표시.
 async function scenarioReviewRequest(result) {
   const requested = await fetchJson(`/api/scan/${result.id}/request-review`, { method: "POST" });
-  assert.equal(requested.status, "requested");
+  assert.equal(requested.status, "submitted");
+  assert.ok(requested.submission_package?.url?.startsWith("/reports/"),
+    "submission must return one downloadable package for the user");
+  assert.ok(requested.request_document?.url?.startsWith("/reports/"),
+    "submission must generate a review request document");
+  const packageResponse = await fetch(`${baseUrl}${requested.submission_package.url}`, { headers: localHeaders() });
+  assert.equal(packageResponse.status, 200, "the owner must receive the submission package");
+  const packageEntries = readZipEntries(Buffer.from(await packageResponse.arrayBuffer()));
+  assert.ok(packageEntries.some((entry) => entry.name === "01_보안성검토요청서.html"),
+    "the package must contain the generated review request document");
+  assert.ok(packageEntries.some((entry) => entry.name.startsWith("02_점검리포트/") && entry.name.endsWith(".html")),
+    "the package must contain the HTML security report");
+  assert.ok(packageEntries.some((entry) => entry.name.startsWith("02_점검리포트/") && entry.name.endsWith(".sbom.cdx.json")),
+    "the package must contain the SBOM");
   const duplicate = await fetch(`${baseUrl}/api/scan/${result.id}/request-review`, { method: "POST", headers: localHeaders() });
   assert.equal(duplicate.status, 409, "duplicate review requests must be rejected");
   const history = await fetchJson("/api/my/scans");
   const entry = history.scans.find((scan) => scan.id === result.id);
-  assert.equal(entry?.review_request?.status, "requested", "my history must show the review request status");
+  assert.equal(entry?.review_request?.status, "submitted", "my history must show the submission status");
+  assert.equal(entry?.artifact_storage, "submitted", "review submission must promote artifacts to retained storage");
+  assert.ok(entry?.reports?.length >= 3 && entry.reports.every((report) => report.url?.startsWith("/reports/")),
+    "review submission must retain HTML, JSON, and SBOM reports on the server");
+  assert.ok(entry?.observations_submitted_at, "review submission must record package metadata for the whitelist evidence");
+  const sbom = entry.reports.find((report) => report.kind === "sbom");
+  assert.ok(sbom?.url, "submitted scan must retain a downloadable SBOM");
+  const sbomResponse = await fetch(`${baseUrl}${sbom.url}`, { headers: localHeaders() });
+  assert.equal(sbomResponse.status, 200, "submitted SBOM must be downloadable by its owner");
+  const sbomDocument = JSON.parse(await sbomResponse.text());
+  assert.equal(sbomDocument.bomFormat, "CycloneDX", "SBOM must use CycloneDX");
+  assert.equal(sbomDocument.specVersion, "1.6", "SBOM must use the required CycloneDX 1.6 schema");
+  const busboy = (sbomDocument.components || []).find((component) => component.name === "busboy");
+  assert.equal(busboy?.version, "1.6.0", "SBOM must record each resolved package version");
 }
 
 // S2: 동시 상한 1인 별도 서버에서 큐 순번과 워터마크 접수 중단을 검증한다.
@@ -711,11 +762,56 @@ async function scenarioAccessLogin(fixture) {
 async function scenarioReportRetention(fixture) {
   const retentionPort = Number(process.env.PORTAL_RETENTION_TEST_PORT || 8796);
   const reportDir = join(fixture.fixtureDir, "retention-reports");
+  const historyFile = join(fixture.fixtureDir, "retention-history.jsonl");
+  const observationDir = join(fixture.fixtureDir, "retention-observations");
+  const observationFile = join(observationDir, "package-observations.jsonl");
+  const usageStatsFile = join(observationDir, "package-usage-stats.json");
   await mkdir(reportDir, { recursive: true });
+  await mkdir(observationDir, { recursive: true });
   const oldFile = join(reportDir, "old_보안점검.html");
   const freshFile = join(reportDir, "fresh_보안점검.html");
   await writeFile(oldFile, "expired", "utf8");
   await writeFile(freshFile, "fresh", "utf8");
+  const retainedScanId = "retention-history-scan";
+  const observedAt = new Date().toISOString();
+  await writeFile(historyFile, `${JSON.stringify({
+    id: retainedScanId,
+    status: "completed",
+    mode: "quick",
+    target_type: "browser_folder",
+    target_label: "retention-fixture",
+    decision: "allow",
+    summary: { scanned_file_count: 1, finding_count: 0, language_counts: { JavaScript: 1 } },
+    owner_email: "retention-user@gg.go.kr",
+    owner_organization: "경기도청",
+    owner_department: "정보화부서",
+    created_at: observedAt
+  })}\n`, "utf8");
+  await writeFile(observationFile, `${JSON.stringify({
+    scan_id: retainedScanId,
+    ecosystem: "npm",
+    package_name: "busboy",
+    package_version: "1.6.0",
+    version_exact: true,
+    source_scope: "manifest",
+    observed_at: observedAt
+  })}\n`, "utf8");
+  await writeFile(usageStatsFile, `${JSON.stringify({
+    "npm:busboy": {
+      ecosystem: "npm",
+      package_name: "busboy",
+      observation_count: 1,
+      manifest_count: 1,
+      project_labels: [],
+      department_codes: [],
+      versions: ["1.6.0"],
+      latest_version: "1.6.0",
+      has_vulnerable_observation: false,
+      has_malicious_observation: false,
+      first_observed_at: observedAt,
+      last_observed_at: observedAt
+    }
+  }, null, 2)}\n`, "utf8");
   const oldDate = new Date(Date.now() - 200 * 24 * 60 * 60 * 1000);
   await utimes(oldFile, oldDate, oldDate);
 
@@ -726,8 +822,8 @@ async function scenarioReportRetention(fixture) {
       PORT: String(retentionPort),
       ADMIN_INITIAL_PASSWORD: adminPassword,
       ADMIN_AUTH_FILE: join(fixture.fixtureDir, "retention-admin.json"),
-      PORTAL_SCAN_HISTORY_FILE: join(fixture.fixtureDir, "retention-history.jsonl"),
-      PORTAL_OBSERVATION_DIR: join(fixture.fixtureDir, "retention-observations"),
+      PORTAL_SCAN_HISTORY_FILE: historyFile,
+      PORTAL_OBSERVATION_DIR: observationDir,
       PORTAL_ACCOUNT_DIR: join(fixture.fixtureDir, "retention-accounts"),
       PORTAL_WHITELIST_DIR: join(fixture.fixtureDir, "retention-whitelist"),
       PORTAL_REPORT_DIR: reportDir,
@@ -753,6 +849,18 @@ async function scenarioReportRetention(fixture) {
     assert.ok(ready, "retention test server did not become ready");
     assert.ok(!existsSync(oldFile), "reports past the retention period must be deleted at startup");
     assert.ok(existsSync(freshFile), "reports within the retention period must be kept");
+    assert.ok(existsSync(historyFile), "report cleanup must not delete scan history used for time-series statistics");
+    assert.ok(existsSync(observationFile), "report cleanup must not delete submitted package observations");
+    const retainedHistory = JSON.parse((await readFile(historyFile, "utf8")).trim());
+    assert.equal(retainedHistory.owner_email, "retention-user@gg.go.kr",
+      "report cleanup must retain email-level scan history metadata");
+    assert.equal(retainedHistory.owner_organization, "경기도청",
+      "report cleanup must retain organization-level scan history metadata");
+    assert.equal(retainedHistory.owner_department, "정보화부서",
+      "report cleanup must retain department-level scan history metadata");
+    const retainedUsageStats = JSON.parse(await readFile(usageStatsFile, "utf8"));
+    assert.equal(retainedUsageStats["npm:busboy"]?.observation_count, 1,
+      "report cleanup must not delete package and exact-version statistics");
   } finally {
     server.kill();
     await Promise.race([once(server, "exit"), wait(2000)]);
@@ -773,6 +881,21 @@ async function scenarioToolsSurface() {
     assert.ok(!release.supported_tools.some((tool) => tool.id.includes("lovable")), "Lovable must stay filtered out pending security policy review");
     assert.ok(release.download_url?.startsWith("https://"), "installer download URL must be present when available");
   }
+}
+
+async function scenarioDevelopmentProfile() {
+  const login = await fetch(`${baseUrl}/api/auth/development-login`, {
+    method: "POST",
+    headers: localHeaders()
+  });
+  assert.equal(login.status, 200, "the loopback development session must be available to the development clone");
+  const developmentCookie = String(login.headers.get("set-cookie") || "").split(";")[0];
+  assert.ok(developmentCookie.startsWith("portal_session="), "development login must issue a user session");
+  const sessionResponse = await fetch(`${baseUrl}/api/auth/session`, { headers: withUser(developmentCookie) });
+  assert.equal(sessionResponse.status, 200);
+  const session = await sessionResponse.json();
+  assert.equal(session.organization, "", "development login must not prefill a fictitious organization");
+  assert.equal(session.department, "", "development login must not prefill a fictitious department");
 }
 
 async function scenarioAdmin(fixture) {
@@ -798,13 +921,39 @@ async function scenarioAdmin(fixture) {
   assert.ok(summary.accounts?.total_accounts >= 2, "admin summary must count registered accounts");
   assert.ok(summary.pending_review_requests >= 1, "admin summary must count pending review requests");
 
+  const today = koreaDateKey();
+  const todayDashboard = await fetchJson(`/api/admin/dashboard?from=${today}&to=${today}`);
+  assert.equal(todayDashboard.scan_count, summary.today,
+    "admin summary and the today dashboard must use the same Asia/Seoul day boundary");
+
+  const attentionDashboard = await fetchJson(`/api/admin/dashboard?from=2026-01-01&to=2026-12-31&status=attention`);
+  assert.equal(attentionDashboard.scan_count, summary.attention,
+    "the attention filter must include both incomplete and human-review scans");
+
   const reviewQueue = await fetchJson("/api/admin/review-requests");
-  assert.ok(reviewQueue.requests.some((item) => item.owner_email === "tester@gg.go.kr" && item.status === "requested"),
+  const queuedReview = reviewQueue.requests.find((item) => item.owner_email === "tester@gg.go.kr" && item.status === "submitted");
+  assert.ok(queuedReview,
     "admin review queue must list the requester and status");
+  assert.ok(queuedReview.reports?.length >= 1
+    && queuedReview.reports.every((report) => report.file_name && report.url?.startsWith("/reports/")),
+  "review requests must carry the generated reports into the admin queue");
 
   // P4(현황 보강): 큐·디스크·화이트리스트 요약이 함께 온다.
   assert.ok(summary.queue && Number.isFinite(summary.queue.limit), "admin summary must expose queue state");
   assert.ok(summary.whitelist, "admin summary must expose whitelist counts");
+
+  const dashboard = await fetchJson("/api/admin/dashboard?from=2026-01-01&to=2026-12-31&query=busboy&ecosystem=npm");
+  assert.ok(Array.isArray(dashboard.monthly_scans) && dashboard.monthly_scans.length === 6,
+    "admin dashboard must provide six monthly scan buckets for the line chart");
+  assert.ok(Array.isArray(dashboard.languages), "admin dashboard must provide language distribution data");
+  assert.ok(dashboard.packages.some((entry) => entry.package_name === "busboy" && entry.versions.includes("1.6.0")),
+    "admin dashboard must expose submitted package names and recorded versions");
+  assert.ok(dashboard.users.some((entry) => entry.email === "tester@gg.go.kr" && entry.scan_count >= 1),
+    "admin dashboard must retain and aggregate scan history by email");
+  assert.ok(dashboard.organizations.some((entry) => entry.organization === "경기도청" && entry.scan_count >= 1),
+    "admin dashboard must retain and aggregate scan history by organization");
+  assert.ok(dashboard.departments.some((entry) => entry.department === "AI산업육성과" && entry.scan_count >= 1),
+    "admin dashboard must retain and aggregate scan history by department");
 
   // P4: 관측 → 근거 목록 → 담기/제외/저장 → 감사 기록.
   const packagesData = await fetchJson("/api/admin/packages");
@@ -939,6 +1088,7 @@ try {
   await scenarioAuthAndOwnership(quick);
   await scenarioReviewRequest(observation);
   await scenarioToolsSurface();
+  await scenarioDevelopmentProfile();
   await scenarioAdmin(fixture);
   await scenarioQueueAndCapacity(fixture);
   await scenarioHostAllowlist(fixture);

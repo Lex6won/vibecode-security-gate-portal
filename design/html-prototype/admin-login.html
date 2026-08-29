@@ -64,9 +64,8 @@
       font-weight: 900;
       text-align: left;
     }
-    .actions { display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: center; margin-top: 4px; }
+    .actions { display: block; margin-top: 4px; }
     .actions .button { width: 100%; min-height: 52px; font-size: 16px; }
-    .actions .ghost-button { justify-self: start; }
     @media (max-width: 960px) {
       .content { min-height: auto; padding: 16px 0; }
       .login-card { padding: 28px 22px; }
@@ -105,7 +104,6 @@
           <p class="login-error" id="loginError" role="alert" aria-live="polite"></p>
           <div class="actions">
             <button class="button" id="adminLoginButton" type="submit">로그인</button>
-            <a class="ghost-button" href="/help">도움말</a>
           </div>
         </form>
       </div>

@@ -18,6 +18,7 @@ let statsFile = "";
 let submissionsFile = "";
 let usageStats = {};
 let submittedScans = new Set();
+let observationRecords = [];
 
 function readJsonFile(path, fallback) {
   if (!existsSync(path)) return fallback;
@@ -35,6 +36,11 @@ export function initObservationStore(directory) {
   submissionsFile = join(directory, "submitted-scans.json");
   usageStats = readJsonFile(statsFile, {});
   submittedScans = new Set(readJsonFile(submissionsFile, []));
+  observationRecords = existsSync(observationsFile)
+    ? readFileSync(observationsFile, "utf8").split(/\r?\n/).filter(Boolean).flatMap((line) => {
+      try { return [JSON.parse(line)]; } catch { return []; }
+    })
+    : [];
 }
 
 // 체커 dependency_audit 의 check 항목에서 허용목록 필드만 추린다.
@@ -118,6 +124,7 @@ export async function recordSubmission(scanId, records) {
   if (records.length > 0) {
     mkdirSync(dirname(observationsFile), { recursive: true });
     await appendFile(observationsFile, `${lines}\n`, "utf8");
+    observationRecords.push(...records);
     for (const record of records) applyToStats(record);
     await saveJsonAtomic(statsFile, usageStats);
   }
@@ -139,4 +146,8 @@ export function observationSummary() {
 // P4(관리자 화면)의 기반 — 지금은 요약만 노출하고 목록 화면은 P4에서 붙인다.
 export function usageStatsSnapshot() {
   return usageStats;
+}
+
+export function observationRecordsSnapshot() {
+  return observationRecords.map((record) => ({ ...record }));
 }

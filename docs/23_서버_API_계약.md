@@ -389,7 +389,7 @@
 
 **내 이력·보안성검토 요청**
 - `GET /api/my/scans` — 본인 것만. `target_name`(본인 라벨)·`review_request` 포함.
-- `POST /api/scan/{id}/request-review` — 완료된 본인 점검만, 중복 409. 요청서 문서 생성(HWPX)은 양식 확정 후 별도.
+- `POST /api/scan/{id}/request-review` — 완료된 본인 점검만, 중복 409. 성공 시 보안성검토 요청서(HTML)와 모든 점검 산출물을 담은 제출자료 ZIP을 생성해 90일 보관 영역으로 함께 이동한다. 응답의 `request_document`, `submission_package` URL은 본인 또는 관리자만 열 수 있다. 공식 HWPX 양식은 확정 전이므로 생성하지 않는다.
 - 관리자: `GET /api/admin/review-requests`(대기열), summary 에 `accounts`·`pending_review_requests` 추가.
 
 **화면**: `/my`(내 점검 이력·프로필 수정), `/scan` 로그인 게이트(이메일+기관·부서, 개발 모드 링크 표시), 결과 카드 "점검 후 처리"(자동 반영 표시 + 검토 요청 버튼). 메인에 "내 점검 이력" 진입점.
@@ -409,3 +409,14 @@
 - 보고서 자동 삭제: 기본 90일(`PORTAL_REPORT_RETENTION_DAYS`, 0=끔). 기동 시 + 6시간마다 보존기한 경과 파일 삭제. `PORTAL_REPORT_DIR` 로 보고서 위치 분리 가능(서버 표준: 코드 밖).
 - 화면: 결과 카드에 서버 원본 소스(점검 직후 삭제됨)·서버 보고서 보관(N일 후 자동 삭제) 행 추가, 시작 고지에 보관 기간 포함.
 - `confidence` 는 체커가 종합 신뢰도를 내보내지 않아 보류 — 체커 제공 시 추가.
+
+## 추가 (2026-08-30) — 제출 전 임시 산출물·SBOM·관리자 분석
+
+- 점검 완료 직후에는 HTML, JSON, Markdown, CycloneDX 1.6 SBOM을 `PORTAL_DRAFT_REPORT_DIR`에 최대 24시간(`PORTAL_DRAFT_REPORT_RETENTION_HOURS`) 임시 보관한다. 소유자는 `/artifacts/{file}`에서 보기(`?view=1`) 또는 내려받기만 할 수 있다.
+- `POST /api/scan/{id}/request-review`가 성공하면 임시 산출물을 `PORTAL_REPORT_DIR`로 이동해 90일 보관하고, HTML·JSON·SBOM 원본을 검토 대기열에 연결한다. 제출 전에는 `reports`가 비어 있고 `artifacts`만 제공된다.
+- 제출 성공 시 포털은 `<점검대상>_<한국시간 점검일시>_<점검방식>_보안성검토요청서.html`과 같은 이름의 요청서 및 `_보안성검토제출자료.zip`을 생성한다. ZIP에는 `01_보안성검토요청서.html`과 `02_점검리포트/` 아래의 HTML·JSON·Markdown·SBOM이 들어간다. 사용자는 ZIP 하나만 내려받아 두 제출 자료를 함께 활용한다.
+- SBOM은 `gvskb scan --check-deps --sbom`으로 생성한다. 잠금 파일 또는 정확한 버전 선언이 있는 의존성은 `components[].name`, `components[].version`, `purl`에 기록한다. 버전 범위만 있거나 잠금 파일이 없으면 정확한 버전은 보장하지 않는다.
+- `GET /api/admin/dashboard`는 기간·상태·키워드·생태계·개발언어·화이트리스트 상태 필터를 받아 최근 6개월 점검 건수, 개발언어 분포, 제출된 패키지·버전 집계와 이메일·기관·부서별 점검 건수 및 최근 점검일을 반환한다. 이메일·기관·부서는 점검 시점 스냅샷이므로 이후 프로필 변경으로 과거 통계가 바뀌지 않는다.
+- **보존 경계**: 90일 정리는 `PORTAL_REPORT_DIR`의 제출 산출물 원본만 삭제한다. 점검 이력(`PORTAL_SCAN_HISTORY_FILE`)과 제출 후 적재한 패키지·정확 버전 통계(`PORTAL_OBSERVATION_DIR`)는 삭제 대상이 아니며, 관리자 대시보드의 시계열·언어·패키지·이메일·기관·부서 통계를 계속 제공한다. 이 저장소에는 원본 소스와 보고서 본문을 넣지 않는다.
+- 산출물 파일명은 포털이 정하며 `<점검대상>_<한국시간 점검일시 YYYY-MM-DD_HHmm>_<간편점검|표준점검>.<확장자>` 형식이다. 폴더·압축 파일은 선택한 이름을, GitHub·승인된 GitLab URL은 URL 경로의 마지막 저장소 이름(`.git` 제외)을 점검 대상으로 사용한다. 동시 생성 충돌 시에만 끝에 `_2`처럼 번호를 붙인다.
+- 체커가 HTML·Markdown 파일의 출력명을 내부 프로젝트명으로 다시 정하더라도, 포털은 전용 임시 폴더에서 생성물을 찾아 위 파일명 규칙으로 이동한다. 결과 화면은 `결과 리포트`, `패키지 목록·점검 데이터`, `소프트웨어 명세서`, `점검 요약`을 보기 링크로만 표시한다. 완료 상태에서 누락된 결과 리포트는 `생성 실패`로 명시하며 `생성 대기`로 남기지 않는다.
