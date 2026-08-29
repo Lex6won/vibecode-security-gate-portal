@@ -9,13 +9,23 @@
   <style>
     .screen {
       width: min(1180px, calc(100% - 32px));
-      height: 100vh;
+      /* 화면 고정(100vh + overflow:hidden)은 내용이 화면보다 길면 스크롤 없이 잘린다 —
+         실기기(1080p 노트북)에서 3단계가 안 보였던 원인. 문서 흐름대로 두고 페이지가 스크롤되게 한다. */
+      min-height: 100vh;
       margin: 0 auto;
       display: grid;
       grid-template-columns: minmax(0, 1fr);
       padding: 8px 0 10px;
-      overflow: hidden;
     }
+    /* 로그인 전에는 3단계 그리드가 숨겨져 1fr 트랙이 통째로 비어 화면이 위로 쏠린다.
+       그때는 채움 트랙을 없애고 남는 공간을 위아래로 나눠 세로 균형을 잡는다. */
+    body.logged-out .workspace {
+      grid-template-rows: auto auto auto;
+      align-content: center;
+      gap: 18px;
+    }
+    body.logged-out .hero { max-width: 860px; margin: 0 auto; width: 100%; }
+    body.logged-out #loginGate { max-width: 860px; margin: 0 auto; width: 100%; }
     .workspace {
       min-width: 0;
       min-height: 100%;
@@ -377,6 +387,10 @@
             <li><span>서버 원본 소스</span><b id="resultSource">업로드 전</b></li>
             <li><span>서버 보고서 보관</span><b id="resultRetention">확인 중</b></li>
           </ul>
+          <div class="save-row" id="reportDownloadRow" hidden>
+            <span><b>보고서 내려받기</b> — 서버 보관본을 파일로 저장합니다.</span>
+            <div id="reportDownloadLinks" style="display:flex; flex-wrap:wrap; gap:8px;"></div>
+          </div>
           <div class="save-row" id="scanFollowUpRow" hidden>
             <div class="flow-title"><span class="sequence">4</span><span>점검 후 처리</span></div>
             <span id="observationAutoNote">라이브러리 목록과 검사 결과 메타값이 화이트리스트 근거로 자동 반영됩니다. 소스 코드는 포함되지 않습니다.</span>
@@ -504,6 +518,12 @@
     const scanCompleteActions = document.querySelector("#scanCompleteActions");
     const closeCompletedScan = document.querySelector("#closeCompletedScan");
     let saveLocationSelectionInFlight = false;
+    // 폴더 직접 저장(showDirectoryPicker)은 https 또는 127.0.0.1 에서만 존재한다.
+    // LAN IP(http://192.168...)로 접속하면 API 자체가 없어, 폴백으로 "화면에서 내려받기" 모드로 진행한다.
+    // ?save=download 로 강제해 폴백 화면을 시험할 수 있다.
+    const canPickFolder = typeof window.showDirectoryPicker === "function"
+      && new URLSearchParams(window.location.search).get("save") !== "download";
+    const DOWNLOAD_MODE_LABEL = "화면에서 내려받기";
     let targetSelectionInFlight = false;
     let activeTarget = "folder";
     let selectedReady = false;
@@ -544,6 +564,7 @@
       targetProgressState.textContent = state;
       targetProgressDetail.textContent = detail;
       targetProgressBar.style.width = `${Math.max(0, Math.min(100, percent))}%`;
+      targetProgressBar.classList.toggle("done", completed);
       targetProgressActions.hidden = !completed;
       targetProgress.hidden = false;
     }
@@ -651,6 +672,7 @@
       progressSummary.dataset.state = state;
       progressPercent.textContent = `${percent}%`;
       progressBar.style.width = `${percent}%`;
+      progressBar.classList.toggle("done", state !== "running");
       progressMessage.textContent = progress.message || "검사를 준비하고 있습니다.";
       const statusByStep = new Map((progress.steps || []).map((step) => [step.name, step.status]));
       progressSteps.forEach((step) => {
@@ -773,6 +795,8 @@
 
     function applySession(session) {
       const loggedIn = Boolean(session && session.logged_in);
+      // 로그인 전/후로 세로 레이아웃이 달라진다 — CSS 가 판단할 수 있게 상태를 표시한다.
+      document.body.classList.toggle("logged-out", !loggedIn);
       loginGate.hidden = loggedIn;
       // hidden 속성은 인라인 display 에 지므로 display 로 직접 제어한다.
       sessionBar.style.display = loggedIn ? "flex" : "none";
@@ -857,8 +881,26 @@
       return Number.isFinite(days) && days > 0 ? `${days}일 후 자동 삭제` : "무기한 보관 안 함";
     }
 
+    function renderReportDownloads(job) {
+      const row = document.querySelector("#reportDownloadRow");
+      const links = document.querySelector("#reportDownloadLinks");
+      const reports = job.reports || [];
+      if (!reports.length) { row.hidden = true; return; }
+      links.replaceChildren(...reports.map((report) => {
+        const anchor = document.createElement("a");
+        anchor.className = "pill";
+        anchor.href = report.url;
+        anchor.download = report.file_name;
+        anchor.textContent = report.file_name.split("_").pop();
+        anchor.title = report.file_name;
+        return anchor;
+      }));
+      row.hidden = false;
+    }
+
     function setResultDone(job, saveError = null) {
       showScanFollowUp(job);
+      renderReportDownloads(job);
       // P5(신뢰 표시): 서버가 준 사실(source_retained·retention)만 그대로 보여준다.
       resultSource.textContent = job.source_retained === false ? "점검 직후 삭제됨" : "확인 필요";
       resultRetention.textContent = retentionText(job.report_retention_days);
@@ -883,11 +925,13 @@
       resultReview.textContent = job.decision === "needs_review" ? "필요" : "0건";
       resultDeps.textContent = `${dependencyCount}건`;
       resultHtml.textContent = hasHtml ? "생성됨" : "생성 대기";
-      resultJson.textContent = hasJson ? "생성됨" : "생성됨";
+      resultJson.textContent = hasJson ? "생성됨" : "생성 대기";
       const saveStep = (job.steps || []).find((step) => step.name === "save_reports");
       if (saveError) {
         savePath.textContent = `점검은 완료되었지만 결과 파일 저장에 실패했습니다. ${saveError}`;
         progressSaveDetail.textContent = "결과 저장을 확인한 뒤 저장 위치를 다시 선택하세요.";
+      } else if (!canPickFolder) {
+        savePath.textContent = "점검이 완료되었습니다. 결과 카드의 보고서 내려받기에서 저장하세요.";
       } else if (browserSavedReports.length) {
         savePath.textContent = `${selectedSaveDir} 폴더에 결과물 ${browserSavedReports.length}개를 저장했습니다.`;
       } else if (saveStep?.status === "skipped") {
@@ -896,6 +940,11 @@
     }
 
     async function saveReportsToSelectedDirectory(job) {
+      if (!canPickFolder) {
+        // 내려받기 모드: 폴더 저장 없음. 링크는 결과 카드에서 제공한다.
+        progressSaveDetail.textContent = "결과 카드의 보고서 내려받기에서 저장하세요.";
+        return;
+      }
       if (!selectedSaveDirectoryHandle) throw new Error("결과 저장 위치를 먼저 선택하세요.");
       browserSavedReports = [];
       for (const report of job.reports || []) {
@@ -1086,6 +1135,14 @@
     if (initialMode) activateMode(initialMode);
 
     scanButton.addEventListener("click", () => openTargetPicker());
+
+    if (!canPickFolder) {
+      // 저장 위치 단계가 성립하지 않는 환경 — 정직하게 안내하고 점검은 막지 않는다.
+      selectedSaveDir = DOWNLOAD_MODE_LABEL;
+      savePath.innerHTML = "이 접속 환경에서는 폴더 직접 저장을 지원하지 않습니다. 점검이 끝나면 <b>결과 카드의 보고서 내려받기</b>로 저장하세요. 보고서는 서버에도 보관됩니다.";
+      saveButton.hidden = true;
+      progressSaveDetail.textContent = "점검 후 결과 카드에서 보고서를 내려받으세요.";
+    }
 
     async function chooseSaveLocation() {
       if (saveLocationSelectionInFlight) return false;

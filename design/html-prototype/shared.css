@@ -1,6 +1,11 @@
 /* 공공 바이브코딩 보안 게이트 — 통합 디자인 시스템
    v1 화면과 v2 시안의 디자인 언어를 통일하고 접근성·반응형을 강화한 공통 스타일 */
 
+/* hidden 속성은 UA 의 display:none 으로 동작하는데, .modal-actions{display:flex} 같은
+   클래스 규칙이 이를 덮어써 "숨겼는데 보이는" 버그가 됐다(저장 위치 모달의 확인 버튼).
+   hidden 은 항상 이긴다 — 보이기 전환은 hidden 제거로만 한다. */
+[hidden] { display: none !important; }
+
 :root {
   /* 색상 토큰 */
   --moon: #f3f6ff;
@@ -1370,6 +1375,10 @@ tbody tr:last-child td { border-bottom: none; }
 
 .progress-summary[data-state="completed"] .progress-spinner,
 .progress-summary[data-state="failed"] .progress-spinner { animation: none; }
+
+/* 완료된 진행바는 멈춘다 — 스피너만 멈추고 바의 반짝임(shimmer)은 계속 돌던 버그.
+   완료 시 JS 가 done 클래스를 붙인다. */
+.progress-track span.done { animation: none; background: var(--green); }
 .progress-summary[data-state="completed"] .progress-spinner {
   border-color: var(--green);
   background: var(--green);

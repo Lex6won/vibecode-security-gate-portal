@@ -625,3 +625,14 @@ guard 재실행에서 잡힌 실제 레이스: 상태가 completed 로 바뀐 �
 - **적대적 검증 신설** `scenarioHarnessReleaseGuard`: 로컬에 오염된 피드 서버를 띄워 `download_url: "javascript:alert(document.cookie)"` 와 `lovable-github` 을 내려주고, 포털이 링크를 null 로 버리고 Lovable 도 계속 걸러내는지 확인한다. **수정을 되돌리면 이 시나리오가 실제로 실패하는 것까지 확인**했다(actual: 'javascript:alert(document.cookie)').
 - 기존 시나리오 테스트가 `startsWith("https://")` 를 보고 있었지만 그건 피드가 정상일 때의 확인일 뿐 서버 강제가 아니었다 — 검증과 집행을 구분한다.
 - 시나리오 14종 통과. 포털이 남에게 지적할 패턴을 스스로 갖지 않는다는 원칙(docs/27 역할 경계와 별개로 코드 품질 기준).
+
+## 2026-08-29 실기기 사용성 결함 4건 수정 — 시연 차단급
+
+집 서버(LAN IP 접속) 실기기에서 사용자가 발견한 결함을 headless Chrome 스크린샷으로 재현·수정·재검증했다.
+
+- **① 페이지 스크롤 불가**: /scan 이 화면 고정형(100vh+overflow:hidden)이라 내용이 화면보다 길면 스크롤 없이 잘렸다(1080p 실기기에서 3단계 안 보임). 문서 흐름 스크롤로 전환.
+- **② 숨긴 모달 버튼이 보임**: `.modal-actions{display:flex}` 가 hidden 속성(UA display:none)을 덮어써 저장 위치 모달에 "확인"이 미리 떠 있었다. `[hidden]{display:none!important}` 전역 규칙으로 hidden 이 항상 이기게 수정.
+- **③ 완료 후에도 진행바 반짝임**: 스피너만 멈추고 progress-track 의 shimmer 는 계속 돌았다. 완료 시 done 클래스로 정지.
+- **④ 저장 위치 선택이 LAN 접속에서 원천 불가**: showDirectoryPicker 는 보안 컨텍스트(https·127.0.0.1) 전용이라 http://<서버IP> 접속에선 API 자체가 없다 → 에러 모달 막다른 길. **내려받기 모드 폴백** 신설: API 없으면 1단계를 안내문으로 바꾸고 점검을 막지 않으며, 결과 카드에 보고서 내려받기 링크를 띄운다(서버 보관과 병행). `?save=download` 로 폴백 강제 시험 가능.
+- 부수: 결과 카드 JSON 보고서가 항상 "생성됨"으로 표시되던 삼항 오타 수정. tools.html 은 설치 파일(EXE)을 1단계 주 경로로 올리고 ZIP·명령줄·상세 설명은 접기(details)로 — 설치 파일 정보를 못 불러오면 ZIP 접기가 자동으로 펴져 막다른 화면을 만들지 않는다.
+- **검증 방법**: headless Chrome(--headless=new --screenshot)으로 메인·/scan(로그아웃/로그인/폴백)·/tools 실렌더링을 찍어 육안 확인 + guard 14종. 교훈: 폴더 선택·업로드류 브라우저 API 는 접속 주소(보안 컨텍스트)에 따라 존재 여부가 달라지므로, 개발 PC(127.0.0.1)에서만 테스트하면 서버(LAN IP)에서 처음 깨진다.
