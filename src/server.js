@@ -1141,6 +1141,12 @@ async function runScanJob(job) {
     summary: {
       scanned_file_count: scannedFileCount,
       finding_count: findingCount,
+      // 화면 요약은 체커 리포트의 실측값을 그대로 쓴다 — 파생 판정으로 재가공하면
+      // 내려받은 보고서와 화면 숫자가 어긋난다(2026-08-29 실측: warn 196 이 "0건"으로 표시).
+      block_count: Number(parsed?.summary?.by_decision?.block ?? 0),
+      warn_count: Number(parsed?.summary?.by_decision?.warn ?? 0),
+      blocked: Boolean(parsed?.summary?.blocked),
+      highest_severity: parsed?.summary?.highest_severity || null,
       dependency_finding_count: dependencyFindingCount,
       profile_fallback: profileFallback,
       coverage_truncated: coverageTruncated,
