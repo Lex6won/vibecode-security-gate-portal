@@ -216,13 +216,15 @@ async function assertLocalPickerContract() {
     && html.includes('보안성검토 자료 제출') && html.includes('하나의 제출자료 ZIP'),
   "review submission must create one downloadable package containing the request form and reports");
   assert.ok(!html.includes('openSubmissionFolder') && !html.includes('저장 폴더 열기')
+    && html.includes('viewSubmission.id = "viewSubmission"') && html.includes('window.location.assign(`/my?scan=${encodeURIComponent(lastCompletedScanId)}`)')
     && html.includes('finish.id = "finishSubmission"') && html.includes('window.location.assign("/")'),
-  "completed submission must not mislabel a directory picker as opening the saved folder");
+  "completed submission must offer the retained submission record, not mislabel a directory picker as opening the saved folder");
   assert.ok(!html.includes('.filter((item) => item.kind !== "sbom")'),
     "saving scan artifacts to the selected directory must include the SBOM when it was generated");
   assert.ok(html.includes('id="resultSbom"') && html.includes('function artifactDisplayName(report)')
-    && html.includes('소프트웨어 명세서') && html.includes('?view=1'),
-  "scan results must expose human-readable artifacts as view-only links");
+    && html.includes('소프트웨어 명세서') && html.includes('?view=1')
+    && html.includes('보고서는 새 창에서 보고, 제출자료 ZIP은 내려받습니다.'),
+  "scan results must make report viewing and submission ZIP downloads explicit");
 
   // P5: 원본 삭제·보존기한이 화면에 사실대로 표시되어야 한다.
   assert.ok(html.includes('id="resultSource"') && html.includes('id="resultRetention"'), "result card must show source deletion and retention facts");
@@ -249,6 +251,10 @@ async function assertToolsGuidePage() {
   assert.ok(html.includes("시작 메뉴</b>에서 <b>VibeCode Harness Manager"), "install guidance must say where the Manager actually is (Start Menu) — the demo installer does not auto-launch it");
   assert.ok(html.includes('id="unsignedInstallNotice"') && html.includes("알 수 없는 게시자") && html.includes("추가 정보 → 실행"), "unsigned installer guidance must tell users the exact Windows action");
   assert.ok(html.includes("설치 완료 · 설정하기") && html.includes("3단계 · 설정"), "installation completion must lead users into project setup");
+  assert.ok(html.includes('class="harness-step-label">내려받기</span>')
+    && html.includes('class="harness-step-label">설치하기</span>')
+    && html.includes('class="harness-step-label">설정하기</span>'),
+  "harness progress labels must match the download, install, and setup stages");
   assert.ok(!html.includes("lovable"), "unapproved tool (Lovable) must not be named in the harness install guidance");
 }
 
@@ -260,8 +266,9 @@ async function assertMyHistoryPage() {
   assert.ok(html.includes('id="historyCard"') && html.indexOf('id="historyCard"') < html.indexOf('id="profileCard"'),
   "scan history must appear before the optional profile editor");
   assert.ok(html.includes('function artifactDisplayName(report)') && html.includes('보안성검토 제출자료 ZIP')
-    && html.includes('scan.artifacts || scan.reports || []'),
-  "scan history must show readable artifact names, including temporary reports before submission");
+    && html.includes('scan.artifacts || scan.reports || []') && html.includes('결과 리포트와 목록은 새 창에서 보고')
+    && html.includes('new URLSearchParams(window.location.search).get("scan")'),
+  "scan history must show readable artifacts, explain view/download behavior, and focus the submitted scan");
   assert.ok(html.includes('id="toggleProfile"') && html.includes('소속 정보 수정')
     && html.includes('접속 인증을 확인하지 못했습니다'),
   "history page must keep profile editing optional and never redirect users to a duplicate email-login flow");

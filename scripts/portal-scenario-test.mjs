@@ -397,6 +397,7 @@ async function scenarioReviewRequest(result) {
     "submission must generate a review request document");
   const packageResponse = await fetch(`${baseUrl}${requested.submission_package.url}`, { headers: localHeaders() });
   assert.equal(packageResponse.status, 200, "the owner must receive the submission package");
+  assert.match(String(packageResponse.headers.get("content-disposition")), /attachment/, "submission ZIP must download as an attachment");
   const packageEntries = readZipEntries(Buffer.from(await packageResponse.arrayBuffer()));
   assert.ok(packageEntries.some((entry) => entry.name === "01_보안성검토요청서.html"),
     "the package must contain the generated review request document");
@@ -417,6 +418,9 @@ async function scenarioReviewRequest(result) {
   assert.ok(sbom?.url, "submitted scan must retain a downloadable SBOM");
   const sbomResponse = await fetch(`${baseUrl}${sbom.url}`, { headers: localHeaders() });
   assert.equal(sbomResponse.status, 200, "submitted SBOM must be downloadable by its owner");
+  const sbomViewResponse = await fetch(`${baseUrl}${sbom.url}?view=1`, { headers: localHeaders() });
+  assert.equal(sbomViewResponse.status, 200, "submitted SBOM must remain available for in-browser viewing");
+  assert.match(String(sbomViewResponse.headers.get("content-disposition")), /inline/, "report viewing must use the retained server copy inline");
   const sbomDocument = JSON.parse(await sbomResponse.text());
   assert.equal(sbomDocument.bomFormat, "CycloneDX", "SBOM must use CycloneDX");
   assert.equal(sbomDocument.specVersion, "1.6", "SBOM must use the required CycloneDX 1.6 schema");

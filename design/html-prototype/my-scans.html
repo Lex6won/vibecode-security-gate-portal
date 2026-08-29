@@ -25,6 +25,8 @@
     .artifact-list { display: flex; flex-wrap: wrap; gap: 6px; }
     .artifact-link { display: inline-flex; align-items: center; min-height: 28px; padding: 3px 9px; border: 1px solid var(--line); border-radius: 999px; background: var(--soft); font-size: 12px; line-height: 1.2; }
     .artifact-link.submission { background: var(--green-soft); border-color: #a9d9cf; color: var(--green); }
+    .artifact-guide { margin: 0 0 10px; color: var(--muted); font-size: 12.5px; font-weight: 700; }
+    .history-table tr.focused-scan td { background: #effaf6; }
     .empty-note { padding: 18px; font-size: 14px; color: var(--muted); font-weight: 700; }
     .profile-card { margin-top: 16px; }
     .profile-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: end; margin-top: 14px; }
@@ -60,10 +62,11 @@
 
     <section class="panel-card" id="historyCard" hidden aria-labelledby="history-title">
       <h2 class="section-title" id="history-title">점검 이력</h2>
+      <p class="artifact-guide">결과 리포트와 목록은 새 창에서 보고, 보안성검토 제출자료 ZIP은 내려받습니다.</p>
       <div class="table-wrap">
         <table class="history-table" aria-label="내 점검 이력">
           <thead>
-            <tr><th>일시</th><th>대상</th><th>방식</th><th>결과</th><th>보고서</th><th>보안성검토</th></tr>
+            <tr><th>일시</th><th>대상</th><th>방식</th><th>결과</th><th>산출물</th><th>보안성검토</th></tr>
           </thead>
           <tbody id="historyBody"></tbody>
         </table>
@@ -88,6 +91,7 @@
     const profileCard = document.querySelector("#profileCard");
     const historyCard = document.querySelector("#historyCard");
     const historyBody = document.querySelector("#historyBody");
+    const focusedScanId = new URLSearchParams(window.location.search).get("scan");
     const historyEmpty = document.querySelector("#historyEmpty");
     const profileWho = document.querySelector("#profileWho");
     const profileOrganization = document.querySelector("#profileOrganization");
@@ -158,13 +162,18 @@
       historyEmpty.hidden = scans.length > 0;
       for (const scan of scans) {
         const row = document.createElement("tr");
+        if (scan.id === focusedScanId) {
+          row.classList.add("focused-scan");
+          row.tabIndex = -1;
+        }
         const artifacts = scan.artifacts || scan.reports || [];
         const reports = artifacts.map((report) => {
           const packageFile = report.kind === "submission_package" || String(report.file_name || "").endsWith(".zip");
           const href = packageFile ? report.url : `${report.url}?view=1`;
           const attributes = packageFile ? "download" : 'target="_blank" rel="noreferrer"';
           const className = packageFile ? "artifact-link submission" : "artifact-link";
-          return `<a class="${className}" href="${escapeHtml(href)}" ${attributes} title="${escapeHtml(report.file_name)}">${escapeHtml(artifactDisplayName(report))}</a>`;
+          const action = packageFile ? "내려받기" : "새 창에서 보기";
+          return `<a class="${className}" href="${escapeHtml(href)}" ${attributes} title="${escapeHtml(report.file_name)} ${action}">${escapeHtml(artifactDisplayName(report))}</a>`;
         }).join("");
         const target = targetDetails(scan);
         const decision = scan.status === "failed" ? "점검 실패"
@@ -178,6 +187,10 @@
           <td>${reports ? `<div class="artifact-list">${reports}</div>` : "-"}</td>
           <td>${reviewCell(scan)}</td>`;
         historyBody.appendChild(row);
+      }
+      const focusedRow = historyBody.querySelector(".focused-scan");
+      if (focusedRow) {
+        window.setTimeout(() => focusedRow.scrollIntoView({ block: "center" }), 0);
       }
     }
 
