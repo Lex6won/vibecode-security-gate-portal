@@ -646,3 +646,14 @@ guard 재실행에서 잡힌 실제 레이스: 상태가 completed 로 바뀐 �
 - **모달 포커스 관리**: 3개 모달(진행·저장위치·대상준비)에 role=dialog + 열릴 때 주 버튼으로 포커스 이동, Tab 순환(트랩), 닫힐 때 연 자리로 복귀. Esc 로 언제든 닫기.
 - **점검 중에도 진행 모달 닫기 허용**: 기존엔 점검이 끝날 때까지 X 가 숨겨져 화면에 갇혔다. 닫아도 점검은 계속되고 결과 카드에 반영됨을 문구로 안내.
 - 교훈: 서버가 켜진 채 데이터 파일을 지우면 메모리 캐시가 남는다 — 개발 데이터 초기화는 서버 재시작과 함께.
+
+## 2026-08-29 Cloudflare Tunnel + Access 구축 — 외부(도청) 접속 경로 개통
+
+docs/29 부록 A-1 을 실측 수행. 도메인 lex6.dev 구매, 터널 gg-portal 생성, `https://portal.lex6.dev` 개통.
+
+- **구성**: cloudflared 2026.8.2(`C:\servers\tools\`), 터널 설정 `%USERPROFILE%\.cloudflared\config.yml`(127.0.0.1:8787 로 연결, Host 유지), `.env` 허용 호스트에 `portal.lex6.dev` 추가. 운영 규칙 ③(테스트 때만 가동)에 맞춰 서비스가 아닌 **켜기/끄기 스크립트**(`C:\servers\tunnel-start.ps1`/`tunnel-stop.ps1`)로 운용.
+- **Access 관문**: Zero Trust 팀 purple-dust-59dc, Self-hosted 앱 portal.lex6.dev, Allow 정책 "기관 메일만" — Emails ending in @gg.go.kr, @korea.kr(OR), One-time PIN.
+- **사고와 교훈**: 첫 가동 때 포털이 관문 없이 약 2분 노출됐다 — 새 대시보드에서 **정책 저장(팝업)과 별개로 애플리케이션 최종 저장을 한 번 더 눌러야** 하는데 그게 빠져 있었다. 이후 절차를 **"터널을 켜기 전에 curl 로 302(Access 로그인 리다이렉트)를 먼저 확인"** 으로 바꿨다(Access 는 터널이 꺼져 있어도 검증 가능). 검증: 무인증 접속 시 `/`·`/health`·`/api/*`·`/reports/*` 전부 302.
+- **부수 효과**: https 접속에서는 폴더 직접 저장(showDirectoryPicker)이 살아난다 — LAN(http) 접속의 내려받기 모드 폴백과 공존.
+- **연결 수정**: `refresh-address.ps1` 이 허용 호스트를 재작성할 때 터널 도메인을 지우던 문제 — 목록에 고정 포함.
+- 남은 운영 항목: 동료 테스트 개시 전 화면에 "실업무 소스 업로드 금지(테스트 전용)" 고지 추가(운영 규칙 ①), 테스트 종료 시 tunnel-stop.
