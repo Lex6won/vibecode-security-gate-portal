@@ -267,8 +267,9 @@ async function assertMyHistoryPage() {
   "scan history must appear before the optional profile editor");
   assert.ok(html.includes('function artifactDisplayName(report)') && html.includes('보안성검토 제출자료 ZIP')
     && html.includes('scan.artifacts || scan.reports || []') && html.includes('결과 리포트와 목록은 새 창에서 보고')
-    && html.includes('new URLSearchParams(window.location.search).get("scan")'),
-  "scan history must show readable artifacts, explain view/download behavior, and focus the submitted scan");
+    && html.includes('new URLSearchParams(window.location.search).get("scan")') && html.includes('data-label="산출물"')
+    && html.includes('@media (max-width: 640px)'),
+  "scan history must show readable artifacts, explain view/download behavior, focus the submitted scan, and remain readable on mobile");
   assert.ok(html.includes('id="toggleProfile"') && html.includes('소속 정보 수정')
     && html.includes('접속 인증을 확인하지 못했습니다'),
   "history page must keep profile editing optional and never redirect users to a duplicate email-login flow");

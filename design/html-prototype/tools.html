@@ -189,10 +189,12 @@
       .harness-stage { min-height: 0; padding: 22px; }
     }
     @media (max-width: 620px) {
-      .harness-progress { padding: 18px 8px 14px; }
+      body { overflow-x: hidden; }
+      .harness-progress { padding: 18px 0 14px; }
       .harness-progress li:not(:last-child)::after { left: calc(50% + 21px); right: calc(-50% + 21px); top: 17px; }
       .harness-step-number { width: 36px; height: 36px; font-size: 13px; }
-      .harness-step-label { font-size: 12px; line-height: 17px; }
+      .harness-step-button { padding: 0 2px; }
+      .harness-step-label { font-size: 11px; line-height: 16px; }
       .harness-stage { padding: 18px 16px; }
       .stage-heading h1 { font-size: 24px; }
       .stage-actions .button { width: 100%; }

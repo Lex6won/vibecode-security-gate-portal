@@ -1427,6 +1427,11 @@ tbody tr:last-child td { border-bottom: none; }
 }
 
 @media (max-width: 640px) {
+  .brand-home { gap: 9px; }
+  .gg-mark { width: 62px; height: 46px; }
+  .brand-home strong { font-size: 18px; line-height: 24px; }
+  .brand-home span { font-size: 12px; line-height: 18px; }
+  .top-actions { width: 100%; margin-left: 0; justify-content: flex-start; }
   .hero { padding: 20px; }
   .hero h1 { font-size: 26px; }
   .choice { padding: 20px 16px; }

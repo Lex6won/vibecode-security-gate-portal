@@ -449,12 +449,15 @@
       .panel.flow-panel { min-height: 0; padding: 22px; }
     }
     @media (max-width: 620px) {
+      body { overflow-x: hidden; }
       .flow-stage, .prepare-grid, .setup-block, .step-section, .target-panel { min-width: 0; }
       .flow-stage > .stage-lead, .step-section > p, .target-help { overflow-wrap: anywhere; word-break: normal; }
-      .flow-progress { padding: 18px 8px 14px; }
-      .flow-progress-item:not(:last-child)::after { left: calc(50% + 21px); right: calc(-50% + 21px); top: 17px; }
+      .flow-progress { padding: 18px 0 14px; }
+      .flow-progress-list { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 0; }
+      .flow-progress-item:not(:last-child)::after { display: none; }
       .flow-step-number { width: 36px; height: 36px; font-size: 13px; }
-      .flow-step-label { font-size: 12px; line-height: 17px; }
+      .flow-step-button { padding: 0 2px; }
+      .flow-step-label { font-size: 11px; line-height: 16px; }
       .panel.flow-panel { padding: 18px 16px; }
       .flow-stage > .stage-title { font-size: 23px; line-height: 31px; }
       .source-tabs { grid-template-columns: 1fr; }

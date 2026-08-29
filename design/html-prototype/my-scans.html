@@ -27,6 +27,20 @@
     .artifact-link.submission { background: var(--green-soft); border-color: #a9d9cf; color: var(--green); }
     .artifact-guide { margin: 0 0 10px; color: var(--muted); font-size: 12.5px; font-weight: 700; }
     .history-table tr.focused-scan td { background: #effaf6; }
+    .history-table td:last-child .pill { width: 100%; min-height: 28px; padding: 5px 8px; text-align: center; white-space: normal; line-height: 1.35; }
+    @media (max-width: 640px) {
+      .table-wrap { overflow: visible; }
+      .history-table, .history-table tbody, .history-table tr, .history-table td { display: block; width: 100%; }
+      .history-table { min-width: 0; font-size: 13px; }
+      .history-table thead { display: none; }
+      .history-table tr { margin-top: 10px; padding: 6px 12px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--panel); }
+      .history-table td { display: grid; grid-template-columns: 78px minmax(0, 1fr); gap: 10px; padding: 9px 0; }
+      .history-table td::before { content: attr(data-label); color: var(--muted); font-size: 12px; font-weight: 900; }
+      .history-table tr.focused-scan td { background: transparent; }
+      .history-table tr.focused-scan { border-color: var(--green-line); background: #effaf6; }
+      .artifact-list { gap: 5px; }
+      .artifact-link { min-height: 27px; padding: 3px 8px; font-size: 11.5px; }
+    }
     .empty-note { padding: 18px; font-size: 14px; color: var(--muted); font-weight: 700; }
     .profile-card { margin-top: 16px; }
     .profile-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: end; margin-top: 14px; }
@@ -180,12 +194,12 @@
           : scan.status !== "completed" ? "진행 중"
           : decisionLabels[scan.decision] || scan.decision;
         row.innerHTML = `
-          <td>${escapeHtml(formatDate(scan.created_at))}</td>
-          <td><span class="target-name" title="${escapeHtml(target.name)}">${escapeHtml(target.name)}</span><span class="target-type">${escapeHtml(target.type)}</span>${target.source ? `<span class="target-source" title="${escapeHtml(target.source)}">${escapeHtml(target.source)}</span>` : ""}</td>
-          <td>${scan.mode === "quick" ? "간편" : "표준"}</td>
-          <td class="decision">${escapeHtml(decision)}</td>
-          <td>${reports ? `<div class="artifact-list">${reports}</div>` : "-"}</td>
-          <td>${reviewCell(scan)}</td>`;
+          <td data-label="일시">${escapeHtml(formatDate(scan.created_at))}</td>
+          <td data-label="대상"><span class="target-name" title="${escapeHtml(target.name)}">${escapeHtml(target.name)}</span><span class="target-type">${escapeHtml(target.type)}</span>${target.source ? `<span class="target-source" title="${escapeHtml(target.source)}">${escapeHtml(target.source)}</span>` : ""}</td>
+          <td data-label="방식">${scan.mode === "quick" ? "간편" : "표준"}</td>
+          <td class="decision" data-label="결과">${escapeHtml(decision)}</td>
+          <td data-label="산출물">${reports ? `<div class="artifact-list">${reports}</div>` : "-"}</td>
+          <td data-label="보안성검토">${reviewCell(scan)}</td>`;
         historyBody.appendChild(row);
       }
       const focusedRow = historyBody.querySelector(".focused-scan");

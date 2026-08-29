@@ -103,6 +103,12 @@
     main.screen { grid-template-rows: auto 1fr auto auto auto; row-gap: clamp(16px, 3vh, 32px); }
     .simple-hero { align-self: center; padding-block: clamp(20px, 4vh, 44px); }
     .simple-hero p { max-width: 720px; margin-inline: auto; }
+    @media (max-width: 640px) {
+      .simple-hero { min-width: 0; }
+      .simple-hero h1 { width: 100%; max-width: calc(100vw - 32px); margin-inline: auto; font-size: 26px; overflow-wrap: anywhere; word-break: normal; }
+      .simple-hero h1 span, .simple-hero p span { display: block; }
+      .simple-hero p { width: 100%; max-width: calc(100vw - 32px); font-size: 14px; overflow-wrap: anywhere; word-break: normal; }
+    }
   </style>
 </head>
 <body>
@@ -124,8 +130,8 @@
     </header>
 
     <section class="simple-hero" aria-labelledby="hero-title">
-      <h1 id="hero-title">AI로 만든 코드, 제출 전에 보안 점검부터</h1>
-      <p>바이브코딩(AI 코딩)으로 만든 공공 산출물은 취약한 코드나 위험한 라이브러리가 섞이기 쉽습니다. 이 포털에서 소스를 점검하면 위험 항목과 수정 방법을 보고서로 받아 안전하게 제출할 수 있습니다.</p>
+      <h1 id="hero-title" aria-label="AI로 만든 코드, 제출 전에 보안 점검부터"><span>AI로 만든 코드, 제출 전에 </span><span>보안 점검부터</span></h1>
+      <p><span>바이브코딩(AI 코딩)으로 만든 공공 산출물은 </span><span>취약한 코드나 위험한 라이브러리가 섞이기 쉽습니다. </span><span>이 포털에서 소스를 점검하면 위험 항목과 수정 방법을 </span><span>보고서로 받아 안전하게 제출할 수 있습니다.</span></p>
       <div class="hero-actions">
         <a class="button big-action" href="/scan">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
