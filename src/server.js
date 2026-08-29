@@ -700,6 +700,18 @@ const HARNESS_TOOL_LABELS = {
 };
 let harnessReleaseCache = { at: 0, value: null };
 
+// 외부 피드에서 온 값을 그대로 링크로 쓰지 않는다. https 가 아닌 주소(javascript: 등)는
+// 버리고 null 로 만든다 — 화면은 download_url 이 없으면 "확인할 수 없습니다"로 닫히므로
+// 피드가 오염돼도 사용자에게 위험한 링크가 뜨지 않는다.
+function safeInstallerUrl(value) {
+  try {
+    const url = new URL(String(value || ""));
+    return url.protocol === "https:" ? url.href : null;
+  } catch {
+    return null;
+  }
+}
+
 async function fetchHarnessRelease() {
   if (Date.now() - harnessReleaseCache.at < HARNESS_RELEASE_CACHE_MS && harnessReleaseCache.value) {
     return harnessReleaseCache.value;
@@ -720,7 +732,7 @@ async function fetchHarnessRelease() {
       is_demo: String(data.status || "").includes("demo"),
       message: data.message || null,
       version: data.installer?.version || null,
-      download_url: data.installer?.download_url || null,
+      download_url: safeInstallerUrl(data.installer?.download_url),
       sha256: data.installer?.sha256 || null,
       signature_status: data.installer?.signature_status || null,
       expires_at: data.installer?.expires_at || null,

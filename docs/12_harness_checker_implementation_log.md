@@ -616,3 +616,12 @@ guard 재실행에서 잡힌 실제 레이스: 상태가 completed 로 바뀐 �
   ③ **로그 경로가 문서와 불일치** — 절차서 트리는 `C:\portal-logs\` 인데 `setup-server.ps1` 은 저장소 상위(`C:\servers\portal-logs\`)에 만든다. 실제 동작에 맞춰 절차서를 수정.
 - **관찰(수정 안 함)**: `prepare_target` 실패로 끝난 점검은 업로드 스테이징(`tmp\scan-targets\browser-*`)을 남긴다. 성공 경로는 정리됨. 데이터 위치 원칙 위반은 아니지만(임시 폴더) 상시 서버에서 누적 여지 — 정리 주기 검토 후보.
 - **운영 메모**: 접속 주소는 `http://<노트북 LAN IP>:8787`, DHCP 이므로 공유기 DHCP 예약 필요. 관리자 초기 비밀번호는 `.env` 에만 두고 첫 로그인 후 변경. 동료 테스트(도청)는 docs/29 부록 A-1(Cloudflare Tunnel + Access) 설정 후.
+
+## 2026-08-29 릴리스 피드 링크 검증 — 외부 입력을 그대로 렌더링하지 않는다
+
+설치 파일 카드(`/api/harness/release`)는 하네스가 게시하는 release-index.json 을 실시간으로 읽는다. 그 값 중 `download_url` 은 화면에서 `<a href>` 로 그대로 렌더링되는데, 서버가 스킴을 검증하지 않았다. `escapeHtml` 은 속성 탈출은 막지만 `javascript:` 스킴은 통과시킨다 — 피드가 오염되면(침해든 실수든) 사용자가 누르는 버튼이 스크립트가 된다.
+
+- **수정**: `safeInstallerUrl()` 로 `https:` 만 통과시키고 나머지는 null. 화면은 `download_url` 이 없으면 이미 "확인할 수 없습니다"로 닫히므로 **화면 수정 없이 안전한 쪽으로 실패**한다.
+- **적대적 검증 신설** `scenarioHarnessReleaseGuard`: 로컬에 오염된 피드 서버를 띄워 `download_url: "javascript:alert(document.cookie)"` 와 `lovable-github` 을 내려주고, 포털이 링크를 null 로 버리고 Lovable 도 계속 걸러내는지 확인한다. **수정을 되돌리면 이 시나리오가 실제로 실패하는 것까지 확인**했다(actual: 'javascript:alert(document.cookie)').
+- 기존 시나리오 테스트가 `startsWith("https://")` 를 보고 있었지만 그건 피드가 정상일 때의 확인일 뿐 서버 강제가 아니었다 — 검증과 집행을 구분한다.
+- 시나리오 14종 통과. 포털이 남에게 지적할 패턴을 스스로 갖지 않는다는 원칙(docs/27 역할 경계와 별개로 코드 품질 기준).

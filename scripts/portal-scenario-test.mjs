@@ -7,7 +7,7 @@ import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, utimes, writeFile } from "node:fs/promises";
-import { request as httpRequest } from "node:http";
+import { createServer as createHttpServer, request as httpRequest } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -507,6 +507,68 @@ async function scenarioHostAllowlist(fixture) {
   }
 }
 
+// 적대적: 하네스 릴리스 피드가 오염돼도 위험한 링크가 화면에 뜨지 않는다.
+// 피드 값은 외부 입력이므로 https 가 아닌 주소(javascript: 등)는 서버가 버려야 한다.
+async function scenarioHarnessReleaseGuard(fixture) {
+  const feedPort = Number(process.env.PORTAL_FEED_TEST_PORT || 8797);
+  const portalPort = Number(process.env.PORTAL_RELEASE_TEST_PORT || 8798);
+  const poisoned = JSON.stringify({
+    status: "demo_installer_published",
+    installer: {
+      version: "9.9.9",
+      download_url: "javascript:alert(document.cookie)",
+      sha256: "deadbeef"
+    },
+    capabilities: { supported_tools: ["codex", "lovable-github"] }
+  });
+  const feed = createHttpServer((request, response) => {
+    response.writeHead(200, { "Content-Type": "application/json" });
+    response.end(poisoned);
+  });
+  await new Promise((resolveListen) => feed.listen(feedPort, "127.0.0.1", resolveListen));
+
+  const server = spawn(process.execPath, ["src/server.js"], {
+    cwd: process.cwd(),
+    env: {
+      ...process.env,
+      PORT: String(portalPort),
+      ADMIN_INITIAL_PASSWORD: adminPassword,
+      ADMIN_AUTH_FILE: join(fixture.fixtureDir, "release-admin.json"),
+      PORTAL_SCAN_HISTORY_FILE: join(fixture.fixtureDir, "release-history.jsonl"),
+      PORTAL_OBSERVATION_DIR: join(fixture.fixtureDir, "release-observations"),
+      PORTAL_ACCOUNT_DIR: join(fixture.fixtureDir, "release-accounts"),
+      PORTAL_WHITELIST_DIR: join(fixture.fixtureDir, "release-whitelist"),
+      PORTAL_HARNESS_RELEASE_URL: `http://127.0.0.1:${feedPort}/release-index.json`,
+      PORTAL_LOCAL_API_TOKEN: localApiToken,
+      PYTHONUTF8: "1",
+      PYTHONIOENCODING: "utf-8"
+    },
+    stdio: ["ignore", "ignore", "ignore"],
+    windowsHide: true
+  });
+  try {
+    let ready = false;
+    for (let attempt = 0; attempt < 40 && !ready; attempt += 1) {
+      if (server.exitCode !== null) throw new Error("release guard test server died");
+      try {
+        const health = await fetch(`http://127.0.0.1:${portalPort}/health`);
+        ready = health.ok;
+      } catch {
+        await wait(250);
+      }
+    }
+    assert.ok(ready, "release guard test server did not become ready");
+    const headers = new Headers({ "X-VibeCode-Local-Token": localApiToken });
+    const release = await (await fetch(`http://127.0.0.1:${portalPort}/api/harness/release`, { headers })).json();
+    assert.equal(release.download_url, null, "a non-https installer URL from the feed must be dropped, never rendered as a link");
+    assert.ok(!release.supported_tools.some((tool) => tool.id.includes("lovable")), "Lovable must stay filtered even when the feed advertises it");
+  } finally {
+    server.kill();
+    await Promise.race([once(server, "exit"), wait(2000)]);
+    await new Promise((resolveClose) => feed.close(resolveClose));
+  }
+}
+
 // P5: 보존기한이 지난 보고서는 기동 시 삭제되고, 기한 내 보고서는 남는다.
 async function scenarioReportRetention(fixture) {
   const retentionPort = Number(process.env.PORTAL_RETENTION_TEST_PORT || 8796);
@@ -742,6 +804,7 @@ try {
   await scenarioAdmin(fixture);
   await scenarioQueueAndCapacity(fixture);
   await scenarioHostAllowlist(fixture);
+  await scenarioHarnessReleaseGuard(fixture);
   await scenarioReportRetention(fixture);
   console.log(JSON.stringify({
     status: "passed",
@@ -759,6 +822,7 @@ try {
       admin: true,
       queue_and_capacity: true,
       host_allowlist: true,
+      harness_release_guard: true,
       report_retention: true
     }
   }, null, 2));
