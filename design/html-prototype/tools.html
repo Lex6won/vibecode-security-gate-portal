@@ -86,15 +86,8 @@
       </div>
     </section>
 
-    <section class="lead-card" aria-labelledby="quick-title">
-      <h2 id="quick-title">바로 시작하기</h2>
-      <p>설치 파일을 내려받아 실행하면 하네스가 설치됩니다. 그 다음 만들 프로젝트 폴더에 적용하면 됩니다. AI 코딩 도구를 열고 <b>“하네스 기준으로 시작해줘”</b>라고 말하면 순서대로 안내합니다.</p>
-    </section>
-
     <section class="panel-card" id="download" aria-labelledby="download-title">
       <h2 class="section-title" id="download-title">1단계 · 하네스 내려받기</h2>
-      <p class="section-lead">설치 파일을 실행하는 방법을 권장합니다. PowerShell 명령을 입력할 필요가 없습니다.</p>
-
       <div id="exeCardArea">
         <p class="exe-unavailable">하네스 설치 파일 정보를 확인하고 있습니다…</p>
       </div>
@@ -117,7 +110,7 @@
 
     <section class="panel-card" aria-labelledby="apply-title">
       <h2 class="section-title" id="apply-title">2단계 · 프로젝트에 적용하기</h2>
-      <p class="section-lead">설치가 끝나면 <b>VibeCode Harness Manager</b> 화면에서 프로젝트 폴더와 AI 도구를 선택하면 됩니다. 명령어를 외울 필요가 없습니다.</p>
+      <p class="section-lead">설치가 끝나면 <b>Manager</b> 화면에서 프로젝트 폴더와 AI 도구를 선택합니다.</p>
       <details class="more">
       <summary>명령줄(PowerShell)로 적용하기 — ZIP으로 설치했거나 명령이 익숙한 분</summary>
       <p class="section-lead" style="margin-top:12px;">만들 업무 도구 폴더를 준비하고, PowerShell에서 아래 명령을 실행합니다. 예시는 TypeScript 웹 도구에 Codex와 Claude Code를 함께 적용하는 경우입니다.</p>
@@ -201,14 +194,7 @@
     
     </section>
 
-    <section class="panel-card" aria-labelledby="why-scan-title">
-      <h2 class="section-title" id="why-scan-title">이미 만든 코드가 있다면? 코드 보안 점검</h2>
-      <div class="why-box">
-        <b>왜 코드만 보안 점검이 필요한가요?</b>
-        <p>하네스를 쓰지 않고 이미 개발한 코드도 제출·배포 전에 보안 점검이 필요합니다. 하네스 없이 만든 경우에는 개발 순서와 설계 증적이 없으므로, 최소한 코드와 의존성에 위험이 없는지 확인해야 합니다. 폴더만 업로드하면 HTML·JSON 보고서를 받을 수 있습니다.</p>
-      </div>
-      <a class="ghost-button" href="/scan" style="margin-top: 14px;">코드 보안 점검하러 가기</a>
-    </section>
+    
 
     <details class="more">
       <summary>서버·버전 정보 보기</summary>
@@ -259,14 +245,13 @@
         const badge = data.is_demo ? "체험판 · 서명되지 않음 · 테스트 전용" : "정식 배포";
         // 하네스 JSON의 message 는 내부용 영문 문구라 화면에 그대로 노출하지 않는다 — 고정 한국어 안내를 쓴다.
         const warn = data.is_demo
-          ? `정식 서명 전 배포 절차를 시험하는 체험판입니다. <b>실제 업무에는 사용하지 마세요.</b> Windows가 "알 수 없는 게시자" 경고를 보이면 서명되지 않은 파일이기 때문입니다 — <b>추가 정보 → 실행</b>으로 진행할 수 있습니다(정식 서명 전까지 예상된 동작입니다).`
+          ? `체험판이라 서명되지 않았습니다. <b>실제 업무에는 사용하지 마세요.</b> Windows "알 수 없는 게시자" 경고가 보이면 <b>추가 정보 → 실행</b>으로 진행합니다.`
           : "";
         area.innerHTML = `
           <span class="exe-badge">${escapeHtml(badge)}</span>
-          <p class="section-lead" style="margin:4px 0 0;">다운로드한 설치 파일을 실행하면 자동으로 설치되고 <b>VibeCode Harness Manager</b> 화면이 열립니다. PowerShell 명령을 입력할 필요가 없습니다.</p>
+          <p class="section-lead" style="margin:4px 0 0;">설치 파일을 실행하면 <b>VibeCode Harness Manager</b> 화면이 열립니다. 화면 안내에 따라 진행하세요.</p>
           <div class="exe-meta">
             <div class="item"><b>버전</b><span>${escapeHtml(data.version || "-")}</span></div>
-            <div class="item"><b>SHA-256</b><span>${escapeHtml((data.sha256 || "-").slice(0, 16))}…</span></div>
             ${data.expires_at ? `<div class="item"><b>체험판 만료</b><span>${escapeHtml(formatExpiry(data.expires_at))}</span></div>` : ""}
           </div>
           ${warn ? `<div class="exe-warn">${warn}</div>` : ""}

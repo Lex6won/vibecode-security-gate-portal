@@ -21,9 +21,10 @@
        그때는 채움 트랙을 없애고 남는 공간을 위아래로 나눠 세로 균형을 잡는다. */
     body.logged-out .workspace {
       grid-template-rows: auto auto auto;
-      align-content: center;
+      align-content: start;
       gap: 18px;
     }
+    body.logged-out .hero { margin-top: clamp(12px, 7vh, 80px); }
     body.logged-out .hero { max-width: 860px; margin: 0 auto; width: 100%; }
     body.logged-out #loginGate { max-width: 860px; margin: 0 auto; width: 100%; }
     .workspace {
@@ -326,26 +327,16 @@
 
       <section class="panel-card" id="loginGate" hidden aria-labelledby="login-title">
         <h2 class="flow-title" id="login-title"><span class="sequence">✓</span><span>기관 메일로 로그인</span></h2>
-        <p style="margin: 8px 0 4px;">비밀번호가 없습니다. 기관 메일 주소로 1회용 로그인 링크를 받아 접속합니다. 처음이면 기관명·부서명만 함께 입력하세요.</p>
+        <p style="margin: 8px 0 4px;">비밀번호가 없습니다. 기관 메일 주소로 1회용 로그인 링크를 받아 접속합니다.</p>
         <p id="loginNote" style="margin: 0 0 10px; font-size: 13px; color: var(--muted);">허용 메일: @gg.go.kr, @korea.kr</p>
         <div id="accessLoginArea" hidden>
           <p style="margin: 0 0 10px;" id="accessLoginWho">확인 중</p>
-          <div class="input-row" id="accessProfileRow" hidden style="flex-wrap: wrap; gap: 10px; align-items: end;">
-            <label class="login-field" style="flex: 1 1 200px;"><span>기관명 <em>(처음 한 번)</em></span>
-              <input id="accessOrganization" placeholder="예: 경기도청" autocomplete="organization"></label>
-            <label class="login-field" style="flex: 1 1 200px;"><span>부서명 <em>(처음 한 번)</em></span>
-              <input id="accessDepartment" placeholder="예: AI산업육성과"></label>
-          </div>
-          <button class="button save-button" id="accessLoginButton" type="button" style="margin-top: 10px;">바로 시작하기</button>
+          <button class="button save-button" id="accessLoginButton" type="button">바로 시작하기</button>
           <p id="accessLoginNote" style="margin: 8px 0 0; font-size: 13px; color: var(--muted);"></p>
         </div>
         <div class="input-row" id="magicLoginRow" style="flex-wrap: wrap; gap: 10px; align-items: end;">
-          <label class="login-field" style="flex: 1 1 220px;"><span>기관 이메일</span>
+          <label class="login-field" style="flex: 1 1 260px;"><span>기관 이메일</span>
             <input id="loginEmail" type="email" placeholder="이름@gg.go.kr" autocomplete="email"></label>
-          <label class="login-field" style="flex: 1 1 160px;"><span>기관명 <em>(처음 한 번)</em></span>
-            <input id="loginOrganization" placeholder="예: 경기도청" autocomplete="organization"></label>
-          <label class="login-field" style="flex: 1 1 160px;"><span>부서명 <em>(처음 한 번)</em></span>
-            <input id="loginDepartment" placeholder="예: AI산업육성과"></label>
           <button class="button save-button" id="requestLoginLink" type="button" style="min-height:46px;">로그인 링크 받기</button>
         </div>
         <div id="devLoginArea" hidden style="margin-top: 10px;">
@@ -445,6 +436,28 @@
       <div class="modal-actions" id="scanCompleteActions" hidden>
         <button class="button secondary" id="retryScan" type="button" hidden>다시 시도</button>
         <button class="button primary" id="closeCompletedScan" type="button">결과 확인</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="modal" id="profilePrompt" role="dialog" aria-modal="true" aria-labelledby="profilePromptTitle" hidden>
+    <div class="modal-card">
+      <div class="modal-head">
+        <div>
+          <h2 id="profilePromptTitle">소속을 입력해 주세요 (처음 한 번)</h2>
+          <p>점검 이력과 화이트리스트 근거에 기관·부서가 함께 기록됩니다.</p>
+        </div>
+        <button class="modal-close" id="closeProfilePrompt" type="button" aria-label="소속 입력 닫기">×</button>
+      </div>
+      <div class="input-row" style="flex-wrap: wrap; gap: 10px; align-items: end; margin-top: 14px;">
+        <label class="login-field" style="flex: 1 1 200px;"><span>기관명</span>
+          <input id="promptOrganization" placeholder="예: 경기도청" autocomplete="organization"></label>
+        <label class="login-field" style="flex: 1 1 200px;"><span>부서명</span>
+          <input id="promptDepartment" placeholder="예: AI산업육성과"></label>
+      </div>
+      <p id="profilePromptNote" style="margin: 8px 0 0; font-size: 13px; color: var(--muted);"></p>
+      <div class="modal-actions">
+        <button class="button primary" id="confirmProfilePrompt" type="button">저장하고 점검 시작</button>
       </div>
     </div>
   </section>
@@ -836,8 +849,6 @@
     const sessionWho = document.querySelector("#sessionWho");
     const logoutButton = document.querySelector("#logoutButton");
     const loginEmail = document.querySelector("#loginEmail");
-    const loginOrganization = document.querySelector("#loginOrganization");
-    const loginDepartment = document.querySelector("#loginDepartment");
     const requestLoginLink = document.querySelector("#requestLoginLink");
     const devLoginArea = document.querySelector("#devLoginArea");
     const devLoginLink = document.querySelector("#devLoginLink");
@@ -846,9 +857,6 @@
 
     const accessLoginArea = document.querySelector("#accessLoginArea");
     const accessLoginWho = document.querySelector("#accessLoginWho");
-    const accessProfileRow = document.querySelector("#accessProfileRow");
-    const accessOrganization = document.querySelector("#accessOrganization");
-    const accessDepartment = document.querySelector("#accessDepartment");
     const accessLoginButton = document.querySelector("#accessLoginButton");
     const accessLoginNote = document.querySelector("#accessLoginNote");
     const magicLoginRow = document.querySelector("#magicLoginRow");
@@ -861,14 +869,14 @@
       magicLoginRow.hidden = Boolean(accessEmail);
       if (loginNote) loginNote.hidden = Boolean(accessEmail);
       if (!accessEmail) return;
-      const isNew = !session.access_registered;
       accessLoginWho.innerHTML = `보안 관문에서 <b>${accessEmail}</b> 인증을 확인했습니다. 별도 로그인 없이 시작할 수 있습니다.`;
-      accessProfileRow.hidden = !isNew;
-      accessLoginButton.textContent = isNew ? "소속 입력하고 시작하기" : "바로 시작하기";
     }
+
+    let sessionProfileComplete = false;
 
     function applySession(session) {
       const loggedIn = Boolean(session && session.logged_in);
+      sessionProfileComplete = Boolean(loggedIn && String(session.organization || "").trim() && String(session.department || "").trim());
       applyAccessShortcut(session);
       // 로그인 전/후로 세로 레이아웃이 달라진다 — CSS 가 판단할 수 있게 상태를 표시한다.
       document.body.classList.toggle("logged-out", !loggedIn);
@@ -916,11 +924,7 @@
         const response = await fetch("/api/auth/request-link", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            email: loginEmail.value.trim(),
-            organization: loginOrganization.value.trim(),
-            department: loginDepartment.value.trim()
-          })
+          body: JSON.stringify({ email: loginEmail.value.trim() })
         });
         const result = await response.json();
         if (response.ok) {
@@ -949,10 +953,7 @@
         const response = await fetch("/api/auth/access-login", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            organization: accessOrganization.value.trim(),
-            department: accessDepartment.value.trim()
-          })
+          body: JSON.stringify({})
         });
         const result = await response.json();
         if (response.ok) {
@@ -960,7 +961,6 @@
           return;
         }
         accessLoginNote.textContent = result.message || "시작하지 못했습니다. 다시 시도해 주세요.";
-        if (result.error === "registration_required") accessProfileRow.hidden = false;
       } catch {
         accessLoginNote.textContent = "연결을 확인해 주세요.";
       } finally {
@@ -969,7 +969,7 @@
     });
 
     // Enter 로도 로그인 링크를 요청할 수 있게 한다 (form 이 아니라 기본 제출이 없음).
-    [loginEmail, loginOrganization, loginDepartment].forEach((field) => {
+    [loginEmail].forEach((field) => {
       field.addEventListener("keydown", (event) => {
         if (event.key === "Enter" && !requestLoginLink.disabled) requestLoginLink.click();
       });
@@ -1186,7 +1186,49 @@
       await pollResult(started.scan_id);
     }
 
+    const profilePrompt = document.querySelector("#profilePrompt");
+    const closeProfilePrompt = document.querySelector("#closeProfilePrompt");
+    const confirmProfilePrompt = document.querySelector("#confirmProfilePrompt");
+    const promptOrganization = document.querySelector("#promptOrganization");
+    const promptDepartment = document.querySelector("#promptDepartment");
+    const profilePromptNote = document.querySelector("#profilePromptNote");
+
+    closeProfilePrompt.addEventListener("click", () => { pendingMode = null; closeModal(profilePrompt); });
+    confirmProfilePrompt.addEventListener("click", async () => {
+      const organization = promptOrganization.value.trim();
+      const department = promptDepartment.value.trim();
+      if (!organization || !department) {
+        profilePromptNote.textContent = "기관명과 부서명을 모두 입력해 주세요.";
+        return;
+      }
+      confirmProfilePrompt.disabled = true;
+      try {
+        const response = await fetch("/api/auth/profile", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ organization, department })
+        });
+        if (!response.ok) throw new Error((await response.json()).message || "저장하지 못했습니다.");
+        sessionProfileComplete = true;
+        closeModal(profilePrompt);
+        const mode = pendingMode;
+        pendingMode = null;
+        if (mode) await runScan(mode);
+      } catch (error) {
+        profilePromptNote.textContent = String(error.message || error);
+      } finally {
+        confirmProfilePrompt.disabled = false;
+      }
+    });
+
     async function runScan(mode) {
+      // 소속은 첫 점검 직전에 1회 받는다 — 로그인 진입장벽을 만들지 않는다.
+      if (!sessionProfileComplete) {
+        pendingMode = mode;
+        profilePromptNote.textContent = "";
+        openModal(profilePrompt);
+        return;
+      }
       if (!selectedSaveDir) {
         requestSaveLocation(mode);
         return;

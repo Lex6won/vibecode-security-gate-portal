@@ -306,13 +306,23 @@ async function scenarioAuthAndOwnership(existingResult) {
   assert.equal(foreignDomain.status, 400, "non-institution email domains must be rejected");
   assert.equal((await foreignDomain.json()).error, "email_domain_not_allowed");
 
-  const missingProfile = await fetch(`${baseUrl}/api/auth/request-link`, {
+  // 소속 없이도 가입은 된다(진입장벽 최소화) — 대신 점검 시작이 소속을 요구한다.
+  const bareSignup = await fetch(`${baseUrl}/api/auth/request-link`, {
     method: "POST",
     headers: withUser("", { "Content-Type": "application/json" }),
     body: JSON.stringify({ email: "newuser@gg.go.kr" })
   });
-  assert.equal(missingProfile.status, 400, "first registration must require organization and department");
-  assert.equal((await missingProfile.json()).error, "registration_required");
+  assert.equal(bareSignup.status, 200, "signup must not demand organization up front");
+  const bareLink = (await bareSignup.json()).dev_login_url;
+  const bareComplete = await fetch(`${baseUrl}${bareLink}`, { redirect: "manual" });
+  const bareCookie = String(bareComplete.headers.get("set-cookie") || "").split(";")[0];
+  const profileGated = await fetch(`${baseUrl}/api/scan/start`, {
+    method: "POST",
+    headers: withUser(bareCookie, { "Content-Type": "application/json" }),
+    body: JSON.stringify({ scan_mode: "quick", target_type: "github_url", target_ref: "https://github.com/x/y" })
+  });
+  assert.equal(profileGated.status, 400, "scans must be blocked until the profile is complete");
+  assert.equal((await profileGated.json()).error, "profile_required", "the block must name the missing profile — observations must never lack the department snapshot");
 
   const anonymousScan = await fetch(`${baseUrl}/api/scan/start`, {
     method: "POST",
@@ -647,12 +657,24 @@ async function scenarioAccessLogin(fixture) {
     const expired = await post(makeJwt(good.privateKey, { exp: Math.floor(Date.now() / 1000) - 600 }));
     assert.equal(expired.status, 401, "an expired JWT must be rejected");
 
-    const missingProfile = await post(makeJwt(good.privateKey));
-    assert.equal(missingProfile.status, 400, "a new account must still provide organization and department");
-    const ok = await post(makeJwt(good.privateKey), { organization: "경기도청", department: "AI산업육성과" });
-    assert.equal(ok.status, 200, "a valid Access JWT must sign the user in");
+    const ok = await post(makeJwt(good.privateKey));
+    assert.equal(ok.status, 200, "a valid Access JWT must sign the user in without a profile");
     const cookie = String(ok.headers.get("set-cookie") || "").split(";")[0];
     assert.ok(cookie.startsWith("portal_session="), "access login must issue a portal session");
+    // 소속이 비면 점검은 막힌다 — 관측의 부서 스냅샷 온전성.
+    const gated = await fetch(`${base}/api/scan/start`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-VibeCode-Local-Token": localApiToken, cookie },
+      body: JSON.stringify({ scan_mode: "quick", target_type: "github_url", target_ref: "https://github.com/x/y" })
+    });
+    assert.equal(gated.status, 400);
+    assert.equal((await gated.json()).error, "profile_required");
+    const profiled = await fetch(`${base}/api/auth/profile`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-VibeCode-Local-Token": localApiToken, cookie },
+      body: JSON.stringify({ organization: "경기도청", department: "AI산업육성과" })
+    });
+    assert.equal(profiled.status, 200, "the profile prompt must be able to complete the account");
     const who = await (await fetch(`${base}/api/auth/session`, {
       headers: { "X-VibeCode-Local-Token": localApiToken, cookie }
     })).json();

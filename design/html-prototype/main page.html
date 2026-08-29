@@ -98,10 +98,9 @@
       justify-content: center;
     }
 
-    /* 내용이 화면보다 짧아 위로 쏠리던 것을 고친다 — 남는 공간을 위아래로 나눠
-       세로 균형을 잡는다. safe 를 써서 내용이 길어지면 자동으로 위 정렬로 돌아간다. */
-    main.screen { align-content: safe center; row-gap: clamp(16px, 3vh, 32px); }
-    .simple-hero { padding-block: clamp(20px, 4vh, 44px); }
+    /* 헤더는 항상 맨 위에 붙이고, 남는 공간은 히어로가 흡수해 본문만 내려앉는다. */
+    main.screen { grid-template-rows: auto 1fr auto auto auto; row-gap: clamp(16px, 3vh, 32px); }
+    .simple-hero { align-self: center; padding-block: clamp(20px, 4vh, 44px); }
   </style>
 </head>
 <body>

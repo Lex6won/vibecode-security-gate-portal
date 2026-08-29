@@ -1326,6 +1326,12 @@ async function recordObservationsForJob(job, reportItems) {
 async function startScan(request, response) {
   const account = requireUser(request, response);
   if (!account) return;
+  // 소속(기관명·부서명)은 가입 때가 아니라 첫 점검 직전에 받는다 — 진입장벽을 낮추되,
+  // 관측·이력에 부서 스냅샷이 비는 일은 없게 점검 시작은 소속 없이는 못 한다.
+  if (!String(account.organization || "").trim() || !String(account.department || "").trim()) {
+    json(response, 400, { error: "profile_required", message: "점검을 시작하려면 기관명과 부서명을 먼저 입력해 주세요." });
+    return;
+  }
   const body = await readJson(request);
   const mode = ["quick", "standard"].includes(body.scan_mode) ? body.scan_mode : "standard";
   const targetType = ["github_url", "browser_folder", "browser_archive"].includes(body.target_type) ? body.target_type : "";
@@ -1446,10 +1452,7 @@ async function handleApi(request, response, pathname) {
     const organization = String(body.organization || "").trim();
     const department = String(body.department || "").trim();
     const isNew = !getAccount(email);
-    if (isNew && (!organization || !department)) {
-      json(response, 400, { error: "registration_required", message: "처음 시작할 때는 기관명과 부서명을 함께 입력해 주세요." });
-      return;
-    }
+    // 소속은 요구하지 않는다(보내주면 저장) — 첫 점검 직전에 1회 입력받는다.
     await upsertAccountOnLogin({ email, organization, department });
     await recordAuthAudit("access_login", email, { new_account: isNew });
     const cookie = createUserSession(email);
@@ -1477,10 +1480,7 @@ async function handleApi(request, response, pathname) {
       return;
     }
     const isNew = !getAccount(email);
-    if (isNew && (!String(body.organization || "").trim() || !String(body.department || "").trim())) {
-      json(response, 400, { error: "registration_required", message: "처음 가입할 때는 기관명과 부서명을 함께 입력해 주세요." });
-      return;
-    }
+    // 소속은 여기서 요구하지 않는다 — 첫 점검 직전에 1회 입력(진입장벽 최소화).
     const { token, expires_in_minutes } = createLoginToken(email, body);
     await recordAuthAudit("link_requested", email, { new_account: isNew });
     const loginPath = `/auth/complete?token=${token}`;
