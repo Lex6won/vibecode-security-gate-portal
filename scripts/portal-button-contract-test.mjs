@@ -225,7 +225,7 @@ async function assertToolsGuidePage() {
 
   // 하네스 release-index.json 을 실시간으로 소비하는 설치 파일 카드 — PowerShell 없는 설치 경로.
   assert.ok(html.includes('id="exeCardArea"') && html.includes('fetch("/api/harness/release"'), "tools page must offer a live installer card sourced from the harness release feed");
-  assert.ok(html.includes("Harness Manager</b> 화면이 열립니다"), "installer card must explain that running the file opens the Manager");
+  assert.ok(html.includes("시작 메뉴</b>에서 <b>VibeCode Harness Manager"), "install guidance must say where the Manager actually is (Start Menu) — the demo installer does not auto-launch it");
   assert.ok(html.includes("data.is_demo") && html.includes("서명되지 않음"), "installer card must honestly label an unsigned demo build");
   assert.ok(!html.includes("lovable"), "unapproved tool (Lovable) must not be named in the harness install guidance");
 }

@@ -392,8 +392,8 @@
             <h2 class="flow-title" id="scan-mode-title"><span class="sequence">3</span><span>점검 방식 선택</span></h2>
             <p>소스 상태에 맞는 점검 방식을 선택하면 즉시 점검이 시작됩니다.</p>
             <div class="mode-grid" aria-label="검사 방식">
-              <button class="mode" type="button" data-mode="quick" data-mode-title="간편 점검"><strong>간편 점검</strong><span>개발 중 변경한 소스의 고위험 규칙과 의존성을 빠르게 확인합니다.</span><em>개발 중</em></button>
-              <button class="mode active" type="button" data-mode="standard" data-mode-title="표준 점검"><strong>표준 점검</strong><span>개발이 끝난 소스 전체와 의존성을 검사하고 HTML·JSON 보고서를 저장합니다.</span><em>제출 전</em></button>
+              <button class="mode" type="button" data-mode="quick" data-mode-title="간편 점검"><strong>간편 점검</strong><span>고위험 규칙 위주로 빠르게 봅니다. 개발 중 반복 확인용 — 낮은 심각도 항목은 건너뜁니다.</span><em>개발 중</em></button>
+              <button class="mode active" type="button" data-mode="standard" data-mode-title="표준 점검"><strong>표준 점검</strong><span>전체 규칙으로 낮은 심각도까지 모두 검사합니다. 제출·검토 요청 전 필수.</span><em>제출 전</em></button>
             </div>
           </section>
         </div>
@@ -401,6 +401,7 @@
         <aside class="result-card panel-card">
           <h2>점검 후 확인</h2>
           <ul class="result-list">
+            <li><span>점검 방식</span><b id="resultMode">-</b></li>
             <li><span>제출 가능 여부</span><b id="resultDecision">대기</b></li>
             <li><span>수정 필요 항목</span><b id="resultFindings">0건</b></li>
             <li><span>사람 검토 필요</span><b id="resultReview">0건</b></li>
@@ -864,15 +865,19 @@
     }
 
     requestReview.addEventListener("click", async () => {
-      if (!lastCompletedScanId) return;
+      if (!lastCompletedScanId) {
+        // 새로고침 등으로 이 화면이 완료된 점검을 기억하지 못하는 상태 — 조용히 무시하지 않는다.
+        observationAutoNote.innerHTML = '이 화면에서 방금 완료한 점검이 없습니다. <a href="/my" style="color: var(--harbor); font-weight: 800;">내 점검 이력</a>에서 해당 점검의 검토 요청을 눌러 주세요.';
+        return;
+      }
       requestReview.disabled = true;
       requestReview.textContent = "요청 중";
       try {
         const response = await fetch(`/api/scan/${lastCompletedScanId}/request-review`, { method: "POST" });
         const result = await response.json();
         if (response.ok || result.error === "already_requested") {
-          requestReview.textContent = "검토 요청됨";
-          observationAutoNote.textContent = result.message || "보안성검토를 요청했습니다. 진행 상태는 내 점검 이력에서 확인할 수 있습니다.";
+          requestReview.textContent = "검토 요청됨 ✓";
+          observationAutoNote.innerHTML = (result.message ? `${result.message} ` : "보안성검토를 요청했습니다. ") + '진행 상태는 <a href="/my" style="color: var(--harbor); font-weight: 800;">내 점검 이력</a>에서 확인할 수 있습니다.';
         } else {
           requestReview.disabled = false;
           requestReview.textContent = "보안성검토 요청";
@@ -1103,6 +1108,8 @@
                 : job.decision === "needs_review" || findingCount > 0
                   ? "검토 필요"
                   : "제출 가능";
+      document.querySelector("#resultMode").textContent =
+        job.mode === "quick" ? "간편 (고위험 규칙 위주)" : "표준 (전체 규칙)";
       resultDecision.textContent = decision;
       resultDecision.closest("li").dataset.tone =
         decision === "제출 가능" || decision === "고위험 없음" ? "good"

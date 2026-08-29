@@ -852,7 +852,10 @@ function reportStemForJob(job, targetPath) {
   }
   if (!targetName) targetName = safeReportNamePart(job.target_label);
   if (!targetName) targetName = safeReportNamePart(basename(targetPath));
-  const base = [koreaReportTimestamp(new Date()), targetName, "보안점검"].filter(Boolean).join("_");
+  // 점검 방식을 파일명에 남긴다 — 간편/표준 보고서가 이름부터 구분돼야
+  // "차이가 없다"는 오해가 생기지 않는다(실제로는 프로파일·규칙 수가 다르다).
+  const modeName = job.mode === "quick" ? "간편점검" : "표준점검";
+  const base = [koreaReportTimestamp(new Date()), targetName, modeName].filter(Boolean).join("_");
   let candidate = base;
   let suffix = 2;
   while ([".json", ".html", ".md"].some((extension) => existsSync(join(REPORT_DIR, `${candidate}${extension}`)))) {

@@ -192,9 +192,9 @@ async function scenarioQuickScan(fixture) {
   assert.equal(result.summary.profile_fallback, null, "quick scan must not silently fall back from dev-quick");
   assert.equal(result.summary.coverage_truncated, false, "quick scan fixture must stay within the intended file limit");
   assert.equal(result.summary.dependency_incomplete, false, "quick scan fixture must complete the dependency check");
-  assert.ok(result.reports.some((report) => /_보안점검(?:_\d+)?\.html$/.test(report.file_name)), "quick scan must use the checker HTML report naming rule");
-  assert.ok(result.reports.some((report) => /_보안점검(?:_\d+)?\.md$/.test(report.file_name)), "quick scan must use the checker Markdown report naming rule");
-  assert.ok(result.reports.some((report) => /_보안점검(?:_\d+)?\.json$/.test(report.file_name)), "quick scan must save JSON evidence with the checker naming rule");
+  assert.ok(result.reports.some((report) => /_간편점검(?:_\d+)?\.html$/.test(report.file_name)), "quick scan report names must say 간편점검");
+  assert.ok(result.reports.some((report) => /_간편점검(?:_\d+)?\.md$/.test(report.file_name)), "quick scan report names must say 간편점검");
+  assert.ok(result.reports.some((report) => /_간편점검(?:_\d+)?\.json$/.test(report.file_name)), "quick scan JSON evidence must say 간편점검");
   // P5: 원본 미보관·보존기한 사실이 응답에 실린다.
   assert.equal(result.source_retained, false, "results must state that uploaded source is not retained");
   assert.ok(Number.isFinite(result.report_retention_days) && result.report_retention_days > 0, "results must state the report retention period");
@@ -240,9 +240,9 @@ async function scenarioStandardScan(fixture) {
   assert.equal(result.summary.profile_fallback, null, "standard scan must not silently fall back from public-default-strict");
   assert.equal(result.summary.coverage_truncated, false, "standard scan fixture must not silently truncate files");
   assert.equal(result.summary.dependency_incomplete, false, "standard scan fixture must complete the dependency check");
-  assert.ok(result.reports.some((report) => /_보안점검(?:_\d+)?\.html$/.test(report.file_name)), "standard scan must create an HTML report");
-  assert.ok(result.reports.some((report) => /_보안점검(?:_\d+)?\.md$/.test(report.file_name)), "standard scan must create a Markdown report");
-  assert.ok(result.reports.some((report) => /_보안점검(?:_\d+)?\.json$/.test(report.file_name)), "standard scan must create JSON evidence");
+  assert.ok(result.reports.some((report) => /_표준점검(?:_\d+)?\.html$/.test(report.file_name)), "standard scan report names must say 표준점검");
+  assert.ok(result.reports.some((report) => /_표준점검(?:_\d+)?\.md$/.test(report.file_name)), "standard scan report names must say 표준점검");
+  assert.ok(result.reports.some((report) => /_표준점검(?:_\d+)?\.json$/.test(report.file_name)), "standard scan JSON evidence must say 표준점검");
   return result;
 }
 
