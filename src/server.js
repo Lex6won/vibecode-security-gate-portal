@@ -1415,6 +1415,10 @@ function isDevelopmentPlaceholderEmail(value) {
   return normalizeEmail(value) === DEVELOPMENT_PLACEHOLDER_EMAIL;
 }
 
+function displayOwnerEmail(value) {
+  return isDevelopmentPlaceholderEmail(value) ? null : (value || null);
+}
+
 function dashboardDecisionSummary(scans) {
   const summary = {
     total: scans.length,
@@ -2314,8 +2318,8 @@ async function handleApi(request, response, pathname, searchParams = new URLSear
     return;
   }
 
-  // P3: 보안성검토 요청 — 완료된 본인 점검을 보안부서 검토 대기열에 올린다.
-  // 판정은 사람이 한다. 이 요청은 전달일 뿐 어떤 자동 판정도 붙지 않는다.
+  // P3: 보안성검토 요청 — 완료된 점검의 요청서와 제출자료를 보관한다.
+  // 이 API는 자동 승인·반려 대기열이 아니라 제출 자료 확인용 목록을 제공한다.
   const reviewMatch = pathname.match(/^\/api\/scan\/([^/]+)\/request-review$/);
   if (request.method === "POST" && reviewMatch) {
     const job = jobs.get(reviewMatch[1]);
@@ -2369,12 +2373,16 @@ async function handleApi(request, response, pathname, searchParams = new URLSear
         scan_id: job.id,
         target_name: job.target_label || "",
         decision: job.decision,
-        owner_email: job.owner_email || null,
+        owner_email: displayOwnerEmail(job.owner_email),
         owner_organization: job.owner_organization || null,
         owner_department: job.owner_department || null,
         requested_at: job.review_request.requested_at,
         status: job.review_request.status,
-        reports: (job.reports || []).map(({ file_name, url }) => ({ file_name, url }))
+        reports: (job.reports || []).map(({ file_name, url, kind }) => ({
+          file_name,
+          url,
+          kind: kind || artifactKind(file_name)
+        }))
       }));
     json(response, 200, { requests });
     return;

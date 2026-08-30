@@ -117,6 +117,8 @@
     .review { background: var(--soft); color: var(--info); }
     .report { color: var(--harbor); font-weight: 900; text-decoration: none; transition: transform var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out); display: inline-flex; }
     .report:hover, .report:focus-visible { transform: translateY(-1px); color: #244d85; }
+    .link-button { padding: 0; border: 0; background: transparent; color: var(--harbor); font: inherit; font-weight: 900; cursor: pointer; text-decoration: underline; }
+    .link-button:hover, .link-button:focus-visible { color: #244d85; outline: 0; }
 
     .result-block { display: grid; gap: 8px; justify-items: start; }
     .summary { color: var(--muted); font-size: 12px; line-height: 1.4; font-weight: 800; }
@@ -247,7 +249,7 @@
       <button class="admin-tab" type="button" data-admin-tab="overview" aria-selected="true">현황</button>
       <button class="admin-tab" type="button" data-admin-tab="history" aria-selected="false">점검 이력</button>
       <button class="admin-tab" type="button" data-admin-tab="packages" aria-selected="false">패키지·화이트리스트</button>
-      <button class="admin-tab" type="button" data-admin-tab="operations" aria-selected="false">검토 요청·운영</button>
+      <button class="admin-tab" type="button" data-admin-tab="reviews" aria-selected="false">검토 자료</button>
     </nav>
 
     <section class="hero" data-admin-tab-panel="overview" aria-labelledby="admin-title">
@@ -337,20 +339,6 @@
         <nav class="pagination" id="scanPager" aria-label="점검 이력 페이지"></nav>
     </section>
 
-    <section class="panel-card" data-admin-tab-panel="operations" aria-labelledby="ops-title">
-      <div class="section-head">
-        <h2 id="ops-title">서버 상태</h2>
-        <span>큐·디스크·계정·검토 대기</span>
-      </div>
-      <div class="ops-line" id="opsLine" aria-live="polite">
-        <span class="pill">실행 중 <b id="opsRunning">-</b></span>
-        <span class="pill">대기열 <b id="opsWaiting">-</b></span>
-        <span class="pill">디스크 여유 <b id="opsDisk">-</b></span>
-        <span class="pill">가입 계정 <b id="opsAccounts">-</b></span>
-        <span class="pill">검토 요청 대기 <b id="opsReviews">-</b></span>
-      </div>
-    </section>
-
     <section class="panel-card table-panel" data-admin-tab-panel="packages" aria-labelledby="packages-title">
       <div class="section-head">
         <h2 id="packages-title">패키지 화이트리스트 근거</h2>
@@ -383,26 +371,27 @@
       </div>
     </section>
 
-    <section class="panel-card" data-admin-tab-panel="operations" aria-labelledby="review-queue-title">
+    <section class="panel-card table-panel" data-admin-tab-panel="reviews" aria-labelledby="review-materials-title">
       <div class="section-head">
-        <h2 id="review-queue-title">보안성검토 요청 대기열</h2>
+        <h2 id="review-materials-title">제출한 보안성검토 자료</h2>
         <span id="reviewCount">불러오는 중</span>
         <label class="page-size" for="reviewPageSize">페이지당 <select id="reviewPageSize"><option value="10">10건</option><option value="20">20건</option><option value="50">50건</option></select></label>
       </div>
-      <div class="list-toolbar" aria-label="보안성검토 요청 검색">
-        <div class="field"><label for="reviewKeyword">요청 검색</label><input id="reviewKeyword" placeholder="대상, 요청자, 기관, 부서"></div>
+      <p class="filter-summary">제출된 요청서와 점검 리포트를 확인하고, 요청서는 출력하고 제출자료는 저장할 수 있습니다.</p>
+      <div class="list-toolbar" aria-label="검토 자료 검색">
+        <div class="field"><label for="reviewKeyword">자료 검색</label><input id="reviewKeyword" placeholder="대상, 요청자, 기관, 부서"></div>
         <div class="field"><label for="reviewStatus">점검 결과</label><select id="reviewStatus"><option value="">전체 결과</option><option value="allow">승인</option><option value="quick_complete">고위험 없음</option><option value="blocked">배포 미승인</option><option value="attention">검토·재점검 필요</option></select></div>
         <button class="button sm" id="reviewSearchButton" type="button">검색</button>
       </div>
       <div class="table-scroll">
-        <table class="pkg-table" aria-label="보안성검토 요청 목록">
+        <table class="pkg-table" aria-label="제출한 보안성검토 자료 목록">
           <thead>
-            <tr><th>요청일</th><th>대상</th><th>소속</th><th>요청자</th><th>판정</th><th>보고서</th></tr>
+            <tr><th>제출일</th><th>대상</th><th>소속</th><th>요청자</th><th>점검 결과</th><th>요청서</th><th>제출자료</th></tr>
           </thead>
           <tbody id="reviewBody"></tbody>
         </table>
       </div>
-      <nav class="pagination" id="reviewPager" aria-label="보안성검토 요청 페이지"></nav>
+      <nav class="pagination" id="reviewPager" aria-label="검토 자료 페이지"></nav>
     </section>
   </main>
 
@@ -1058,20 +1047,6 @@
     let reviewCache = [];
     let reviewPage = 1;
 
-    function formatBytes(bytes) {
-      if (!Number.isFinite(bytes)) return "-";
-      const gb = bytes / (1024 ** 3);
-      return gb >= 1 ? `${gb.toFixed(1)}GB` : `${Math.round(bytes / (1024 ** 2))}MB`;
-    }
-
-    function renderOps(summary) {
-      document.querySelector("#opsRunning").textContent = `${summary.queue?.running ?? "-"}/${summary.queue?.limit ?? "-"}`;
-      document.querySelector("#opsWaiting").textContent = `${summary.queue?.waiting ?? "-"}건`;
-      document.querySelector("#opsDisk").textContent = formatBytes(summary.disk_free_bytes);
-      document.querySelector("#opsAccounts").textContent = `${summary.accounts?.total_accounts ?? "-"}명`;
-      document.querySelector("#opsReviews").textContent = `${summary.pending_review_requests ?? 0}건`;
-    }
-
     function renderPackages() {
       const filtered = packageCache.filter((entry) => {
         const keyword = packageKeywordInput.value.trim().toLowerCase();
@@ -1208,7 +1183,7 @@
       }
     }
 
-    function renderReviewQueue() {
+    function renderReviewMaterials() {
       const keyword = reviewKeywordInput.value.trim().toLowerCase();
       const filtered = reviewCache.filter((item) => {
         if (reviewStatusSelect.value === "attention" && !["needs_review", "incomplete"].includes(item.decision)) return false;
@@ -1222,61 +1197,65 @@
         ? `표시 ${pageData.start + 1}-${pageData.end} / ${filtered.length}건`
         : "표시 0 / 0건";
       reviewBody.innerHTML = "";
-      if (!pageData.entries.length) reviewBody.innerHTML = '<tr><td colspan="6">조건에 맞는 검토 요청이 없습니다.</td></tr>';
+      if (!pageData.entries.length) reviewBody.innerHTML = '<tr><td colspan="7">조건에 맞는 검토 자료가 없습니다.</td></tr>';
       for (const item of pageData.entries) {
-        const report = (item.reports || []).find((entry) => entry.url && entry.url.startsWith("/reports/"));
+        const requestDocument = (item.reports || []).find((entry) => entry.kind === "review_request");
+        const submissionPackage = (item.reports || []).find((entry) => entry.kind === "submission_package");
         const row = document.createElement("tr");
         row.innerHTML = `
           <td>${escapeHtml(new Date(item.requested_at).toLocaleString("ko-KR"))}</td>
           <td><b>${escapeHtml(item.target_name || "-")}</b></td>
           <td>${escapeHtml([item.owner_organization, item.owner_department].filter(Boolean).join(" ") || "-")}</td>
-          <td>${escapeHtml(item.owner_email || "-")}</td>
+          <td>${escapeHtml(item.owner_email || "미확인")}</td>
           <td>${escapeHtml(statusLabel(item.decision)[0])}</td>
-          <td>${report ? `<a class="report" href="${report.url}" target="_blank" rel="noreferrer">열기</a>` : "-"}</td>`;
+          <td>${requestDocument ? `<a class="report" href="${requestDocument.url}?view=1" target="_blank" rel="noreferrer">보기</a> <button class="link-button" type="button" data-review-print-url="${escapeHtml(requestDocument.url)}">출력</button>` : "-"}</td>
+          <td>${submissionPackage ? `<a class="report" href="${submissionPackage.url}">저장</a>` : "-"}</td>`;
         reviewBody.appendChild(row);
       }
       renderPager(reviewPager, pageData.page, pageData.totalPages, (nextPage) => {
         reviewPage = nextPage;
-        renderReviewQueue();
+        renderReviewMaterials();
       });
     }
 
-    function refreshReviewQueue() {
+    function refreshReviewMaterials() {
       reviewPage = 1;
-      renderReviewQueue();
+      renderReviewMaterials();
     }
 
-    document.querySelector("#reviewSearchButton").addEventListener("click", refreshReviewQueue);
-    reviewStatusSelect.addEventListener("change", refreshReviewQueue);
+    document.querySelector("#reviewSearchButton").addEventListener("click", refreshReviewMaterials);
+    reviewStatusSelect.addEventListener("change", refreshReviewMaterials);
     reviewKeywordInput.addEventListener("keydown", (event) => {
-      if (event.key === "Enter") refreshReviewQueue();
+      if (event.key === "Enter") refreshReviewMaterials();
     });
     reviewPageSize.addEventListener("change", () => {
       reviewPage = 1;
-      renderReviewQueue();
+      renderReviewMaterials();
+    });
+    reviewBody.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-review-print-url]");
+      if (!button) return;
+      const printWindow = window.open(`${button.dataset.reviewPrintUrl}?view=1`, "_blank");
+      if (printWindow) {
+        printWindow.opener = null;
+        printWindow.addEventListener("load", () => printWindow.print(), { once: true });
+      }
     });
 
-    async function loadReviewQueue() {
+    async function loadReviewMaterials() {
       try {
         const data = await fetchAdminJson("/api/admin/review-requests");
         reviewCache = data.requests || [];
         reviewPage = 1;
-        renderReviewQueue();
+        renderReviewMaterials();
       } catch {
-        reviewCount.textContent = "검토 API 연결 필요";
+        reviewCount.textContent = "검토 자료를 불러오지 못했습니다.";
       }
     }
 
     async function loadAdminData() {
-      try {
-        const summary = await fetchAdminJson("/api/admin/summary");
-        renderOps(summary);
-        filterSummary.textContent = "현황 분석 조건을 적용했습니다.";
-      } catch (error) {
-        sectionCount.textContent = "이력 API 연결 필요";
-        filterSummary.textContent = "필터 결과를 불러오지 못했습니다.";
-      }
-      await Promise.all([loadDashboard(), loadPackages(), loadReviewQueue()]);
+      filterSummary.textContent = "현황 분석 조건을 적용했습니다.";
+      await Promise.all([loadDashboard(), loadPackages(), loadReviewMaterials()]);
     }
 
     loadAdminData();

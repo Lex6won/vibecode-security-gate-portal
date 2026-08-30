@@ -956,6 +956,9 @@ async function scenarioAdmin(fixture) {
   assert.ok(queuedReview.reports?.length >= 1
     && queuedReview.reports.every((report) => report.file_name && report.url?.startsWith("/reports/")),
   "review requests must carry the generated reports into the admin queue");
+  assert.ok(queuedReview.reports.some((report) => report.kind === "review_request")
+    && queuedReview.reports.some((report) => report.kind === "submission_package"),
+  "review materials must identify the printable request document and downloadable submission package");
 
   // P4(현황 보강): 큐·디스크·화이트리스트 요약이 함께 온다.
   assert.ok(summary.queue && Number.isFinite(summary.queue.limit), "admin summary must expose queue state");

@@ -309,7 +309,7 @@ async function assertAdminDashboardSurface() {
   assert.ok(html.includes("grid-column: 1 / -1") && html.includes("조건에 맞는 점검 이력이 없습니다.")
     && html.includes("chart-frame-pie") && html.includes("chart-detail") && html.includes("aria-pressed"),
   "charts must reserve their own legend/detail space and expose keyboard-accessible real-data details");
-  assert.ok(["overview", "history", "packages", "operations"].every((tab) => html.includes(`data-admin-tab=\"${tab}\"`))
+  assert.ok(["overview", "history", "packages", "reviews"].every((tab) => html.includes(`data-admin-tab=\"${tab}\"`))
     && html.includes('function activateAdminTab') && html.includes('activateAdminTab("overview")'),
   "administrator functions must be separated into working tabs with a deterministic initial tab");
   assert.ok(html.includes('id="historyKeyword"') && html.includes('id="packageKeyword"') && html.includes('id="reviewKeyword"')
@@ -335,6 +335,10 @@ async function assertAdminDashboardSurface() {
   "status cards must use the same filtered dashboard data, include every decision, and keep line values above each point");
   assert.ok(!html.includes("익명 점검 #A1042") && !html.includes("예약 현황 대시보드") && !html.includes(">12건<"),
     "admin page must not display fabricated history or metric values before the API responds");
+  assert.ok(!html.includes("보안성검토 요청 대기열") && !html.includes('data-admin-tab-panel="operations"')
+    && html.includes("제출한 보안성검토 자료") && html.includes('data-review-print-url')
+    && html.includes('submission_package') && html.includes('function renderReviewMaterials()'),
+  "review materials must be an archive with view, print, and save actions rather than an approval queue");
   assert.ok(["currentPassword", "newPassword", "confirmPassword"].every((id) => html.includes(`data-password-toggle="${id}"`))
     && html.includes('function updatePasswordMatchHint()') && html.includes("새 비밀번호가 일치합니다.")
     && html.includes("새 비밀번호가 일치하지 않습니다."),
