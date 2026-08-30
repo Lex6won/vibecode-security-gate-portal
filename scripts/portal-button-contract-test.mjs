@@ -300,8 +300,9 @@ async function assertAdminDashboardSurface() {
   const html = readFileSync(new URL("../design/html-prototype/admin.html", import.meta.url), "utf8");
   assert.ok(html.includes('id="monthlyChart"') && html.includes('id="languageChart"') && html.includes('id="packageChart"'),
     "admin page must expose monthly, language, and package visualizations");
-  assert.ok(html.includes('id="ecosystem"') && html.includes('id="language"') && html.includes('id="whitelistStatus"'),
-    "admin dashboard must expose ecosystem, language, and whitelist filters");
+  assert.ok(!html.includes('id="ecosystem"') && !html.includes('id="language"') && !html.includes('id="whitelistStatus"')
+    && !html.includes('const ecosystemSelect') && !html.includes('const languageSelect') && !html.includes('const whitelistStatusSelect'),
+  "overview filters must stay focused on search, result, and period rather than duplicate package and history filters");
   assert.ok(html.includes('fetchAdminJson(`/api/admin/dashboard?${dashboardQuery().toString()}') && html.includes('renderLineChart') && html.includes('renderPieChart'),
     "admin dashboard charts must be rendered from the filtered API response");
   assert.ok(html.includes('id="filterResetButton"') && html.includes("function resetFilters()")
@@ -316,7 +317,7 @@ async function assertAdminDashboardSurface() {
   assert.ok(["overview", "history", "packages", "reviews"].every((tab) => html.includes(`data-admin-tab=\"${tab}\"`))
     && html.includes('function activateAdminTab') && html.includes('activateAdminTab("overview")'),
   "administrator functions must be separated into working tabs with a deterministic initial tab");
-  assert.ok(html.includes('id="historyKeyword"') && html.includes('id="packageKeyword"') && html.includes('id="reviewKeyword"')
+  assert.ok(html.includes('id="historyKeyword"') && html.includes('id="historyLanguage"') && html.includes('id="packageKeyword"') && html.includes('id="packageEcosystem"') && html.includes('id="packageWhitelistStatus"') && html.includes('id="reviewKeyword"')
     && html.includes('id="scanPager"') && html.includes('id="packagePager"') && html.includes('id="reviewPager"')
     && html.includes('id="scanHistoryCount"') && html.includes('id="reviewCount"')
     && html.includes('function paginate') && html.includes('function renderPager'),
@@ -326,8 +327,8 @@ async function assertAdminDashboardSurface() {
   assert.ok(html.includes('id="scanHistoryBody"') && !html.includes('id="detailList"') && html.includes('class="panel-card table-panel history-panel"'),
     "scan history must use a full-width board table without a redundant selected-scan detail panel");
   assert.ok(html.includes('scanCache = data.scans || [];') && html.includes('syncHistoryConditionsFromOverview()')
-    && html.includes('syncOverviewConditionsFromHistory()'),
-  "overview conditions must drive the history data and history condition controls must synchronize back to the overview");
+    && html.includes('syncOverviewConditionsFromHistory()') && html.includes('Object.hasOwn(scan.summary?.language_counts || {}, historyLanguageSelect.value)'),
+  "overview result and period conditions must drive the history data while the history tab filters its own development language");
   assert.ok(html.includes('pageSize') && html.includes('Math.round((entry.value / total) * 100)') && html.includes('pointerenter'),
     "all chart legends must show a composition percentage while pointer interaction reveals the accumulated value");
   assert.ok(html.includes('point.count') && html.includes('text-anchor": "middle"') && html.includes('chart-total'),

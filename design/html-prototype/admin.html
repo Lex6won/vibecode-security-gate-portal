@@ -272,9 +272,6 @@
       <div class="field"><label for="keyword">검색</label><input id="keyword" placeholder="GitHub URL, 프로젝트명, 파일명"></div>
       <div class="field"><label for="status">점검 결과</label><select id="status"><option>전체 결과</option><option>승인</option><option>고위험 없음</option><option>배포 미승인</option><option>검토·재점검 필요</option></select></div>
       <div class="field"><label for="period">기간</label><select id="period"><option>최근 6개월</option><option>오늘</option><option>이번 달</option><option>최근 30일</option></select></div>
-      <div class="field"><label for="ecosystem">패키지 생태계</label><select id="ecosystem"><option value="">전체</option><option value="npm">npm</option><option value="pypi">PyPI</option></select></div>
-      <div class="field"><label for="language">개발언어</label><select id="language"><option value="">전체</option></select></div>
-      <div class="field"><label for="whitelistStatus">화이트리스트</label><select id="whitelistStatus"><option value="">전체</option><option value="included">담김</option><option value="excluded">제외</option><option value="unlisted">미분류</option></select></div>
       <div class="filter-actions">
         <button class="button" id="filterApplyButton" type="button">조회</button>
         <button class="ghost-button" id="filterResetButton" type="button">초기화</button>
@@ -424,9 +421,6 @@
     const statusSelect = document.querySelector("#status");
     const periodSelect = document.querySelector("#period");
     const keywordInput = document.querySelector("#keyword");
-    const ecosystemSelect = document.querySelector("#ecosystem");
-    const languageSelect = document.querySelector("#language");
-    const whitelistStatusSelect = document.querySelector("#whitelistStatus");
     const filterApplyButton = document.querySelector("#filterApplyButton");
     const filterResetButton = document.querySelector("#filterResetButton");
     const filterSummary = document.querySelector("#filterSummary");
@@ -628,9 +622,6 @@
       keywordInput.value = "";
       statusSelect.value = "전체 결과";
       periodSelect.value = "최근 6개월";
-      ecosystemSelect.value = "";
-      languageSelect.value = "";
-      whitelistStatusSelect.value = "";
       document.querySelectorAll(".metric").forEach((item) => item.classList.remove("active"));
     }
 
@@ -651,7 +642,7 @@
       syncHistoryConditionsFromOverview();
       loadAdminData();
     });
-    [keywordInput, statusSelect, periodSelect, ecosystemSelect, languageSelect, whitelistStatusSelect].forEach((control) => {
+    [keywordInput, statusSelect, periodSelect].forEach((control) => {
       control.addEventListener("change", () => {
         document.querySelectorAll(".metric").forEach((item) => item.classList.remove("active"));
         syncHistoryConditionsFromOverview();
@@ -873,18 +864,13 @@
       if (keywordInput.value.trim()) query.set("query", keywordInput.value.trim());
       const decisionByStatus = { "승인": "allow", "고위험 없음": "quick_complete", "배포 미승인": "blocked", "검토·재점검 필요": "attention" };
       if (decisionByStatus[statusSelect.value]) query.set("status", decisionByStatus[statusSelect.value]);
-      if (ecosystemSelect.value) query.set("ecosystem", ecosystemSelect.value);
-      if (languageSelect.value) query.set("language", languageSelect.value);
-      if (whitelistStatusSelect.value) query.set("whitelist", whitelistStatusSelect.value);
       return query;
     }
 
     function populateLanguageFilter(languages) {
-      [languageSelect, historyLanguageSelect].forEach((select) => {
-        const selected = select.value;
-        select.replaceChildren(new Option("전체", ""), ...languages.map((entry) => new Option(entry.label, entry.label)));
-        select.value = Array.from(select.options).some((option) => option.value === selected) ? selected : "";
-      });
+      const selected = historyLanguageSelect.value;
+      historyLanguageSelect.replaceChildren(new Option("전체", ""), ...languages.map((entry) => new Option(entry.label, entry.label)));
+      historyLanguageSelect.value = Array.from(historyLanguageSelect.options).some((option) => option.value === selected) ? selected : "";
     }
 
     function renderDimensionList(container, entries, valueKey, emptyMessage) {
@@ -997,6 +983,7 @@
     function filteredHistoryScans(scans) {
       const keyword = historyKeywordInput.value.trim().toLowerCase();
       return scans.filter((scan) => {
+        if (historyLanguageSelect.value && !Object.hasOwn(scan.summary?.language_counts || {}, historyLanguageSelect.value)) return false;
         if (!keyword) return true;
         return `${scan.id} ${scan.target_type} ${scan.target_label || ""} ${scan.target_name || ""} ${scan.owner_email || ""} ${scan.owner_organization || ""} ${scan.owner_department || ""}`.toLowerCase().includes(keyword);
       });
@@ -1005,13 +992,11 @@
     function syncHistoryConditionsFromOverview() {
       historyStatusSelect.value = statusSelect.value;
       historyPeriodSelect.value = periodSelect.value;
-      historyLanguageSelect.value = Array.from(historyLanguageSelect.options).some((option) => option.value === languageSelect.value) ? languageSelect.value : "";
     }
 
     function syncOverviewConditionsFromHistory() {
       statusSelect.value = historyStatusSelect.value;
       periodSelect.value = historyPeriodSelect.value;
-      languageSelect.value = Array.from(languageSelect.options).some((option) => option.value === historyLanguageSelect.value) ? historyLanguageSelect.value : "";
     }
 
     function refreshHistory() {
@@ -1021,7 +1006,7 @@
       const labels = [];
       if (periodSelect.value !== "최근 6개월") labels.push(periodSelect.value);
       if (statusSelect.value !== "전체 결과") labels.push(statusSelect.value);
-      if (languageSelect.value) labels.push(languageSelect.value);
+      if (historyLanguageSelect.value) labels.push(historyLanguageSelect.value);
       if (historyKeywordInput.value.trim()) labels.push(`검색: ${historyKeywordInput.value.trim()}`);
       historyFilterSummary.textContent = `${labels.length ? labels.join(" · ") : "최근 6개월 전체 이력"} · ${filtered.length}건 (현황 조건과 동일)`;
     }
