@@ -410,10 +410,10 @@
 - 화면: 결과 카드에 서버 원본 소스(점검 직후 삭제됨)·서버 보고서 보관(N일 후 자동 삭제) 행 추가, 시작 고지에 보관 기간 포함.
 - `confidence` 는 체커가 종합 신뢰도를 내보내지 않아 보류 — 체커 제공 시 추가.
 
-## 추가 (2026-08-30) — 제출 전 임시 산출물·SBOM·관리자 분석
+## 추가 (2026-08-30) — 보안성검토 요청 전 임시 산출물·SBOM·관리자 분석
 
-- 점검 완료 직후에는 HTML, JSON, Markdown, CycloneDX 1.6 SBOM을 `PORTAL_DRAFT_REPORT_DIR`에 최대 24시간(`PORTAL_DRAFT_REPORT_RETENTION_HOURS`) 임시 보관한다. 소유자는 `/artifacts/{file}`에서 보기(`?view=1`) 또는 내려받기만 할 수 있다.
-- `POST /api/scan/{id}/request-review`가 성공하면 임시 산출물을 `PORTAL_REPORT_DIR`로 이동해 90일 보관하고, HTML·JSON·SBOM 원본을 검토 대기열에 연결한다. 제출 전에는 `reports`가 비어 있고 `artifacts`만 제공된다.
+- 점검 완료 직후에는 HTML, JSON, Markdown과, 지원되는 의존성 파일이 있을 때 생성된 CycloneDX 1.6 SBOM을 `PORTAL_DRAFT_REPORT_DIR`에 최대 24시간(`PORTAL_DRAFT_REPORT_RETENTION_HOURS`) 임시 보관한다. 소유자는 `/artifacts/{file}`에서 보기(`?view=1`) 또는 내려받기만 할 수 있다.
+- `POST /api/scan/{id}/request-review`가 성공하면 임시 산출물을 `PORTAL_REPORT_DIR`로 이동해 90일 보관하고, 실제 생성된 HTML·JSON·SBOM 원본만 검토 대기열에 연결한다. 보안성검토 요청 전에는 `reports`가 비어 있고 `artifacts`만 제공된다.
 - 제출 성공 시 포털은 `<점검대상>_<한국시간 점검일시>_<점검방식>_보안성검토요청서.html`과 같은 이름의 요청서 및 `_보안성검토제출자료.zip`을 생성한다. ZIP에는 `01_보안성검토요청서.html`과 `02_점검리포트/` 아래의 HTML·JSON·Markdown·SBOM이 들어간다. 사용자는 ZIP 하나만 내려받아 두 제출 자료를 함께 활용한다.
 - SBOM은 `gvskb scan --check-deps --sbom`으로 생성한다. 잠금 파일 또는 정확한 버전 선언이 있는 의존성은 `components[].name`, `components[].version`, `purl`에 기록한다. 버전 범위만 있거나 잠금 파일이 없으면 정확한 버전은 보장하지 않는다.
 - `GET /api/admin/dashboard`는 기간·상태·키워드·생태계·개발언어·화이트리스트 상태 필터를 받아 최근 6개월 점검 건수, 개발언어 분포, 제출된 패키지·버전 집계와 이메일·기관·부서별 점검 건수 및 최근 점검일을 반환한다. 이메일·기관·부서는 점검 시점 스냅샷이므로 이후 프로필 변경으로 과거 통계가 바뀌지 않는다.

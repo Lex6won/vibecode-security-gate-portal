@@ -223,7 +223,8 @@ async function assertLocalPickerContract() {
     "saving scan artifacts to the selected directory must include the SBOM when it was generated");
   assert.ok(html.includes('id="resultSbom"') && html.includes('function artifactDisplayName(report)')
     && html.includes('소프트웨어 명세서') && html.includes('?view=1')
-    && html.includes('보고서는 새 창에서 보고, 제출자료 ZIP은 내려받습니다.'),
+    && html.includes('생성된 보고서입니다.') && html.includes('클릭하면 바로 보실 수 있으며')
+    && html.includes('점검 결과') && html.includes('조건부 승인'),
   "scan results must make report viewing and submission ZIP downloads explicit");
 
   // P5: 원본 삭제·보존기한이 화면에 사실대로 표시되어야 한다.

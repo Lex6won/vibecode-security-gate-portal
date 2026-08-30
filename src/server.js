@@ -1335,6 +1335,13 @@ async function runScanJob(job) {
       });
     }
   }
+  const sbomGenerated = draftReportItems.some((report) => report.kind === "sbom");
+  // The checker deliberately avoids a zero-component SBOM when no supported dependency manifest exists.
+  const sbomStatus = sbomGenerated
+    ? "generated"
+    : parsed?.dependency_audit
+      ? "not_generated"
+      : "no_dependency_manifest";
 
   updateJob(job, {
     status: scan.ok || parsed ? "completed" : "failed",
@@ -1367,6 +1374,7 @@ async function runScanJob(job) {
       dependency_advisory_count: dependencyRisk.advisory_count,
       dependency_review_count: dependencyRisk.review_package_count,
       language_counts: languageCountsFromReport(parsed),
+      sbom_status: sbomStatus,
       profile_fallback: profileFallback,
       coverage_truncated: coverageTruncated,
       dependency_incomplete: dependencyIncomplete
@@ -1704,7 +1712,16 @@ function escapeRequestHtml(value) {
     .replaceAll("'", "&#39;");
 }
 
-function reviewRequestDocument(job) {
+function displayDecision(decision) {
+  if (decision === "allow") return "승인";
+  if (decision === "quick_complete") return "고위험 없음";
+  if (decision === "needs_review") return "조건부 승인";
+  if (decision === "blocked") return "배포 미승인";
+  if (decision === "incomplete") return "재점검 필요";
+  return "점검 완료";
+}
+
+function reviewRequestDocument(job, reports) {
   const rows = [
     ["점검 대상", job.target_label || "-"],
     ["점검 방식", job.mode === "quick" ? "간편 점검" : "표준 점검"],
@@ -1712,10 +1729,16 @@ function reviewRequestDocument(job) {
     ["요청 기관", job.owner_organization || "-"],
     ["요청 부서", job.owner_department || "-"],
     ["요청자", job.owner_email || "-"],
-    ["점검 판정", job.decision || "-"]
+    ["점검 판정", displayDecision(job.decision)]
   ];
   const tableRows = rows.map(([label, value]) => `<tr><th>${escapeRequestHtml(label)}</th><td>${escapeRequestHtml(value)}</td></tr>`).join("");
-  return `<!doctype html><html lang="ko"><head><meta charset="utf-8"><title>보안성검토 요청서</title><style>body{font-family:Malgun Gothic,Arial,sans-serif;margin:40px;color:#14253d}h1{font-size:26px}p{line-height:1.6}table{border-collapse:collapse;width:100%;margin-top:24px}th,td{border:1px solid #9eb2c9;padding:12px;text-align:left}th{width:180px;background:#eef5fb}</style></head><body><h1>보안성검토 요청서</h1><p>공공 바이브코딩 보안 게이트 포털에서 생성한 요청서입니다.</p><table>${tableRows}</table><p>첨부: 점검 결과 리포트, 패키지 목록·점검 데이터, 소프트웨어 명세서(SBOM)</p></body></html>`;
+  const attachmentNames = reports.map((report) => {
+    if (report.kind === "html_report") return "점검 결과 리포트";
+    if (report.kind === "json_report") return "패키지 목록·점검 데이터";
+    if (report.kind === "sbom") return "소프트웨어 명세서(SBOM)";
+    return "점검 요약";
+  });
+  return `<!doctype html><html lang="ko"><head><meta charset="utf-8"><title>보안성검토 요청서</title><style>body{font-family:Malgun Gothic,Arial,sans-serif;margin:40px;color:#14253d}h1{font-size:26px}p{line-height:1.6}table{border-collapse:collapse;width:100%;margin-top:24px}th,td{border:1px solid #9eb2c9;padding:12px;text-align:left}th{width:180px;background:#eef5fb}</style></head><body><h1>보안성검토 요청서</h1><p>공공 바이브코딩 보안 게이트 포털에서 생성한 요청서입니다.</p><table>${tableRows}</table><p>첨부: ${escapeRequestHtml(attachmentNames.join(", ") || "점검 결과 리포트")}</p></body></html>`;
 }
 
 async function createSubmissionArtifacts(job, reports) {
@@ -1727,7 +1750,7 @@ async function createSubmissionArtifacts(job, reports) {
   if (existsSync(requestPath) || existsSync(packagePath)) {
     throw new Error("같은 이름의 제출 자료가 있어 생성할 수 없습니다. 점검을 다시 실행해 주세요.");
   }
-  const requestDocument = reviewRequestDocument(job);
+  const requestDocument = reviewRequestDocument(job, reports);
   try {
     await writeFile(requestPath, requestDocument, "utf8");
     const reportEntries = await Promise.all(reports.map(async (report) => ({
@@ -1757,7 +1780,7 @@ async function promoteDraftReports(job) {
   const drafts = job.draft_reports || [];
   if (!drafts.length) {
     throw new Error(job.draft_expired
-      ? "제출 전 임시 보고서 보관 시간이 지나 다시 점검해야 합니다."
+      ? "보안성검토용 임시 보고서 보관 시간이 지나 다시 점검해야 합니다."
       : "제출할 보고서를 찾지 못했습니다. 점검을 다시 실행해 주세요.");
   }
   mkdirSync(REPORT_DIR, { recursive: true });

@@ -576,12 +576,12 @@
           <section class="flow-stage" data-flow-panel="2" aria-labelledby="scan-stage-title" hidden>
             <div class="stage-kicker">2단계 · 보안 점검 실행</div>
             <h2 class="stage-title" id="scan-stage-title">점검 방식을 선택해 실행하세요.</h2>
-            <p class="stage-lead">개발 중에는 간편 점검을, 제출 전에는 전체 규칙을 확인하는 표준 점검을 권장합니다.</p>
+            <p class="stage-lead">개발 중에는 간편 점검을, 정식 운영 전에는 전체 규칙을 확인하는 표준 점검을 권장합니다.</p>
             <section class="step-section mode-block" aria-labelledby="scan-mode-title">
               <h2 class="flow-title" id="scan-mode-title"><span class="sequence">3</span><span>점검 방식</span></h2>
               <div class="mode-grid" aria-label="검사 방식">
                 <button class="mode" type="button" data-mode="quick" data-mode-title="간편 점검"><strong>간편 점검</strong><span>개발 중 빠르게 고위험 규칙과 의존성을 확인합니다.</span><em>개발 중</em></button>
-                <button class="mode active" type="button" data-mode="standard" data-mode-title="표준 점검"><strong>표준 점검</strong><span>전체 규칙을 검사하고 제출·검토용 보고서를 생성합니다.</span><em>제출 전 권장</em></button>
+                <button class="mode active" type="button" data-mode="standard" data-mode-title="표준 점검"><strong>표준 점검</strong><span>전체 규칙을 검사하고 보안성검토용 보고서를 생성합니다.</span><em>정식 운영 전 권장</em></button>
               </div>
             </section>
             <div class="stage-actions" style="justify-content:flex-start;">
@@ -592,13 +592,13 @@
           <section class="flow-stage" data-flow-panel="3" aria-labelledby="result-stage-title" hidden>
             <div class="stage-kicker">3단계 · 결과와 리포트</div>
             <h2 class="stage-title" id="result-stage-title">점검 결과를 확인하고 리포트를 저장하세요.</h2>
-            <p class="stage-lead">발견 항목과 제출 가능 여부를 확인하고, 생성된 보고서를 PC에 저장하거나 다시 내려받을 수 있습니다.</p>
+            <p class="stage-lead">점검 결과와 발견 항목을 확인하고, 생성된 보고서를 바로 열어 볼 수 있습니다.</p>
             <div class="result-stage-layout">
               <aside class="result-card">
                 <h2>점검 결과 요약</h2>
                 <ul class="result-list">
                   <li><span>점검 방식</span><b id="resultMode">-</b></li>
-                  <li><span>제출 가능 여부</span><b id="resultDecision">대기</b></li>
+                  <li><span>점검 결과</span><b id="resultDecision">대기</b></li>
                   <li><span>수정 필요 항목</span><b id="resultFindings">0건</b></li>
                   <li><span>사람 검토 필요</span><b id="resultReview">0건</b></li>
                   <li><span>의존성 취약 패키지</span><b id="resultDeps">0건</b></li>
@@ -609,7 +609,7 @@
                   <li><span>서버 보고서 보관</span><b id="resultRetention">확인 중</b></li>
                 </ul>
                 <div class="save-row" id="reportDownloadRow" hidden>
-                  <span><b>산출물 확인</b> · 보고서는 새 창에서 보고, 제출자료 ZIP은 내려받습니다.</span>
+                  <span id="reportArtifactMessage"><b>생성된 보고서입니다.</b> 클릭하면 바로 보실 수 있으며, 저장 위치에 저장되어 있습니다.</span>
                   <div id="reportDownloadLinks" style="display:flex; flex-wrap:wrap; gap:8px;"></div>
                 </div>
               </aside>
@@ -633,7 +633,7 @@
                   <dt>요청 기관·부서</dt><dd id="reviewOrganization">로그인 정보에서 확인</dd>
                   <dt>요청자</dt><dd id="reviewRequester">로그인 정보에서 확인</dd>
                   <dt>점검 판정</dt><dd id="reviewDecision">-</dd>
-                  <dt>접수 상태</dt><dd id="reviewSubmissionStatus">제출 전</dd>
+                  <dt>접수 상태</dt><dd id="reviewSubmissionStatus">보안성검토 요청 전</dd>
                 </dl>
               </section>
               <section class="review-box" aria-labelledby="review-attachments-title">
@@ -794,6 +794,7 @@
     const resultHtml = document.querySelector("#resultHtml");
     const resultJson = document.querySelector("#resultJson");
     const resultSbom = document.querySelector("#resultSbom");
+    const reportArtifactMessage = document.querySelector("#reportArtifactMessage");
     const scanCompleteActions = document.querySelector("#scanCompleteActions");
     const closeCompletedScan = document.querySelector("#closeCompletedScan");
     const targetNextButton = document.querySelector("#targetNextButton");
@@ -1373,6 +1374,15 @@
       const links = document.querySelector("#reportDownloadLinks");
       const reports = job.artifacts || job.reports || [];
       if (!reports.length) { row.hidden = true; return; }
+      reportArtifactMessage.replaceChildren();
+      const messageLead = document.createElement("b");
+      messageLead.textContent = "생성된 보고서입니다.";
+      reportArtifactMessage.append(messageLead, " 클릭하면 바로 보실 수 있으며, ");
+      reportArtifactMessage.append(
+        canPickFolder && selectedSaveDir
+          ? `${selectedSaveDir} 폴더에 저장되어 있습니다.`
+          : "이 화면에서 바로 보실 수 있습니다."
+      );
       links.replaceChildren(...reports.map((report) => {
         const view = document.createElement("a");
         view.className = "pill";
@@ -1401,8 +1411,8 @@
       resultRetention.textContent = job.artifact_storage === "submitted"
         ? retentionText(job.report_retention_days)
         : job.draft_expired
-          ? "제출 전 임시 보관 종료"
-          : "제출 전 임시 보관";
+          ? "보안성검토용 임시 보관 종료"
+          : "보안성검토용 임시 보관";
       // 화면 요약은 보고서와 같은 숫자를 말해야 한다 — 체커 실측값(block/warn) 그대로.
       const findingCount = job.summary?.finding_count ?? 0;
       const blockCount = job.summary?.block_count ?? null;
@@ -1417,21 +1427,21 @@
       const decision = job.status === "failed"
         ? "점검 실패"
         : checkerBlocked
-          ? (job.decision === "incomplete" ? "수정 필요 · 재점검" : "수정 필요")
+          ? (job.decision === "incomplete" ? "재점검 필요" : "배포 미승인")
           : job.decision === "incomplete"
             ? "재점검 필요"
             : job.decision === "blocked"
-              ? "수정 필요"
+              ? "배포 미승인"
               : job.decision === "quick_complete"
                 ? "고위험 없음"
                 : job.decision === "needs_review" || findingCount > 0
-                  ? "검토 필요"
-                  : "제출 가능";
+                  ? "조건부 승인"
+                  : "승인";
       document.querySelector("#resultMode").textContent =
         job.mode === "quick" ? "간편 (고위험 규칙 위주)" : "표준 (전체 규칙)";
       resultDecision.textContent = decision;
       resultDecision.closest("li").dataset.tone =
-        decision === "제출 가능" || decision === "고위험 없음" ? "good"
+        decision === "승인" || decision === "고위험 없음" ? "good"
         : decision === "점검 중" ? "busy" : "warn";
       resultFindings.textContent = blockCount === null ? `${findingCount}건` : `${blockCount}건`;
       resultReview.textContent = warnCount === null
@@ -1441,7 +1451,16 @@
       resultDeps.textContent = dependencyIncomplete ? "확인 불충분" : `${dependencyCount}건`;
       resultHtml.textContent = hasHtml ? "준비됨" : job.report_render_error ? "생성 실패" : "생성 안 됨";
       resultJson.textContent = hasJson ? "준비됨" : "생성 안 됨";
-      resultSbom.textContent = hasSbom ? "준비됨" : "생성 안 됨";
+      const sbomUnavailableBecauseNoManifest = !hasSbom && (
+        job.summary?.sbom_status === "no_dependency_manifest"
+        || (!job.summary?.sbom_status && !job.summary?.dependency_incomplete
+          && Number(job.summary?.dependency_finding_count ?? 0) === 0)
+      );
+      resultSbom.textContent = hasSbom
+        ? "준비됨"
+        : sbomUnavailableBecauseNoManifest
+          ? "생성 안 됨 · 패키지 정보 없음"
+          : "생성 안 됨";
       const saveStep = (job.steps || []).find((step) => step.name === "save_reports");
       if (saveError) {
         savePath.textContent = `점검은 완료되었지만 결과 파일 저장에 실패했습니다. ${saveError}`;

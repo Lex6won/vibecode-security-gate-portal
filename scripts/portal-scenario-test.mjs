@@ -180,7 +180,7 @@ async function uploadFixtureFolder(fixture, rootName) {
 
 async function assertPagesLoad() {
   const pages = [
-    ["/", "AI로 만든 코드, 제출 전에 보안 점검부터"],
+    ["/", "AI로 만든 코드, 정식 운영 전 보안 점검부터"],
     ["/scan", "저장 위치와 검사 대상을 준비하세요."],
     ["/my", "내 점검 이력"],
     ["/harness", "하네스 내려받기"],
@@ -204,6 +204,10 @@ async function scenarioQuickScan(fixture) {
   assert.equal(result.summary.profile_fallback, null, "quick scan must not silently fall back from dev-quick");
   assert.equal(result.summary.coverage_truncated, false, "quick scan fixture must stay within the intended file limit");
   assert.equal(result.summary.dependency_incomplete, false, "quick scan fixture must complete the dependency check");
+  assert.equal(result.summary.sbom_status, "no_dependency_manifest",
+    "a source-only target must explain why a zero-component SBOM was not generated");
+  assert.ok(!result.artifacts.some((report) => report.kind === "sbom"),
+    "a source-only target must not claim that an SBOM was generated");
   assert.equal(result.report_render_error, null, "completed scans must make the user-facing HTML report available");
   const reportNamePattern = /^민원 조회 도구_\d{4}-\d{2}-\d{2}_\d{4}_간편점검(?:_\d+)?\.(?:html|md|json)$/;
   assert.ok(result.artifacts.some((report) => reportNamePattern.test(report.file_name) && report.file_name.endsWith(".html")),
@@ -313,6 +317,8 @@ async function scenarioAutoObservations(fixture) {
     "completed scans must expose a viewable temporary HTML report");
   assert.ok(result.artifacts.some((artifact) => artifact.kind === "sbom" && artifact.file_name.endsWith(".sbom.cdx.json")),
     "completed scans must create a CycloneDX SBOM artifact");
+  assert.equal(result.summary.sbom_status, "generated",
+    "a target with a supported package manifest must identify its generated SBOM");
   assert.ok(result.artifacts.some((artifact) => /^obs-fixture_\d{4}-\d{2}-\d{2}_\d{4}_간편점검(?:_\d+)?\.sbom\.cdx\.json$/.test(artifact.file_name)),
     "SBOM names must include the selected target name and Korean scan date");
 
