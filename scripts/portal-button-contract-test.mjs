@@ -282,6 +282,8 @@ async function assertRemovedHelpSurface() {
   assert.ok(!home.includes('href="/help"') && !home.includes("도움말 · FAQ")
     && !home.includes("도구 설치") && !home.includes('vibecode-security-gate-portal\" target="_blank"'),
   "home must not retain the removed help or duplicate quick-link row");
+  assert.ok(!home.includes('href="/admin/login"') && !home.includes('id="adminSection"'),
+    "the public home page must not expose the administrator route or an administrator card");
   assert.ok(!adminLogin.includes('href="/help"'), "admin login must not link to the removed help page");
   for (const path of ["/help", "/help.html"]) {
     const response = await fetch(`${baseUrl}${path}`, { redirect: "manual" });
@@ -296,16 +298,19 @@ async function assertAdminDashboardSurface() {
     "admin page must expose monthly, language, and package visualizations");
   assert.ok(html.includes('id="ecosystem"') && html.includes('id="language"') && html.includes('id="whitelistStatus"'),
     "admin dashboard must expose ecosystem, language, and whitelist filters");
-  assert.ok(html.includes('fetch(`/api/admin/dashboard?${dashboardQuery().toString()}') && html.includes('renderLineChart') && html.includes('renderPieChart'),
+  assert.ok(html.includes('fetchAdminJson(`/api/admin/dashboard?${dashboardQuery().toString()}') && html.includes('renderLineChart') && html.includes('renderPieChart'),
     "admin dashboard charts must be rendered from the filtered API response");
   assert.ok(html.includes('id="filterResetButton"') && html.includes("function resetFilters()")
     && html.includes('metric.classList.add("active")') && html.includes("loadAdminData();"),
   "metric filters must reload immediately and give administrators a visible reset path");
-  assert.ok(html.includes('data-filter-status="확인 필요"') && html.includes('"attention"')
+  assert.ok(html.includes('data-filter-status="검토·재점검 필요"') && html.includes('"attention"')
     && html.includes('["needs_review", "incomplete"]'),
   "the attention metric must include incomplete scans as well as human-review scans");
-  assert.ok(html.includes("grid-column: 1 / -1") && html.includes("조건에 맞는 점검 이력이 없습니다."),
-    "monthly dashboard chart must use the full width and show an honest empty state for zero-result filters");
+  assert.ok(html.includes("grid-column: 1 / -1") && html.includes("조건에 맞는 점검 이력이 없습니다.")
+    && html.includes("chart-frame-pie") && html.includes("chart-detail") && html.includes("aria-pressed"),
+  "charts must reserve their own legend/detail space and expose keyboard-accessible real-data details");
+  assert.ok(!html.includes("익명 점검 #A1042") && !html.includes("예약 현황 대시보드") && !html.includes(">12건<"),
+    "admin page must not display fabricated history or metric values before the API responds");
   assert.ok(["currentPassword", "newPassword", "confirmPassword"].every((id) => html.includes(`data-password-toggle="${id}"`))
     && html.includes('function updatePasswordMatchHint()') && html.includes("새 비밀번호가 일치합니다.")
     && html.includes("새 비밀번호가 일치하지 않습니다."),

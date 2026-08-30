@@ -1481,12 +1481,17 @@ function adminDashboardSnapshot(searchParams) {
   });
   const months = monthBuckets();
   const monthsByKey = new Map(months.map((month) => [month.key, month]));
+  // 실제 체커가 분석한 소스 파일 수만 이력에서 합산한다.
+  // 원본 소스는 보관하지 않으므로 GitHub의 바이트 비율과는 다른 지표다.
   const languageCounts = new Map();
   for (const job of scans) {
     const bucket = monthsByKey.get(koreaDateKey(job.created_at).slice(0, 7));
     if (bucket) bucket.count += 1;
     for (const [language, count] of Object.entries(job.summary?.language_counts || {})) {
-      languageCounts.set(language, (languageCounts.get(language) || 0) + Number(count || 0));
+      const entry = languageCounts.get(language) || { file_count: 0, target_names: new Set() };
+      entry.file_count += Number(count || 0);
+      if (job.target_label) entry.target_names.add(String(job.target_label));
+      languageCounts.set(language, entry);
     }
   }
 
@@ -1525,7 +1530,13 @@ function adminDashboardSnapshot(searchParams) {
     filters,
     scan_count: scans.length,
     monthly_scans: months,
-    languages: Array.from(languageCounts, ([label, value]) => ({ label, value }))
+    language_measure: "scanned_source_file_count",
+    languages: Array.from(languageCounts, ([label, entry]) => ({
+      label,
+      value: entry.file_count,
+      file_count: entry.file_count,
+      target_count: entry.target_names.size
+    }))
       .filter((entry) => entry.value > 0).sort((a, b) => b.value - a.value).slice(0, 8),
     packages,
     users: dashboardDimensionStats(scans, "owner_email", "email"),

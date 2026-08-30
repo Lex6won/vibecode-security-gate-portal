@@ -956,6 +956,11 @@ async function scenarioAdmin(fixture) {
   assert.ok(Array.isArray(dashboard.monthly_scans) && dashboard.monthly_scans.length === 6,
     "admin dashboard must provide six monthly scan buckets for the line chart");
   assert.ok(Array.isArray(dashboard.languages), "admin dashboard must provide language distribution data");
+  assert.equal(dashboard.language_measure, "scanned_source_file_count",
+    "language charts must state that values are real scanned source-file counts, not source-byte estimates");
+  assert.ok(dashboard.languages.every((entry) => Number.isFinite(entry.file_count)
+    && Number.isFinite(entry.target_count) && entry.value === entry.file_count),
+  "language chart entries must include real file and target counts for each language");
   assert.ok(dashboard.packages.some((entry) => entry.package_name === "busboy" && entry.versions.includes("1.6.0")),
     "admin dashboard must expose submitted package names and recorded versions");
   assert.ok(dashboard.users.some((entry) => entry.email === "tester@gg.go.kr" && entry.scan_count >= 1),
@@ -1031,6 +1036,8 @@ async function scenarioAdmin(fixture) {
   const list = await fetchJson("/api/admin/scans");
   assert.ok(Array.isArray(list.scans));
   assert.ok(list.scans.length >= 2);
+  assert.ok(list.scans.some((scan) => scan.target_name && scan.target_name !== scan.target_type),
+    "admin scan history must expose the readable stored target name instead of only a generic target type");
   assert.ok(list.scans.some((scan) => scan.reports?.some((report) => report.url?.startsWith("/reports/"))), "admin scan must expose report URL");
 
   // S1: 내보내기는 서버 폴더 저장이 아니라 다운로드다.
