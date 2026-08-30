@@ -502,9 +502,7 @@
             <span>AI로 만든 개발 소스의 보안 위험을 빠르게 확인합니다.</span>
           </span>
         </a>
-        <div aria-label="현재 상태" aria-live="polite">
-          <span class="pill" id="checkerBadge">체커 확인 중</span>
-          <span class="pill" id="serverBadge">서버 확인 중</span>
+        <div aria-label="빠른 이동">
           <a class="pill" href="/my">내 점검 이력</a>
           <a class="pill" href="https://github.com/Lex6won/vibecode-checker" target="_blank" rel="noreferrer">체커 GitHub</a>
         </div>
@@ -1329,31 +1327,6 @@
 
     loadSession();
     updateStepStates();
-
-    // 상단 배지를 실제 상태와 연결한다 — 정적 "정상" 표시는 장애 때 거짓말이 된다.
-    (async function loadStatusBadges() {
-      const checkerBadge = document.querySelector("#checkerBadge");
-      const serverBadge = document.querySelector("#serverBadge");
-      try {
-        const response = await fetch("/api/tools/versions", { cache: "no-store" });
-        if (!response.ok) throw new Error("unreachable");
-        const data = await response.json();
-        serverBadge.textContent = "서버 연결됨";
-        serverBadge.classList.add("ok");
-        const doctor = data.checker?.doctor_status;
-        if (data.checker?.installed && doctor === "ok") {
-          checkerBadge.textContent = "체커 정상"; checkerBadge.classList.add("ok");
-        } else if (data.checker?.installed && doctor === "warn") {
-          checkerBadge.textContent = "체커 정상(주의)"; checkerBadge.classList.add("ok");
-          checkerBadge.title = "체커는 동작하지만 경고가 있습니다.";
-        } else {
-          checkerBadge.textContent = "체커 점검 필요"; checkerBadge.classList.add("warn");
-        }
-      } catch {
-        serverBadge.textContent = "서버 연결 확인 불가"; serverBadge.classList.add("warn");
-        checkerBadge.textContent = "체커 확인 불가"; checkerBadge.classList.add("warn");
-      }
-    })();
 
     const resultSource = document.querySelector("#resultSource");
     const resultRetention = document.querySelector("#resultRetention");

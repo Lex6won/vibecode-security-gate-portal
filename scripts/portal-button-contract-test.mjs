@@ -167,6 +167,10 @@ async function assertApiBackedButtons() {
 
 async function assertLocalPickerContract() {
   const html = await fetchText("/scan");
+  assert.ok(!html.includes('id="checkerBadge"') && !html.includes('id="serverBadge"'),
+    "scan page must not display server-only checker or connectivity status as a user PC status");
+  assert.ok(!html.includes('function loadStatusBadges') && !html.includes('fetch("/api/tools/versions"'),
+    "scan page must not request server checker status for a user-facing badge");
   assert.ok(html.includes('id="saveLocationPrompt"'), "scan page must explain why a save location is required before opening the browser picker");
   assert.ok(html.includes('점검결과를 저장할 위치를 선택해 주세요.'), "save-location prompt must use the approved user wording");
   assert.ok(html.includes('saveButton.addEventListener("click", () => requestSaveLocation())'), "save-location button must show the save-location explanation first");
