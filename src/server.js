@@ -92,6 +92,7 @@ const ADMIN_AUTH_FILE = isAbsolute(runtimeEnv.ADMIN_AUTH_FILE || "")
 const ADMIN_CREDENTIALS_SYNC = runtimeEnv.ADMIN_CREDENTIALS_SYNC === "true";
 const ADMIN_SESSION_TTL_MS = 8 * 60 * 60 * 1000;
 const DEVELOPMENT_PLACEHOLDER_PROFILE = { organization: "개발 검증", department: "보안점검" };
+const DEVELOPMENT_PLACEHOLDER_EMAIL = "developer@gg.go.kr";
 const adminSessions = new Map();
 const LOCAL_API_TOKEN = runtimeEnv.PORTAL_LOCAL_API_TOKEN || randomBytes(32).toString("hex");
 const LOCAL_HOSTS = new Set([
@@ -1410,6 +1411,27 @@ function adminSummary() {
   };
 }
 
+function isDevelopmentPlaceholderEmail(value) {
+  return normalizeEmail(value) === DEVELOPMENT_PLACEHOLDER_EMAIL;
+}
+
+function dashboardDecisionSummary(scans) {
+  const summary = {
+    total: scans.length,
+    allow: 0,
+    quick_complete: 0,
+    blocked: 0,
+    attention: 0
+  };
+  for (const scan of scans) {
+    if (scan.decision === "allow") summary.allow += 1;
+    else if (scan.decision === "quick_complete") summary.quick_complete += 1;
+    else if (scan.decision === "blocked") summary.blocked += 1;
+    else summary.attention += 1;
+  }
+  return summary;
+}
+
 function dashboardFilters(searchParams) {
   return {
     from: String(searchParams.get("from") || ""),
@@ -1443,6 +1465,7 @@ function monthBuckets() {
 function dashboardDimensionStats(scans, field, outputKey) {
   const groups = new Map();
   for (const scan of scans) {
+    if (field === "owner_email" && isDevelopmentPlaceholderEmail(scan.owner_email)) continue;
     const value = String(scan[field] || "미입력");
     const entry = groups.get(value) || { [outputKey]: value, scan_count: 0, latest_scanned_at: null };
     entry.scan_count += 1;
@@ -1532,6 +1555,7 @@ function adminDashboardSnapshot(searchParams) {
   return {
     filters,
     scan_count: scans.length,
+    decision_summary: dashboardDecisionSummary(scans),
     scans: scans
       .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))
       .map(publicJob),
@@ -2001,7 +2025,14 @@ async function handleApi(request, response, pathname, searchParams = new URLSear
       notFound(response);
       return;
     }
-    const email = normalizeEmail(runtimeEnv.PORTAL_DEV_AUTO_LOGIN_EMAIL || "developer@gg.go.kr");
+    const email = normalizeEmail(runtimeEnv.PORTAL_DEV_AUTO_LOGIN_EMAIL || "");
+    if (!isValidEmail(email) || isDevelopmentPlaceholderEmail(email)) {
+      json(response, 409, {
+        error: "development_login_email_required",
+        message: "개발 서버 자동 로그인 이메일을 설정해 주세요. 임시 이메일은 사용하지 않습니다."
+      });
+      return;
+    }
     let account = await upsertAccountOnLogin({ email, organization: "", department: "" });
     // Earlier development builds stored these explanatory labels as if they were real
     // affiliations. Clear only that exact placeholder pair; real user-entered profiles stay intact.

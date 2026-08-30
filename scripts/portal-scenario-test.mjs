@@ -937,6 +937,13 @@ async function scenarioAdmin(fixture) {
     "admin summary and the today dashboard must use the same Asia/Seoul day boundary");
   assert.ok(Array.isArray(todayDashboard.scans) && todayDashboard.scans.length === todayDashboard.scan_count,
     "the filtered dashboard must return the same scan set used by the charts so the history board cannot diverge");
+  assert.equal(todayDashboard.decision_summary?.total, todayDashboard.scan_count,
+    "dashboard status cards must use the same filtered scan total as the charts and history board");
+  assert.equal((todayDashboard.decision_summary?.allow || 0)
+    + (todayDashboard.decision_summary?.quick_complete || 0)
+    + (todayDashboard.decision_summary?.blocked || 0)
+    + (todayDashboard.decision_summary?.attention || 0), todayDashboard.scan_count,
+  "every filtered scan must appear in exactly one displayed decision category");
 
   const attentionDashboard = await fetchJson(`/api/admin/dashboard?from=2026-01-01&to=2026-12-31&status=attention`);
   assert.equal(attentionDashboard.scan_count, summary.attention,
@@ -1073,6 +1080,7 @@ const child = spawn(process.execPath, ["src/server.js"], {
     PORTAL_WHITELIST_DIR: join(fixture.fixtureDir, "whitelist"),
     PORTAL_REPORT_DIR: join(fixture.fixtureDir, "reports"),
     PORTAL_LOCAL_API_TOKEN: localApiToken,
+    PORTAL_DEV_AUTO_LOGIN_EMAIL: "dev-scenario@gg.go.kr",
     PYTHONUTF8: "1",
     PYTHONIOENCODING: "utf-8"
   },

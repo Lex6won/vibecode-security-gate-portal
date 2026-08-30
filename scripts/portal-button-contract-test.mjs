@@ -328,6 +328,11 @@ async function assertAdminDashboardSurface() {
     "all chart legends must show a composition percentage while pointer interaction reveals the accumulated value");
   assert.ok(html.includes('point.count') && html.includes('text-anchor": "middle"') && html.includes('chart-total'),
     "charts must visibly render point counts and total values without requiring pointer interaction");
+  assert.ok(html.includes('function renderDashboardMetrics(summary)')
+    && html.includes('renderDashboardMetrics(data.decision_summary)')
+    && html.includes('data-filter-status="고위험 없음"')
+    && html.includes('const padding = { top: 38'),
+  "status cards must use the same filtered dashboard data, include every decision, and keep line values above each point");
   assert.ok(!html.includes("익명 점검 #A1042") && !html.includes("예약 현황 대시보드") && !html.includes(">12건<"),
     "admin page must not display fabricated history or metric values before the API responds");
   assert.ok(["currentPassword", "newPassword", "confirmPassword"].every((id) => html.includes(`data-password-toggle="${id}"`))
