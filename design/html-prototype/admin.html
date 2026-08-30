@@ -70,8 +70,15 @@
     .pagination button:disabled { cursor: default; opacity: .45; }
     .pagination .ellipsis { min-width: 20px; color: var(--muted); text-align: center; }
 
-    .content-grid { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: var(--space-gap); align-items: start; }
     .table-panel { border-color: var(--ice); box-shadow: var(--shadow); }
+    .history-panel { min-width: 0; }
+    .history-table { min-width: 920px; }
+    .history-table .history-date { min-width: 116px; color: var(--muted); font-weight: 800; line-height: 1.45; }
+    .history-table .history-target { min-width: 250px; max-width: 420px; }
+    .history-table .history-target b, .history-table .history-target span { display: block; overflow-wrap: anywhere; }
+    .history-table .history-target b { color: var(--ink); font-weight: 900; }
+    .history-table .history-target span { margin-top: 4px; color: var(--muted); font-size: 12px; font-weight: 800; }
+    .history-table .history-number { color: var(--info); font-weight: 900; text-align: right; white-space: nowrap; }
     .section-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
     .section-head h2 { min-width: 0; margin: 0; font-size: 22px; font-weight: 900; overflow-wrap: anywhere; }
     .section-head span { min-width: 0; color: var(--muted); font-size: 13px; font-weight: 800; text-align: right; overflow-wrap: anywhere; }
@@ -175,7 +182,7 @@
     .chart-panel:first-child { grid-column: 1 / -1; }
     .chart-frame { min-width: 0; display: grid; gap: 12px; }
     .chart-frame svg { display: block; width: 100%; height: 260px; min-height: 0; }
-    .chart-frame.chart-frame-pie { grid-template-rows: 260px auto auto; }
+    .chart-frame.chart-frame-pie { grid-template-rows: 260px auto auto auto; }
     .chart-frame.chart-frame-line { min-height: 260px; }
     .chart-empty { min-height: 250px; display: grid; place-items: center; color: var(--muted); font-size: 13px; font-weight: 800; background: var(--soft); border: 1px dashed var(--line); }
     .chart-legend { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; margin: 0; padding: 0; list-style: none; }
@@ -184,6 +191,7 @@
     .chart-legend span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .legend-dot { width: 10px; height: 10px; border-radius: 50%; flex: 0 0 auto; }
     .chart-detail { min-height: 38px; padding: 9px 10px; border-left: 3px solid var(--harbor); background: var(--soft); color: var(--muted); font-size: 12px; font-weight: 800; line-height: 1.45; overflow-wrap: anywhere; }
+    .chart-total { margin: 0; color: var(--info); font-size: 13px; font-weight: 900; text-align: center; }
     .chart-slice { cursor: pointer; transition: opacity .16s ease; }
     .chart-slice:hover, .chart-slice:focus-visible, .chart-slice.is-selected { opacity: .82; outline: none; }
     .analytics-summary { color: var(--muted); font-size: 12px; font-weight: 800; }
@@ -203,7 +211,7 @@
       .filter-actions { grid-template-columns: 1fr 1fr; }
     }
     @media (max-width: 960px) {
-      .filters, .content-grid, .metrics, .dashboard-grid, .dimension-grid { grid-template-columns: 1fr; }
+      .filters, .metrics, .dashboard-grid, .dimension-grid { grid-template-columns: 1fr; }
       .filters .field:first-child { grid-column: auto; }
       .filter-actions { grid-template-columns: 1fr 1fr; }
       .chart-panel, .chart-panel:first-child { grid-column: auto; }
@@ -212,7 +220,7 @@
     @media (max-width: 560px) {
       .admin-tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .admin-tab { min-width: 0; padding-inline: 8px; }
-      .chart-frame.chart-frame-pie { grid-template-rows: 220px auto auto; }
+      .chart-frame.chart-frame-pie { grid-template-rows: 220px auto auto auto; }
       .chart-frame svg { height: 220px; }
       .chart-legend { grid-template-columns: 1fr; }
       .section-head { align-items: flex-start; }
@@ -261,7 +269,7 @@
       <div class="field"><label for="keyword">검색</label><input id="keyword" placeholder="GitHub URL, 프로젝트명, 파일명"></div>
       <div class="field"><label for="status">점검 결과</label><select id="status"><option>전체 결과</option><option>승인</option><option>고위험 없음</option><option>배포 미승인</option><option>검토·재점검 필요</option></select></div>
       <div class="field"><label for="period">기간</label><select id="period"><option>최근 6개월</option><option>오늘</option><option>이번 달</option><option>최근 30일</option></select></div>
-      <div class="field"><label for="ecosystem">패키지 생태계</label><select id="ecosystem"><option value="">전체</option><option value="npm">npm</option><option value="pypi">PyPI</option><option value="maven">Maven</option><option value="nuget">NuGet</option></select></div>
+      <div class="field"><label for="ecosystem">패키지 생태계</label><select id="ecosystem"><option value="">전체</option><option value="npm">npm</option><option value="pypi">PyPI</option></select></div>
       <div class="field"><label for="language">개발언어</label><select id="language"><option value="">전체</option></select></div>
       <div class="field"><label for="whitelistStatus">화이트리스트</label><select id="whitelistStatus"><option value="">전체</option><option value="included">담김</option><option value="excluded">제외</option><option value="unlisted">미분류</option></select></div>
       <div class="filter-actions">
@@ -313,30 +321,19 @@
       <p class="filter-summary" id="historyFilterSummary" aria-live="polite">점검 이력을 불러오는 중입니다.</p>
     </section>
 
-    <section class="content-grid" data-admin-tab-panel="history">
-      <div class="panel-card table-panel">
+    <section class="panel-card table-panel history-panel" data-admin-tab-panel="history">
         <div class="section-head">
           <h2>점검 이력</h2>
           <span id="scanHistoryCount">점검 이력을 불러오는 중</span>
           <label class="page-size" for="scanPageSize">페이지당 <select id="scanPageSize"><option value="10">10건</option><option value="20">20건</option><option value="50">50건</option></select></label>
         </div>
-        <ul class="history-list" id="historyList" aria-live="polite">
-          <li class="history-item">점검 이력을 불러오는 중입니다.</li>
-        </ul>
+        <div class="table-scroll">
+          <table class="pkg-table history-table" aria-label="점검 이력 목록">
+            <thead><tr><th>점검일</th><th>대상</th><th>방식</th><th>점검 결과</th><th>검사 파일</th><th>발견 항목</th><th>보고서</th></tr></thead>
+            <tbody id="scanHistoryBody"><tr><td colspan="7">점검 이력을 불러오는 중입니다.</td></tr></tbody>
+          </table>
+        </div>
         <nav class="pagination" id="scanPager" aria-label="점검 이력 페이지"></nav>
-      </div>
-
-      <aside class="panel-card detail-panel">
-        <div class="section-head">
-          <h2>선택 점검 상세</h2>
-        </div>
-        <ul class="detail-list" id="detailList" aria-live="polite">
-          <li><span>선택 점검</span><b>점검 이력을 불러오는 중입니다.</b></li>
-        </ul>
-        <div class="admin-note">
-          다음 조치: 반복 탐지 규칙과 오탐 후보를 확인해 체커 개선 항목으로 분류하세요.
-        </div>
-      </aside>
     </section>
 
     <section class="panel-card" data-admin-tab-panel="operations" aria-labelledby="ops-title">
@@ -366,7 +363,7 @@
       </div>
       <div class="list-toolbar" aria-label="패키지 검색">
         <div class="field"><label for="packageKeyword">패키지 검색</label><input id="packageKeyword" placeholder="패키지명 또는 버전"></div>
-        <div class="field"><label for="packageEcosystem">생태계</label><select id="packageEcosystem"><option value="">전체</option><option value="npm">npm</option><option value="pypi">PyPI</option><option value="maven">Maven</option><option value="nuget">NuGet</option></select></div>
+        <div class="field"><label for="packageEcosystem">생태계</label><select id="packageEcosystem"><option value="">전체</option><option value="npm">npm</option><option value="pypi">PyPI</option></select></div>
         <div class="field"><label for="packageWhitelistStatus">목록 상태</label><select id="packageWhitelistStatus"><option value="">전체</option><option value="included">담김</option><option value="excluded">제외</option><option value="unlisted">미분류</option></select></div>
         <button class="button sm" id="packageSearchButton" type="button">검색</button>
         <label class="page-size" for="packagePageSize">페이지당 <select id="packagePageSize"><option value="10">10건</option><option value="20">20건</option><option value="50">50건</option></select></label>
@@ -450,8 +447,7 @@
     const userStats = document.querySelector("#userStats");
     const organizationStats = document.querySelector("#organizationStats");
     const departmentStats = document.querySelector("#departmentStats");
-    const historyList = document.querySelector(".history-list");
-    const detailList = document.querySelector(".detail-list");
+    const historyBody = document.querySelector("#scanHistoryBody");
     const sectionCount = document.querySelector("#scanHistoryCount");
     const scanPager = document.querySelector("#scanPager");
     const scanPageSize = document.querySelector("#scanPageSize");
@@ -654,6 +650,7 @@
         metric.classList.add("active");
         if (metric.dataset.filterStatus) selectOptionByText(statusSelect, metric.dataset.filterStatus);
         if (metric.dataset.filterPeriod) selectOptionByText(periodSelect, metric.dataset.filterPeriod);
+        syncHistoryConditionsFromOverview();
         loadAdminData();
       });
     });
@@ -661,11 +658,13 @@
     filterApplyButton.addEventListener("click", () => loadAdminData());
     filterResetButton.addEventListener("click", () => {
       resetFilters();
+      syncHistoryConditionsFromOverview();
       loadAdminData();
     });
     [keywordInput, statusSelect, periodSelect, ecosystemSelect, languageSelect, whitelistStatusSelect].forEach((control) => {
       control.addEventListener("change", () => {
         document.querySelectorAll(".metric").forEach((item) => item.classList.remove("active"));
+        syncHistoryConditionsFromOverview();
         loadAdminData();
       });
     });
@@ -675,30 +674,31 @@
 
     function resetHistoryFilters() {
       historyKeywordInput.value = "";
-      historyStatusSelect.value = "전체 결과";
-      historyPeriodSelect.value = "최근 6개월";
-      historyLanguageSelect.value = "";
+      syncHistoryConditionsFromOverview();
     }
 
-    document.querySelector("#historyFilterApplyButton").addEventListener("click", refreshHistory);
-    document.querySelector("#historyFilterResetButton").addEventListener("click", () => {
-      resetHistoryFilters();
-      refreshHistory();
+    document.querySelector("#historyFilterApplyButton").addEventListener("click", () => {
+      syncOverviewConditionsFromHistory();
+      loadAdminData();
     });
-    [historyStatusSelect, historyPeriodSelect, historyLanguageSelect].forEach((control) => control.addEventListener("change", refreshHistory));
+    document.querySelector("#historyFilterResetButton").addEventListener("click", () => {
+      resetFilters();
+      resetHistoryFilters();
+      loadAdminData();
+    });
+    [historyStatusSelect, historyPeriodSelect, historyLanguageSelect].forEach((control) => control.addEventListener("change", () => {
+      syncOverviewConditionsFromHistory();
+      loadAdminData();
+    }));
     historyKeywordInput.addEventListener("keydown", (event) => {
-      if (event.key === "Enter") refreshHistory();
+      if (event.key === "Enter") {
+        scanPage = 1;
+        refreshHistory();
+      }
     });
     scanPageSize.addEventListener("change", () => {
       scanPage = 1;
-      renderScans(filteredScans(scanCache, historyFilters()));
-    });
-
-    document.querySelectorAll(".history-item").forEach((item) => {
-      item.addEventListener("click", () => {
-        document.querySelectorAll(".history-item").forEach((history) => history.classList.remove("active"));
-        item.classList.add("active");
-      });
+      renderScans(filteredHistoryScans(scanCache));
     });
 
     function statusLabel(decision) {
@@ -775,6 +775,7 @@
           }
         });
         svg.append(circle);
+        svg.append(svgNode("text", { x: point.x, y: Math.max(padding.top + 12, point.y - 10), "text-anchor": "middle", fill: "#173a67", "font-size": 12, "font-weight": 900 }, String(point.count)));
         svg.append(svgNode("text", { x: point.x, y: height - 10, "text-anchor": "middle", fill: "#58708f", "font-size": 11, "font-weight": 700 }, point.label));
       });
       monthlyChart.className = "chart-frame chart-frame-line";
@@ -839,15 +840,18 @@
         dot.className = "legend-dot";
         dot.style.backgroundColor = chartColors[index % chartColors.length];
         const label = document.createElement("span");
-        label.textContent = `${entry.label} ${Math.round((entry.value / total) * 100)}%`;
+        label.textContent = `${entry.label} · ${Math.round((entry.value / total) * 100)}%`;
         button.append(dot, label);
         button.addEventListener("click", () => selectEntry(entry, index));
         controls[index].button = button;
         item.append(button);
         legend.append(item);
       });
+      const totalText = document.createElement("p");
+      totalText.className = "chart-total";
+      totalText.textContent = `총 ${total}개`;
       container.className = "chart-frame chart-frame-pie";
-      container.replaceChildren(svg, detail, legend);
+      container.replaceChildren(svg, totalText, detail, legend);
       selectEntry(entries[0], 0);
     }
 
@@ -939,8 +943,13 @@
         renderDimensionList(organizationStats, data.organizations || [], "organization", "조건에 맞는 기관 이력이 없습니다.");
         renderDimensionList(departmentStats, data.departments || [], "department", "조건에 맞는 부서 이력이 없습니다.");
         populateLanguageFilter(data.languages || []);
+        syncHistoryConditionsFromOverview();
+        scanCache = data.scans || [];
+        refreshHistory();
       } catch {
         analyticsSummary.textContent = "분석 API 연결 필요";
+        scanCache = [];
+        refreshHistory();
         emptyChart(monthlyChart, "그래프를 불러오지 못했습니다.");
         emptyChart(languageChart, "그래프를 불러오지 못했습니다.");
         emptyChart(packageChart, "그래프를 불러오지 못했습니다.");
@@ -950,21 +959,6 @@
       }
     }
 
-    function updateDetail(scan) {
-      const reports = scan.reports || [];
-      const html = reports.find((item) => item.file_name.endsWith(".html"));
-      const json = reports.find((item) => item.file_name.endsWith(".json") || !item.file_name.includes("."));
-      detailList.innerHTML = `
-        <li><span>점검 대상</span><b title="${escapeHtml(scan.target_name || scan.target_label || scan.target_type)}">${escapeHtml(scan.target_name || scan.target_label || scan.target_type)}</b></li>
-        <li><span>점검 ID</span><b>${escapeHtml(scan.id.slice(0, 8))}</b></li>
-        <li><span>결과</span><b>${escapeHtml(statusLabel(scan.decision)[0])}</b></li>
-        <li><span>검사 파일</span><b>${scan.summary?.scanned_file_count ?? 0}건</b></li>
-        <li><span>발견 항목</span><b>${scan.summary?.finding_count ?? 0}건</b></li>
-        <li><span>HTML 보고서</span><b>${html ? "생성됨" : "대기"}</b></li>
-        <li><span>JSON 증거 보고서</span><b>${json ? "생성됨" : "대기"}</b></li>
-      `;
-    }
-
     function renderScans(scans) {
       const pageData = paginate(scans, scanPage, scanPageSize.value);
       scanPage = pageData.page;
@@ -972,78 +966,63 @@
         ? `표시 ${pageData.start + 1}-${pageData.end} / ${scans.length}건`
         : "표시 0 / 0건";
       if (!scans.length) {
-        historyList.replaceChildren(Object.assign(document.createElement("li"), { className: "history-item", textContent: "조건에 맞는 점검 이력이 없습니다." }));
-        detailList.replaceChildren(Object.assign(document.createElement("li"), { textContent: "점검 이력을 선택하면 상세 내용이 표시됩니다." }));
+        historyBody.innerHTML = '<tr><td colspan="7">조건에 맞는 점검 이력이 없습니다.</td></tr>';
         renderPager(scanPager, 1, 1, () => {});
         return;
       }
-      historyList.replaceChildren();
-      pageData.entries.forEach((scan, index) => {
+      historyBody.replaceChildren();
+      pageData.entries.forEach((scan) => {
         const [label, klass] = statusLabel(scan.decision);
-        const item = document.createElement("li");
-        item.className = `history-item${index === 0 ? " active" : ""}`;
-        item.tabIndex = 0;
+        const row = document.createElement("tr");
         const firstReport = (scan.reports || []).find((report) => report.url);
         const safeUrl = firstReport?.url && firstReport.url.startsWith("/reports/") ? firstReport.url : "#";
-        item.innerHTML = `
-          <div class="when">${escapeHtml(new Date(scan.created_at).toLocaleString("ko-KR"))}<span class="who">점검 ID ${escapeHtml(scan.id.slice(0, 8))}</span></div>
-          <div class="project">
-            <strong title="${escapeHtml(scan.target_name || scan.target_label || scan.target_type)}">${escapeHtml(scan.target_name || scan.target_label || scan.target_type)}</strong>
-            <span>${escapeHtml(scan.mode)} 점검 · ${escapeHtml(scan.target_label || scan.target_type)}</span>
-            <div class="meta-line"><span>${escapeHtml(scan.target_type)}</span><span>${escapeHtml(scan.status)}</span></div>
-          </div>
-          <div class="result-block">
-            <span class="status ${klass}">${escapeHtml(label)}</span>
-            <span class="summary">파일 ${scan.summary?.scanned_file_count ?? 0} · 발견 ${scan.summary?.finding_count ?? 0}</span>
-          </div>
-          <a class="report" href="${safeUrl}" target="_blank" rel="noreferrer">열기</a>
+        row.innerHTML = `
+          <td class="history-date">${escapeHtml(new Date(scan.created_at).toLocaleString("ko-KR"))}</td>
+          <td class="history-target"><b title="${escapeHtml(scan.target_name || scan.target_label || scan.target_type)}">${escapeHtml(scan.target_name || scan.target_label || scan.target_type)}</b><span>${escapeHtml(scan.target_label || scan.target_type)} · ID ${escapeHtml(scan.id.slice(0, 8))}</span></td>
+          <td>${escapeHtml(scan.mode)} 점검</td>
+          <td><span class="status ${klass}">${escapeHtml(label)}</span></td>
+          <td class="history-number">${scan.summary?.scanned_file_count ?? 0}개</td>
+          <td class="history-number">${scan.summary?.finding_count ?? 0}건</td>
+          <td>${safeUrl === "#" ? "-" : `<a class="report" href="${safeUrl}" target="_blank" rel="noreferrer">결과 리포트</a>`}</td>
         `;
-        item.addEventListener("click", () => {
-          document.querySelectorAll(".history-item").forEach((history) => history.classList.remove("active"));
-          item.classList.add("active");
-          updateDetail(scan);
-        });
-        historyList.append(item);
+        historyBody.append(row);
       });
-      updateDetail(pageData.entries[0]);
       renderPager(scanPager, pageData.page, pageData.totalPages, (nextPage) => {
         scanPage = nextPage;
         renderScans(scans);
       });
     }
 
-    function filteredScans(scans, controls) {
-      const keyword = controls.keyword.value.trim().toLowerCase();
-      const decisionByStatus = { "승인": "allow", "고위험 없음": "quick_complete", "배포 미승인": "blocked", "검토·재점검 필요": "attention" };
-      const expectedDecision = decisionByStatus[controls.status.value];
-      const dates = periodDatesFor(controls.period.value);
-      const from = Date.parse(`${dates.from}T00:00:00+09:00`);
-      const to = Date.parse(`${dates.to}T23:59:59.999+09:00`);
+    function filteredHistoryScans(scans) {
+      const keyword = historyKeywordInput.value.trim().toLowerCase();
       return scans.filter((scan) => {
-        const createdAt = Date.parse(scan.created_at || "");
-        if (!Number.isFinite(createdAt) || createdAt < from || createdAt > to) return false;
-        if (expectedDecision === "attention" && !["needs_review", "incomplete"].includes(scan.decision)) return false;
-        if (expectedDecision && expectedDecision !== "attention" && scan.decision !== expectedDecision) return false;
-        if (controls.language.value && !Object.hasOwn(scan.summary?.language_counts || {}, controls.language.value)) return false;
         if (!keyword) return true;
-        return `${scan.id} ${scan.target_type} ${scan.target_label || ""} ${scan.target_name || ""} ${scan.owner_organization || ""} ${scan.owner_department || ""}`.toLowerCase().includes(keyword);
+        return `${scan.id} ${scan.target_type} ${scan.target_label || ""} ${scan.target_name || ""} ${scan.owner_email || ""} ${scan.owner_organization || ""} ${scan.owner_department || ""}`.toLowerCase().includes(keyword);
       });
     }
 
-    function historyFilters() {
-      return { keyword: historyKeywordInput, status: historyStatusSelect, period: historyPeriodSelect, language: historyLanguageSelect };
+    function syncHistoryConditionsFromOverview() {
+      historyStatusSelect.value = statusSelect.value;
+      historyPeriodSelect.value = periodSelect.value;
+      historyLanguageSelect.value = Array.from(historyLanguageSelect.options).some((option) => option.value === languageSelect.value) ? languageSelect.value : "";
+    }
+
+    function syncOverviewConditionsFromHistory() {
+      statusSelect.value = historyStatusSelect.value;
+      periodSelect.value = historyPeriodSelect.value;
+      languageSelect.value = Array.from(languageSelect.options).some((option) => option.value === historyLanguageSelect.value) ? historyLanguageSelect.value : "";
     }
 
     function refreshHistory() {
       scanPage = 1;
-      const filtered = filteredScans(scanCache, historyFilters());
+      const filtered = filteredHistoryScans(scanCache);
       renderScans(filtered);
       const labels = [];
-      if (historyPeriodSelect.value !== "최근 6개월") labels.push(historyPeriodSelect.value);
-      if (historyStatusSelect.value !== "전체 결과") labels.push(historyStatusSelect.value);
-      if (historyLanguageSelect.value) labels.push(historyLanguageSelect.value);
+      if (periodSelect.value !== "최근 6개월") labels.push(periodSelect.value);
+      if (statusSelect.value !== "전체 결과") labels.push(statusSelect.value);
+      if (languageSelect.value) labels.push(languageSelect.value);
       if (historyKeywordInput.value.trim()) labels.push(`검색: ${historyKeywordInput.value.trim()}`);
-      historyFilterSummary.textContent = `${labels.length ? labels.join(" · ") : "최근 6개월 전체 이력"} · ${filtered.length}건`;
+      historyFilterSummary.textContent = `${labels.length ? labels.join(" · ") : "최근 6개월 전체 이력"} · ${filtered.length}건 (현황 조건과 동일)`;
     }
 
     // ---- P4: 서버 상태·패키지 근거·검토 대기열 ----
@@ -1278,17 +1257,12 @@
 
     async function loadAdminData() {
       try {
-        const [summary, scansData] = await Promise.all([
-          fetchAdminJson("/api/admin/summary"),
-          fetchAdminJson("/api/admin/scans")
-        ]);
+        const summary = await fetchAdminJson("/api/admin/summary");
         metricValues[0].textContent = `${summary.today}건`;
         metricValues[1].textContent = `${summary.allow}건`;
         metricValues[2].textContent = `${summary.blocked}건`;
         metricValues[3].textContent = `${summary.attention}건`;
-        scanCache = scansData.scans || [];
         renderOps(summary);
-        refreshHistory();
         filterSummary.textContent = "현황 분석 조건을 적용했습니다.";
       } catch (error) {
         sectionCount.textContent = "이력 API 연결 필요";

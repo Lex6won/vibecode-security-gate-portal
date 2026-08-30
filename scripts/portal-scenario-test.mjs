@@ -935,6 +935,8 @@ async function scenarioAdmin(fixture) {
   const todayDashboard = await fetchJson(`/api/admin/dashboard?from=${today}&to=${today}`);
   assert.equal(todayDashboard.scan_count, summary.today,
     "admin summary and the today dashboard must use the same Asia/Seoul day boundary");
+  assert.ok(Array.isArray(todayDashboard.scans) && todayDashboard.scans.length === todayDashboard.scan_count,
+    "the filtered dashboard must return the same scan set used by the charts so the history board cannot diverge");
 
   const attentionDashboard = await fetchJson(`/api/admin/dashboard?from=2026-01-01&to=2026-12-31&status=attention`);
   assert.equal(attentionDashboard.scan_count, summary.attention,
@@ -993,6 +995,12 @@ async function scenarioAdmin(fixture) {
     body: JSON.stringify({ ecosystem: "npm", package_name: "never-observed-pkg", action: "include" })
   });
   assert.equal(unobserved.status, 404, "packages without observations must not be listable");
+  const unsupportedEcosystem = await fetch(`${baseUrl}/api/admin/whitelist`, {
+    method: "POST",
+    headers: localHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify({ ecosystem: "maven", package_name: "not-supported", action: "include" })
+  });
+  assert.equal(unsupportedEcosystem.status, 400, "the portal must reject package ecosystems other than npm and PyPI");
 
   // 내보내기 — 패키지 식별 정보만, 부서·이메일·프로젝트명은 실리지 않는다(적대 검증).
   const evidenceExport = await fetch(`${baseUrl}/api/admin/whitelist/export`, { headers: localHeaders() });

@@ -317,8 +317,17 @@ async function assertAdminDashboardSurface() {
     && html.includes('id="scanHistoryCount"') && html.includes('id="reviewCount"')
     && html.includes('function paginate') && html.includes('function renderPager'),
   "history, package, and review tabs must each provide independent search and board-style pagination");
+  assert.ok(!html.includes('value="maven"') && !html.includes('value="nuget"'),
+    "package ecosystem filters must expose only the npm and PyPI ecosystems supported by this portal");
+  assert.ok(html.includes('id="scanHistoryBody"') && !html.includes('id="detailList"') && html.includes('class="panel-card table-panel history-panel"'),
+    "scan history must use a full-width board table without a redundant selected-scan detail panel");
+  assert.ok(html.includes('scanCache = data.scans || [];') && html.includes('syncHistoryConditionsFromOverview()')
+    && html.includes('syncOverviewConditionsFromHistory()'),
+  "overview conditions must drive the history data and history condition controls must synchronize back to the overview");
   assert.ok(html.includes('pageSize') && html.includes('Math.round((entry.value / total) * 100)') && html.includes('pointerenter'),
-  "all chart legends must show a composition percentage while pointer interaction reveals the accumulated value");
+    "all chart legends must show a composition percentage while pointer interaction reveals the accumulated value");
+  assert.ok(html.includes('point.count') && html.includes('text-anchor": "middle"') && html.includes('chart-total'),
+    "charts must visibly render point counts and total values without requiring pointer interaction");
   assert.ok(!html.includes("익명 점검 #A1042") && !html.includes("예약 현황 대시보드") && !html.includes(">12건<"),
     "admin page must not display fabricated history or metric values before the API responds");
   assert.ok(["currentPassword", "newPassword", "confirmPassword"].every((id) => html.includes(`data-password-toggle="${id}"`))

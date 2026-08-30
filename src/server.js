@@ -41,6 +41,7 @@ const EXTRA_ALLOWED_HOSTS = String(runtimeEnv.PORTAL_ALLOWED_HOSTS || "")
   .split(",").map((value) => value.trim().toLowerCase()).filter(Boolean);
 // External Git URLs stay constrained to approved hosts, not arbitrary network locations.
 const ALLOWED_GIT_REPOSITORY_HOSTS = new Set(["github.com", "gitlab.aigov.go.kr"]);
+const SUPPORTED_PACKAGE_ECOSYSTEMS = new Set(["npm", "pypi"]);
 const POWERSHELL = join(runtimeEnv.SystemRoot || "C:\\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
 const MAX_BROWSER_UPLOAD_BYTES = 500 * 1024 * 1024;
 const MAX_BROWSER_UPLOAD_FILES = 10000;
@@ -1460,6 +1461,7 @@ function adminDashboardSnapshot(searchParams) {
   const query = filters.query;
   const whitelist = whitelistSnapshot();
   const observations = observationRecordsSnapshot().filter((record) => {
+    if (!SUPPORTED_PACKAGE_ECOSYSTEMS.has(record.ecosystem)) return false;
     if (!matchesDashboardDate(record.observed_at, filters)) return false;
     if (filters.ecosystem && record.ecosystem !== filters.ecosystem) return false;
     const listStatus = whitelistStatus(record.ecosystem, record.package_name) || "unlisted";
@@ -1522,6 +1524,7 @@ function adminDashboardSnapshot(searchParams) {
     .sort((a, b) => b.observation_count - a.observation_count || a.package_name.localeCompare(b.package_name))
     .slice(0, 8);
   const whitelistEntries = Object.values(whitelist).filter((entry) => {
+    if (!SUPPORTED_PACKAGE_ECOSYSTEMS.has(entry.ecosystem)) return false;
     if (filters.ecosystem && entry.ecosystem !== filters.ecosystem) return false;
     if (filters.whitelist && entry.status !== filters.whitelist) return false;
     return !query || `${entry.ecosystem} ${entry.package_name} ${entry.reason || ""}`.toLowerCase().includes(query);
@@ -1529,6 +1532,9 @@ function adminDashboardSnapshot(searchParams) {
   return {
     filters,
     scan_count: scans.length,
+    scans: scans
+      .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))
+      .map(publicJob),
     monthly_scans: months,
     language_measure: "scanned_source_file_count",
     languages: Array.from(languageCounts, ([label, entry]) => ({
@@ -1610,6 +1616,7 @@ function publicJob(job) {
     observations_submitted_at: job.observations_submitted_at || null,
     // 소유자 검증 뒤에만 응답되므로 본인 라벨·소속 스냅샷·검토요청 상태를 보여줄 수 있다.
     target_name: targetName,
+    owner_email: job.owner_email || null,
     owner_organization: job.owner_organization || null,
     owner_department: job.owner_department || null,
     review_request: job.review_request
@@ -1695,11 +1702,13 @@ async function recordObservationsForJob(job, reportItems) {
   }
   const records = [];
   for (const audit of audits) {
+    const ecosystem = String(audit?.ecosystem || "").toLowerCase();
+    if (!SUPPORTED_PACKAGE_ECOSYSTEMS.has(ecosystem)) continue;
     for (const check of audit.checks || []) {
       if (!check?.name || !check?.version) continue; // 버전 미확정 관측은 적재하지 않는다(§5-D)
       records.push(toObservationRecord(check, {
         scanId: job.id,
-        ecosystem: audit.ecosystem,
+        ecosystem,
         sourceScope: audit.source_kind,
         projectLabel: job.target_label || "",
         departmentCode: job.owner_department || null // 점검 시점 스냅샷 (부서명)
@@ -2169,6 +2178,7 @@ async function handleApi(request, response, pathname, searchParams = new URLSear
   if (request.method === "GET" && pathname === "/api/admin/packages") {
     if (!requireAdmin(request, response)) return;
     const packages = Object.values(usageStatsSnapshot())
+      .filter((entry) => SUPPORTED_PACKAGE_ECOSYSTEMS.has(entry.ecosystem))
       .map((entry) => ({
         ecosystem: entry.ecosystem,
         package_name: entry.package_name,
@@ -2198,8 +2208,8 @@ async function handleApi(request, response, pathname, searchParams = new URLSear
     const ecosystem = String(body.ecosystem || "").trim();
     const packageName = String(body.package_name || "").trim();
     const action = String(body.action || "");
-    if (!ecosystem || !packageName || !["include", "exclude", "reset"].includes(action)) {
-      json(response, 400, { error: "invalid_whitelist_request", message: "ecosystem, package_name, action(include/exclude/reset)을 확인하세요." });
+    if (!SUPPORTED_PACKAGE_ECOSYSTEMS.has(ecosystem) || !packageName || !["include", "exclude", "reset"].includes(action)) {
+      json(response, 400, { error: "invalid_whitelist_request", message: "npm 또는 PyPI 패키지명과 action(include/exclude/reset)을 확인하세요." });
       return;
     }
     // 관측된 적 없는 패키지는 근거가 없으므로 목록에 올릴 수 없다.
@@ -2217,7 +2227,8 @@ async function handleApi(request, response, pathname, searchParams = new URLSear
     if (!requireAdmin(request, response)) return;
     // 내보내기에는 패키지 식별 정보만 싣는다 — 부서명·프로젝트명·이메일은 넣지 않는다.
     const stats = usageStatsSnapshot();
-    const listed = Object.values(whitelistSnapshot());
+    const listed = Object.values(whitelistSnapshot())
+      .filter((entry) => SUPPORTED_PACKAGE_ECOSYSTEMS.has(entry.ecosystem));
     const packageFields = (entry) => {
       const observed = stats[`${entry.ecosystem}:${entry.package_name}`] || {};
       return {
