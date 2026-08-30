@@ -345,6 +345,14 @@ async function assertAdminDashboardSurface() {
   "password change must support visibility controls and immediate confirmation matching feedback");
 }
 
+function assertHomeHeadlineSurface() {
+  const html = readFileSync(new URL("../design/html-prototype/main page.html", import.meta.url), "utf8");
+  assert.ok(html.includes('<span class="security-emphasis">보안 점검</span><span class="hero-suffix">부터</span>')
+    && html.includes('.simple-hero .hero-suffix { color: var(--ink); }')
+    && html.includes('.simple-hero h1 .hero-suffix { display: inline; }'),
+  "the security headline must keep only the suffix in the standard ink color on desktop and mobile");
+}
+
 const child = spawn(process.execPath, ["src/server.js"], {
   cwd: process.cwd(),
   env: { ...process.env, PORT: String(port), PORTAL_LOCAL_API_TOKEN: localApiToken, PYTHONUTF8: "1", PYTHONIOENCODING: "utf-8" },
@@ -374,6 +382,7 @@ try {
   await assertMyHistoryPage();
   await assertRemovedHelpSurface();
   await assertAdminDashboardSurface();
+  assertHomeHeadlineSurface();
   console.log(JSON.stringify({ status: "passed", base_url: baseUrl, pages: results }, null, 2));
 } catch (error) {
   console.error(stdout);
