@@ -8,6 +8,11 @@
   <link rel="stylesheet" href="/shared.css">
   <style>
     .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: var(--space-gap); }
+    .admin-tabs { display: flex; flex-wrap: wrap; gap: 8px; padding: 10px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--panel); box-shadow: var(--shadow-sm); }
+    .admin-tab { min-height: 40px; padding: 8px 14px; border: 1px solid transparent; border-radius: var(--radius-sm); background: transparent; color: var(--muted); font: inherit; font-size: 14px; font-weight: 900; cursor: pointer; }
+    .admin-tab:hover, .admin-tab:focus-visible { border-color: var(--harbor); color: var(--harbor); outline: 0; }
+    .admin-tab[aria-selected="true"] { border-color: var(--harbor); background: var(--soft); color: var(--harbor); }
+    [data-admin-tab-panel][hidden] { display: none !important; }
     .metric {
       min-height: 76px;
       padding: 16px 18px;
@@ -52,6 +57,18 @@
     .filter-actions { align-self: stretch; display: grid; grid-template-columns: 1fr; gap: 8px; }
     .filter-actions .button, .filter-actions .ghost-button { min-width: 104px; }
     .filter-summary { grid-column: 1 / -1; margin: 0; color: var(--muted); font-size: 12px; font-weight: 800; }
+    .list-toolbar { display: flex; flex-wrap: wrap; align-items: end; gap: 10px; margin-bottom: 12px; }
+    .list-toolbar .field { min-width: min(100%, 230px); display: grid; gap: 5px; }
+    .list-toolbar label { color: var(--info); font-size: 12px; font-weight: 900; }
+    .list-toolbar input, .list-toolbar select { min-height: 38px; padding: 7px 10px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--panel); color: var(--ink); font: inherit; font-size: 13px; font-weight: 800; }
+    .page-size { display: inline-flex; align-items: center; gap: 7px; color: var(--muted); font-size: 12px; font-weight: 800; white-space: nowrap; }
+    .page-size select { min-height: 34px; padding: 4px 8px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--panel); color: var(--ink); font: inherit; font-weight: 800; }
+    .pagination { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px; margin-top: 16px; }
+    .pagination[hidden] { display: none; }
+    .pagination button { min-width: 34px; height: 34px; padding: 0 8px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--panel); color: var(--info); font: inherit; font-size: 13px; font-weight: 900; cursor: pointer; }
+    .pagination button:hover:not(:disabled), .pagination button:focus-visible, .pagination button[aria-current="page"] { border-color: var(--harbor); background: var(--soft); color: var(--harbor); outline: 0; }
+    .pagination button:disabled { cursor: default; opacity: .45; }
+    .pagination .ellipsis { min-width: 20px; color: var(--muted); text-align: center; }
 
     .content-grid { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: var(--space-gap); align-items: start; }
     .table-panel { border-color: var(--ice); box-shadow: var(--shadow); }
@@ -193,6 +210,8 @@
       .history-item { grid-template-columns: 1fr; align-items: start; }
     }
     @media (max-width: 560px) {
+      .admin-tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .admin-tab { min-width: 0; padding-inline: 8px; }
       .chart-frame.chart-frame-pie { grid-template-rows: 220px auto auto; }
       .chart-frame svg { height: 220px; }
       .chart-legend { grid-template-columns: 1fr; }
@@ -216,7 +235,14 @@
       </div>
     </header>
 
-    <section class="hero" aria-labelledby="admin-title">
+    <nav class="admin-tabs" aria-label="관리자 기능 탭">
+      <button class="admin-tab" type="button" data-admin-tab="overview" aria-selected="true">현황</button>
+      <button class="admin-tab" type="button" data-admin-tab="history" aria-selected="false">점검 이력</button>
+      <button class="admin-tab" type="button" data-admin-tab="packages" aria-selected="false">패키지·화이트리스트</button>
+      <button class="admin-tab" type="button" data-admin-tab="operations" aria-selected="false">검토 요청·운영</button>
+    </nav>
+
+    <section class="hero" data-admin-tab-panel="overview" aria-labelledby="admin-title">
       <div>
         <h1 id="admin-title">사용 현황과 점검 결과를 확인하세요.</h1>
         <p class="lead">사용량, 대상 유형, 결과, 보고서 상태를 조회합니다.</p>
@@ -224,14 +250,14 @@
       <button class="button" id="adminExportButton" type="button">관리자 보고서 저장</button>
     </section>
 
-    <section class="metrics" aria-label="관리자 요약 지표">
+    <section class="metrics" data-admin-tab-panel="overview" aria-label="관리자 요약 지표">
       <button class="metric" type="button" data-filter-period="오늘"><span>오늘 점검</span><b aria-live="polite">-</b></button>
       <button class="metric" type="button" data-filter-status="승인"><span>승인</span><b aria-live="polite">-</b></button>
       <button class="metric needs" type="button" data-filter-status="배포 미승인"><span>배포 미승인</span><b aria-live="polite">-</b></button>
       <button class="metric review-metric" type="button" data-filter-status="검토·재점검 필요"><span>검토·재점검 필요</span><b aria-live="polite">-</b></button>
     </section>
 
-    <section class="filters" aria-label="점검 이력 필터">
+    <section class="filters" data-admin-tab-panel="overview" aria-label="현황 분석 필터">
       <div class="field"><label for="keyword">검색</label><input id="keyword" placeholder="GitHub URL, 프로젝트명, 파일명"></div>
       <div class="field"><label for="status">점검 결과</label><select id="status"><option>전체 결과</option><option>승인</option><option>고위험 없음</option><option>배포 미승인</option><option>검토·재점검 필요</option></select></div>
       <div class="field"><label for="period">기간</label><select id="period"><option>최근 6개월</option><option>오늘</option><option>이번 달</option><option>최근 30일</option></select></div>
@@ -245,7 +271,7 @@
       <p class="filter-summary" id="filterSummary" aria-live="polite">실제 저장된 점검 이력을 불러오는 중입니다.</p>
     </section>
 
-    <section class="dashboard-grid" aria-label="점검 분석 대시보드">
+    <section class="dashboard-grid" data-admin-tab-panel="overview" aria-label="점검 분석 대시보드">
       <section class="panel-card chart-panel" aria-labelledby="monthly-chart-title">
         <div class="section-head"><h2 id="monthly-chart-title">월별 점검 건수</h2><span id="analyticsSummary">불러오는 중</span></div>
         <div class="chart-frame" id="monthlyChart" role="img" aria-label="월별 점검 건수 꺾은선 그래프"></div>
@@ -260,7 +286,7 @@
       </section>
     </section>
 
-    <section class="dimension-grid" aria-label="점검 이력 통계">
+    <section class="dimension-grid" data-admin-tab-panel="overview" aria-label="점검 이력 통계">
       <section class="panel-card dimension-panel" aria-labelledby="user-stats-title">
         <div class="section-head"><h2 id="user-stats-title">이메일별 점검 이력</h2><span>건수 · 최근 점검일</span></div>
         <ul class="dimension-list" id="userStats" aria-live="polite"></ul>
@@ -275,15 +301,29 @@
       </section>
     </section>
 
-    <section class="content-grid">
+    <section class="filters" data-admin-tab-panel="history" aria-label="점검 이력 검색">
+      <div class="field"><label for="historyKeyword">대상·요청자 검색</label><input id="historyKeyword" placeholder="저장소, 프로젝트명, 이메일, 기관, 부서"></div>
+      <div class="field"><label for="historyStatus">점검 결과</label><select id="historyStatus"><option>전체 결과</option><option>승인</option><option>고위험 없음</option><option>배포 미승인</option><option>검토·재점검 필요</option></select></div>
+      <div class="field"><label for="historyPeriod">기간</label><select id="historyPeriod"><option>최근 6개월</option><option>오늘</option><option>이번 달</option><option>최근 30일</option></select></div>
+      <div class="field"><label for="historyLanguage">개발언어</label><select id="historyLanguage"><option value="">전체</option></select></div>
+      <div class="filter-actions">
+        <button class="button" id="historyFilterApplyButton" type="button">조회</button>
+        <button class="ghost-button" id="historyFilterResetButton" type="button">초기화</button>
+      </div>
+      <p class="filter-summary" id="historyFilterSummary" aria-live="polite">점검 이력을 불러오는 중입니다.</p>
+    </section>
+
+    <section class="content-grid" data-admin-tab-panel="history">
       <div class="panel-card table-panel">
         <div class="section-head">
           <h2>점검 이력</h2>
           <span id="scanHistoryCount">점검 이력을 불러오는 중</span>
+          <label class="page-size" for="scanPageSize">페이지당 <select id="scanPageSize"><option value="10">10건</option><option value="20">20건</option><option value="50">50건</option></select></label>
         </div>
         <ul class="history-list" id="historyList" aria-live="polite">
           <li class="history-item">점검 이력을 불러오는 중입니다.</li>
         </ul>
+        <nav class="pagination" id="scanPager" aria-label="점검 이력 페이지"></nav>
       </div>
 
       <aside class="panel-card detail-panel">
@@ -299,7 +339,7 @@
       </aside>
     </section>
 
-    <section class="panel-card" aria-labelledby="ops-title">
+    <section class="panel-card" data-admin-tab-panel="operations" aria-labelledby="ops-title">
       <div class="section-head">
         <h2 id="ops-title">서버 상태</h2>
         <span>큐·디스크·계정·검토 대기</span>
@@ -313,7 +353,7 @@
       </div>
     </section>
 
-    <section class="panel-card table-panel" aria-labelledby="packages-title">
+    <section class="panel-card table-panel" data-admin-tab-panel="packages" aria-labelledby="packages-title">
       <div class="section-head">
         <h2 id="packages-title">패키지 화이트리스트 근거</h2>
         <span id="packagesCount">불러오는 중</span>
@@ -324,6 +364,13 @@
         <button class="ghost-button sm pkg-filter" type="button" data-pkg-filter="included">담김</button>
         <button class="button sm" id="whitelistExportButton" type="button">화이트리스트 근거 저장</button>
       </div>
+      <div class="list-toolbar" aria-label="패키지 검색">
+        <div class="field"><label for="packageKeyword">패키지 검색</label><input id="packageKeyword" placeholder="패키지명 또는 버전"></div>
+        <div class="field"><label for="packageEcosystem">생태계</label><select id="packageEcosystem"><option value="">전체</option><option value="npm">npm</option><option value="pypi">PyPI</option><option value="maven">Maven</option><option value="nuget">NuGet</option></select></div>
+        <div class="field"><label for="packageWhitelistStatus">목록 상태</label><select id="packageWhitelistStatus"><option value="">전체</option><option value="included">담김</option><option value="excluded">제외</option><option value="unlisted">미분류</option></select></div>
+        <button class="button sm" id="packageSearchButton" type="button">검색</button>
+        <label class="page-size" for="packagePageSize">페이지당 <select id="packagePageSize"><option value="10">10건</option><option value="20">20건</option><option value="50">50건</option></select></label>
+      </div>
       <div class="table-scroll">
         <table class="pkg-table" aria-label="관측된 패키지 목록">
           <thead>
@@ -332,15 +379,22 @@
           <tbody id="packageBody"></tbody>
         </table>
       </div>
+      <nav class="pagination" id="packagePager" aria-label="패키지 목록 페이지"></nav>
       <div class="admin-note">
         이 표의 담기·제외는 승인·차단이 아닙니다. 보안부서가 화이트리스트를 만들 때 쓸 근거 목록을 구성하는 것이며, 모든 변경과 저장은 감사 기록으로 남습니다.
       </div>
     </section>
 
-    <section class="panel-card" aria-labelledby="review-queue-title">
+    <section class="panel-card" data-admin-tab-panel="operations" aria-labelledby="review-queue-title">
       <div class="section-head">
         <h2 id="review-queue-title">보안성검토 요청 대기열</h2>
         <span id="reviewCount">불러오는 중</span>
+        <label class="page-size" for="reviewPageSize">페이지당 <select id="reviewPageSize"><option value="10">10건</option><option value="20">20건</option><option value="50">50건</option></select></label>
+      </div>
+      <div class="list-toolbar" aria-label="보안성검토 요청 검색">
+        <div class="field"><label for="reviewKeyword">요청 검색</label><input id="reviewKeyword" placeholder="대상, 요청자, 기관, 부서"></div>
+        <div class="field"><label for="reviewStatus">점검 결과</label><select id="reviewStatus"><option value="">전체 결과</option><option value="allow">승인</option><option value="quick_complete">고위험 없음</option><option value="blocked">배포 미승인</option><option value="attention">검토·재점검 필요</option></select></div>
+        <button class="button sm" id="reviewSearchButton" type="button">검색</button>
       </div>
       <div class="table-scroll">
         <table class="pkg-table" aria-label="보안성검토 요청 목록">
@@ -350,6 +404,7 @@
           <tbody id="reviewBody"></tbody>
         </table>
       </div>
+      <nav class="pagination" id="reviewPager" aria-label="보안성검토 요청 페이지"></nav>
     </section>
   </main>
 
@@ -398,6 +453,13 @@
     const historyList = document.querySelector(".history-list");
     const detailList = document.querySelector(".detail-list");
     const sectionCount = document.querySelector("#scanHistoryCount");
+    const scanPager = document.querySelector("#scanPager");
+    const scanPageSize = document.querySelector("#scanPageSize");
+    const historyKeywordInput = document.querySelector("#historyKeyword");
+    const historyStatusSelect = document.querySelector("#historyStatus");
+    const historyPeriodSelect = document.querySelector("#historyPeriod");
+    const historyLanguageSelect = document.querySelector("#historyLanguage");
+    const historyFilterSummary = document.querySelector("#historyFilterSummary");
     const metricValues = Array.from(document.querySelectorAll(".metric b"));
     const passwordModal = document.querySelector("#passwordModal");
     const passwordForm = document.querySelector("#passwordForm");
@@ -407,6 +469,74 @@
     const passwordMatchHint = document.querySelector("#passwordMatchHint");
     const passwordInputs = Array.from(passwordForm.querySelectorAll('input[type="password"]'));
     const passwordVisibilityButtons = Array.from(passwordForm.querySelectorAll("[data-password-toggle]"));
+    const adminTabs = Array.from(document.querySelectorAll("[data-admin-tab]"));
+    const adminTabPanels = Array.from(document.querySelectorAll("[data-admin-tab-panel]"));
+    let scanCache = [];
+    let scanPage = 1;
+
+    function activateAdminTab(tabName) {
+      adminTabs.forEach((tab) => {
+        const selected = tab.dataset.adminTab === tabName;
+        tab.setAttribute("aria-selected", String(selected));
+      });
+      adminTabPanels.forEach((panel) => {
+        panel.hidden = panel.dataset.adminTabPanel !== tabName;
+      });
+    }
+
+    adminTabs.forEach((tab) => {
+      tab.addEventListener("click", () => activateAdminTab(tab.dataset.adminTab));
+    });
+    activateAdminTab("overview");
+
+    function paginate(entries, requestedPage, requestedPageSize) {
+      const pageSize = Math.max(1, Number(requestedPageSize) || 10);
+      const totalPages = Math.max(1, Math.ceil(entries.length / pageSize));
+      const page = Math.min(Math.max(1, requestedPage), totalPages);
+      const start = (page - 1) * pageSize;
+      return { page, pageSize, totalPages, start, end: Math.min(start + pageSize, entries.length), entries: entries.slice(start, start + pageSize) };
+    }
+
+    function pageNumbers(currentPage, totalPages) {
+      if (totalPages <= 7) return Array.from({ length: totalPages }, (_, index) => index + 1);
+      const nearby = [1, currentPage - 1, currentPage, currentPage + 1, totalPages]
+        .filter((page) => page >= 1 && page <= totalPages);
+      return [...new Set(nearby)].sort((a, b) => a - b).reduce((pages, page) => {
+        if (pages.length && page - pages[pages.length - 1] > 1) pages.push("…");
+        pages.push(page);
+        return pages;
+      }, []);
+    }
+
+    function renderPager(container, page, totalPages, onPageChange) {
+      container.replaceChildren();
+      container.hidden = totalPages <= 1;
+      if (container.hidden) return;
+      const addButton = (label, targetPage, disabled = false, current = false) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.textContent = label;
+        button.disabled = disabled;
+        button.setAttribute("aria-label", current ? `현재 ${label}페이지` : `${label}페이지로 이동`);
+        if (current) button.setAttribute("aria-current", "page");
+        button.addEventListener("click", () => onPageChange(targetPage));
+        container.append(button);
+      };
+      addButton("<<", 1, page === 1);
+      addButton("<", page - 1, page === 1);
+      pageNumbers(page, totalPages).forEach((value) => {
+        if (value === "…") {
+          const ellipsis = document.createElement("span");
+          ellipsis.className = "ellipsis";
+          ellipsis.textContent = value;
+          container.append(ellipsis);
+        } else {
+          addButton(String(value), value, false, value === page);
+        }
+      });
+      addButton(">", page + 1, page === totalPages);
+      addButton(">>", totalPages, page === totalPages);
+    }
 
     function updatePasswordMatchHint() {
       const newPassword = document.querySelector("#newPassword").value;
@@ -543,6 +673,27 @@
       if (event.key === "Enter") loadAdminData();
     });
 
+    function resetHistoryFilters() {
+      historyKeywordInput.value = "";
+      historyStatusSelect.value = "전체 결과";
+      historyPeriodSelect.value = "최근 6개월";
+      historyLanguageSelect.value = "";
+    }
+
+    document.querySelector("#historyFilterApplyButton").addEventListener("click", refreshHistory);
+    document.querySelector("#historyFilterResetButton").addEventListener("click", () => {
+      resetHistoryFilters();
+      refreshHistory();
+    });
+    [historyStatusSelect, historyPeriodSelect, historyLanguageSelect].forEach((control) => control.addEventListener("change", refreshHistory));
+    historyKeywordInput.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") refreshHistory();
+    });
+    scanPageSize.addEventListener("change", () => {
+      scanPage = 1;
+      renderScans(filteredScans(scanCache, historyFilters()));
+    });
+
     document.querySelectorAll(".history-item").forEach((item) => {
       item.addEventListener("click", () => {
         document.querySelectorAll(".history-item").forEach((history) => history.classList.remove("active"));
@@ -661,6 +812,7 @@
         const next = angle + (entry.value / total) * 360;
         const slice = svgNode("path", { d: piePath(160, 110, 88, angle, next), fill: chartColors[index % chartColors.length], stroke: "#ffffff", "stroke-width": 2, class: "chart-slice", tabindex: 0, role: "button", "aria-label": detailForEntry(entry, total) });
         slice.addEventListener("click", () => selectEntry(entry, index));
+        slice.addEventListener("pointerenter", () => selectEntry(entry, index));
         slice.addEventListener("focus", () => selectEntry(entry, index));
         slice.addEventListener("keydown", (event) => {
           if (event.key === "Enter" || event.key === " ") {
@@ -687,7 +839,7 @@
         dot.className = "legend-dot";
         dot.style.backgroundColor = chartColors[index % chartColors.length];
         const label = document.createElement("span");
-        label.textContent = `${entry.label} ${entry.value}`;
+        label.textContent = `${entry.label} ${Math.round((entry.value / total) * 100)}%`;
         button.append(dot, label);
         button.addEventListener("click", () => selectEntry(entry, index));
         controls[index].button = button;
@@ -699,15 +851,19 @@
       selectEntry(entries[0], 0);
     }
 
-    function periodDates() {
+    function periodDatesFor(periodValue) {
       const today = koreaDateKey();
-      if (periodSelect.value === "오늘") return { from: today, to: today };
-      if (periodSelect.value === "이번 달") return { from: `${today.slice(0, 7)}-01`, to: today };
+      if (periodValue === "오늘") return { from: today, to: today };
+      if (periodValue === "이번 달") return { from: `${today.slice(0, 7)}-01`, to: today };
       const now = new Date();
       const from = new Date(now);
-      if (periodSelect.value === "최근 30일") from.setDate(from.getDate() - 29);
+      if (periodValue === "최근 30일") from.setDate(from.getDate() - 29);
       else from.setMonth(from.getMonth() - 6);
       return { from: koreaDateKey(from), to: today };
+    }
+
+    function periodDates() {
+      return periodDatesFor(periodSelect.value);
     }
 
     function koreaDateKey(value = new Date()) {
@@ -730,9 +886,11 @@
     }
 
     function populateLanguageFilter(languages) {
-      const selected = languageSelect.value;
-      languageSelect.replaceChildren(new Option("전체", ""), ...languages.map((entry) => new Option(entry.label, entry.label)));
-      languageSelect.value = Array.from(languageSelect.options).some((option) => option.value === selected) ? selected : "";
+      [languageSelect, historyLanguageSelect].forEach((select) => {
+        const selected = select.value;
+        select.replaceChildren(new Option("전체", ""), ...languages.map((entry) => new Option(entry.label, entry.label)));
+        select.value = Array.from(select.options).some((option) => option.value === selected) ? selected : "";
+      });
     }
 
     function renderDimensionList(container, entries, valueKey, emptyMessage) {
@@ -808,13 +966,19 @@
     }
 
     function renderScans(scans) {
+      const pageData = paginate(scans, scanPage, scanPageSize.value);
+      scanPage = pageData.page;
+      sectionCount.textContent = scans.length
+        ? `표시 ${pageData.start + 1}-${pageData.end} / ${scans.length}건`
+        : "표시 0 / 0건";
       if (!scans.length) {
         historyList.replaceChildren(Object.assign(document.createElement("li"), { className: "history-item", textContent: "조건에 맞는 점검 이력이 없습니다." }));
-        detailList.replaceChildren();
+        detailList.replaceChildren(Object.assign(document.createElement("li"), { textContent: "점검 이력을 선택하면 상세 내용이 표시됩니다." }));
+        renderPager(scanPager, 1, 1, () => {});
         return;
       }
       historyList.replaceChildren();
-      scans.forEach((scan, index) => {
+      pageData.entries.forEach((scan, index) => {
         const [label, klass] = statusLabel(scan.decision);
         const item = document.createElement("li");
         item.className = `history-item${index === 0 ? " active" : ""}`;
@@ -841,14 +1005,18 @@
         });
         historyList.append(item);
       });
-      updateDetail(scans[0]);
+      updateDetail(pageData.entries[0]);
+      renderPager(scanPager, pageData.page, pageData.totalPages, (nextPage) => {
+        scanPage = nextPage;
+        renderScans(scans);
+      });
     }
 
-    function filteredScans(scans) {
-      const keyword = keywordInput.value.trim().toLowerCase();
+    function filteredScans(scans, controls) {
+      const keyword = controls.keyword.value.trim().toLowerCase();
       const decisionByStatus = { "승인": "allow", "고위험 없음": "quick_complete", "배포 미승인": "blocked", "검토·재점검 필요": "attention" };
-      const expectedDecision = decisionByStatus[statusSelect.value];
-      const dates = periodDates();
+      const expectedDecision = decisionByStatus[controls.status.value];
+      const dates = periodDatesFor(controls.period.value);
       const from = Date.parse(`${dates.from}T00:00:00+09:00`);
       const to = Date.parse(`${dates.to}T23:59:59.999+09:00`);
       return scans.filter((scan) => {
@@ -856,10 +1024,26 @@
         if (!Number.isFinite(createdAt) || createdAt < from || createdAt > to) return false;
         if (expectedDecision === "attention" && !["needs_review", "incomplete"].includes(scan.decision)) return false;
         if (expectedDecision && expectedDecision !== "attention" && scan.decision !== expectedDecision) return false;
-        if (languageSelect.value && !Object.hasOwn(scan.summary?.language_counts || {}, languageSelect.value)) return false;
+        if (controls.language.value && !Object.hasOwn(scan.summary?.language_counts || {}, controls.language.value)) return false;
         if (!keyword) return true;
         return `${scan.id} ${scan.target_type} ${scan.target_label || ""} ${scan.target_name || ""} ${scan.owner_organization || ""} ${scan.owner_department || ""}`.toLowerCase().includes(keyword);
       });
+    }
+
+    function historyFilters() {
+      return { keyword: historyKeywordInput, status: historyStatusSelect, period: historyPeriodSelect, language: historyLanguageSelect };
+    }
+
+    function refreshHistory() {
+      scanPage = 1;
+      const filtered = filteredScans(scanCache, historyFilters());
+      renderScans(filtered);
+      const labels = [];
+      if (historyPeriodSelect.value !== "최근 6개월") labels.push(historyPeriodSelect.value);
+      if (historyStatusSelect.value !== "전체 결과") labels.push(historyStatusSelect.value);
+      if (historyLanguageSelect.value) labels.push(historyLanguageSelect.value);
+      if (historyKeywordInput.value.trim()) labels.push(`검색: ${historyKeywordInput.value.trim()}`);
+      historyFilterSummary.textContent = `${labels.length ? labels.join(" · ") : "최근 6개월 전체 이력"} · ${filtered.length}건`;
     }
 
     // ---- P4: 서버 상태·패키지 근거·검토 대기열 ----
@@ -868,8 +1052,20 @@
     const reviewBody = document.querySelector("#reviewBody");
     const reviewCount = document.querySelector("#reviewCount");
     const whitelistExportButton = document.querySelector("#whitelistExportButton");
+    const packageKeywordInput = document.querySelector("#packageKeyword");
+    const packageEcosystemSelect = document.querySelector("#packageEcosystem");
+    const packageWhitelistStatusSelect = document.querySelector("#packageWhitelistStatus");
+    const packagePageSize = document.querySelector("#packagePageSize");
+    const packagePager = document.querySelector("#packagePager");
+    const reviewKeywordInput = document.querySelector("#reviewKeyword");
+    const reviewStatusSelect = document.querySelector("#reviewStatus");
+    const reviewPageSize = document.querySelector("#reviewPageSize");
+    const reviewPager = document.querySelector("#reviewPager");
     let packageFilter = "all";
     let packageCache = [];
+    let packagePage = 1;
+    let reviewCache = [];
+    let reviewPage = 1;
 
     function formatBytes(bytes) {
       if (!Number.isFinite(bytes)) return "-";
@@ -887,19 +1083,26 @@
 
     function renderPackages() {
       const filtered = packageCache.filter((entry) => {
-        const keyword = keywordInput.value.trim().toLowerCase();
+        const keyword = packageKeywordInput.value.trim().toLowerCase();
         if (keyword && !`${entry.ecosystem} ${entry.package_name} ${entry.latest_version || ""}`.toLowerCase().includes(keyword)) return false;
-        if (ecosystemSelect.value && entry.ecosystem !== ecosystemSelect.value) return false;
-        if (whitelistStatusSelect.value === "included" && entry.whitelist_status !== "included") return false;
-        if (whitelistStatusSelect.value === "excluded" && entry.whitelist_status !== "excluded") return false;
-        if (whitelistStatusSelect.value === "unlisted" && entry.whitelist_status) return false;
+        if (packageEcosystemSelect.value && entry.ecosystem !== packageEcosystemSelect.value) return false;
+        if (packageWhitelistStatusSelect.value === "included" && entry.whitelist_status !== "included") return false;
+        if (packageWhitelistStatusSelect.value === "excluded" && entry.whitelist_status !== "excluded") return false;
+        if (packageWhitelistStatusSelect.value === "unlisted" && entry.whitelist_status) return false;
         if (packageFilter === "risky") return entry.has_vulnerable_observation || entry.has_malicious_observation;
         if (packageFilter === "included") return entry.whitelist_status === "included";
         return true;
       });
-      packagesCount.textContent = `관측 ${packageCache.length}종 · 표시 ${filtered.length}종`;
+      const pageData = paginate(filtered, packagePage, packagePageSize.value);
+      packagePage = pageData.page;
+      packagesCount.textContent = filtered.length
+        ? `관측 ${packageCache.length}종 · 표시 ${pageData.start + 1}-${pageData.end} / ${filtered.length}종`
+        : `관측 ${packageCache.length}종 · 표시 0종`;
       packageBody.innerHTML = "";
-      for (const entry of filtered) {
+      if (!pageData.entries.length) {
+        packageBody.innerHTML = '<tr><td colspan="8">조건에 맞는 패키지가 없습니다.</td></tr>';
+      }
+      for (const entry of pageData.entries) {
         const risk = entry.has_malicious_observation ? "악성 이력" : entry.has_vulnerable_observation ? "취약점 이력" : "";
         const state = entry.whitelist_status === "included"
           ? '<span class="wl-pill wl-included">담김</span>'
@@ -922,6 +1125,10 @@
           </td>`;
         packageBody.appendChild(row);
       }
+      renderPager(packagePager, pageData.page, pageData.totalPages, (nextPage) => {
+        packagePage = nextPage;
+        renderPackages();
+      });
     }
 
     document.querySelectorAll(".pkg-filter").forEach((button) => {
@@ -929,8 +1136,24 @@
         document.querySelectorAll(".pkg-filter").forEach((item) => item.classList.remove("active"));
         button.classList.add("active");
         packageFilter = button.dataset.pkgFilter;
+        packagePage = 1;
         renderPackages();
       });
+    });
+
+    function refreshPackages() {
+      packagePage = 1;
+      renderPackages();
+    }
+
+    document.querySelector("#packageSearchButton").addEventListener("click", refreshPackages);
+    [packageEcosystemSelect, packageWhitelistStatusSelect].forEach((control) => control.addEventListener("change", refreshPackages));
+    packageKeywordInput.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") refreshPackages();
+    });
+    packagePageSize.addEventListener("change", () => {
+      packagePage = 1;
+      renderPackages();
     });
 
     packageBody.addEventListener("click", async (event) => {
@@ -987,30 +1210,67 @@
       try {
         const data = await fetchAdminJson("/api/admin/packages");
         packageCache = data.packages || [];
+        packagePage = 1;
         renderPackages();
       } catch {
         packagesCount.textContent = "패키지 API 연결 필요";
       }
     }
 
+    function renderReviewQueue() {
+      const keyword = reviewKeywordInput.value.trim().toLowerCase();
+      const filtered = reviewCache.filter((item) => {
+        if (reviewStatusSelect.value === "attention" && !["needs_review", "incomplete"].includes(item.decision)) return false;
+        if (reviewStatusSelect.value && reviewStatusSelect.value !== "attention" && item.decision !== reviewStatusSelect.value) return false;
+        if (!keyword) return true;
+        return `${item.target_name || ""} ${item.owner_email || ""} ${item.owner_organization || ""} ${item.owner_department || ""}`.toLowerCase().includes(keyword);
+      });
+      const pageData = paginate(filtered, reviewPage, reviewPageSize.value);
+      reviewPage = pageData.page;
+      reviewCount.textContent = filtered.length
+        ? `표시 ${pageData.start + 1}-${pageData.end} / ${filtered.length}건`
+        : "표시 0 / 0건";
+      reviewBody.innerHTML = "";
+      if (!pageData.entries.length) reviewBody.innerHTML = '<tr><td colspan="6">조건에 맞는 검토 요청이 없습니다.</td></tr>';
+      for (const item of pageData.entries) {
+        const report = (item.reports || []).find((entry) => entry.url && entry.url.startsWith("/reports/"));
+        const row = document.createElement("tr");
+        row.innerHTML = `
+          <td>${escapeHtml(new Date(item.requested_at).toLocaleString("ko-KR"))}</td>
+          <td><b>${escapeHtml(item.target_name || "-")}</b></td>
+          <td>${escapeHtml([item.owner_organization, item.owner_department].filter(Boolean).join(" ") || "-")}</td>
+          <td>${escapeHtml(item.owner_email || "-")}</td>
+          <td>${escapeHtml(statusLabel(item.decision)[0])}</td>
+          <td>${report ? `<a class="report" href="${report.url}" target="_blank" rel="noreferrer">열기</a>` : "-"}</td>`;
+        reviewBody.appendChild(row);
+      }
+      renderPager(reviewPager, pageData.page, pageData.totalPages, (nextPage) => {
+        reviewPage = nextPage;
+        renderReviewQueue();
+      });
+    }
+
+    function refreshReviewQueue() {
+      reviewPage = 1;
+      renderReviewQueue();
+    }
+
+    document.querySelector("#reviewSearchButton").addEventListener("click", refreshReviewQueue);
+    reviewStatusSelect.addEventListener("change", refreshReviewQueue);
+    reviewKeywordInput.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") refreshReviewQueue();
+    });
+    reviewPageSize.addEventListener("change", () => {
+      reviewPage = 1;
+      renderReviewQueue();
+    });
+
     async function loadReviewQueue() {
       try {
         const data = await fetchAdminJson("/api/admin/review-requests");
-        const requests = data.requests || [];
-        reviewCount.textContent = `${requests.length}건`;
-        reviewBody.innerHTML = "";
-        for (const item of requests) {
-          const report = (item.reports || []).find((entry) => entry.url && entry.url.startsWith("/reports/"));
-          const row = document.createElement("tr");
-          row.innerHTML = `
-            <td>${escapeHtml(new Date(item.requested_at).toLocaleString("ko-KR"))}</td>
-            <td><b>${escapeHtml(item.target_name || "-")}</b></td>
-            <td>${escapeHtml([item.owner_organization, item.owner_department].filter(Boolean).join(" ") || "-")}</td>
-            <td>${escapeHtml(item.owner_email || "-")}</td>
-            <td>${escapeHtml(statusLabel(item.decision)[0])}</td>
-            <td>${report ? `<a class="report" href="${report.url}" target="_blank" rel="noreferrer">열기</a>` : "-"}</td>`;
-          reviewBody.appendChild(row);
-        }
+        reviewCache = data.requests || [];
+        reviewPage = 1;
+        renderReviewQueue();
       } catch {
         reviewCount.textContent = "검토 API 연결 필요";
       }
@@ -1026,18 +1286,10 @@
         metricValues[1].textContent = `${summary.allow}건`;
         metricValues[2].textContent = `${summary.blocked}건`;
         metricValues[3].textContent = `${summary.attention}건`;
-        const filtered = filteredScans(scansData.scans || []);
-        sectionCount.textContent = `표시 ${filtered.length}건 / 전체 ${summary.total}건`;
+        scanCache = scansData.scans || [];
         renderOps(summary);
-        renderScans(filtered);
-        const labels = [];
-        if (periodSelect.value !== "최근 6개월") labels.push(periodSelect.value);
-        if (statusSelect.value !== "전체 결과") labels.push(statusSelect.value);
-        if (keywordInput.value.trim()) labels.push(`검색: ${keywordInput.value.trim()}`);
-        if (ecosystemSelect.value) labels.push(ecosystemSelect.value);
-        if (languageSelect.value) labels.push(languageSelect.value);
-        if (whitelistStatusSelect.value) labels.push(whitelistStatusSelect.options[whitelistStatusSelect.selectedIndex].text);
-        filterSummary.textContent = `${labels.length ? labels.join(" · ") : "최근 6개월 전체 이력"} · ${filtered.length}건 표시`;
+        refreshHistory();
+        filterSummary.textContent = "현황 분석 조건을 적용했습니다.";
       } catch (error) {
         sectionCount.textContent = "이력 API 연결 필요";
         filterSummary.textContent = "필터 결과를 불러오지 못했습니다.";

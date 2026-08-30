@@ -309,6 +309,16 @@ async function assertAdminDashboardSurface() {
   assert.ok(html.includes("grid-column: 1 / -1") && html.includes("조건에 맞는 점검 이력이 없습니다.")
     && html.includes("chart-frame-pie") && html.includes("chart-detail") && html.includes("aria-pressed"),
   "charts must reserve their own legend/detail space and expose keyboard-accessible real-data details");
+  assert.ok(["overview", "history", "packages", "operations"].every((tab) => html.includes(`data-admin-tab=\"${tab}\"`))
+    && html.includes('function activateAdminTab') && html.includes('activateAdminTab("overview")'),
+  "administrator functions must be separated into working tabs with a deterministic initial tab");
+  assert.ok(html.includes('id="historyKeyword"') && html.includes('id="packageKeyword"') && html.includes('id="reviewKeyword"')
+    && html.includes('id="scanPager"') && html.includes('id="packagePager"') && html.includes('id="reviewPager"')
+    && html.includes('id="scanHistoryCount"') && html.includes('id="reviewCount"')
+    && html.includes('function paginate') && html.includes('function renderPager'),
+  "history, package, and review tabs must each provide independent search and board-style pagination");
+  assert.ok(html.includes('pageSize') && html.includes('Math.round((entry.value / total) * 100)') && html.includes('pointerenter'),
+  "all chart legends must show a composition percentage while pointer interaction reveals the accumulated value");
   assert.ok(!html.includes("익명 점검 #A1042") && !html.includes("예약 현황 대시보드") && !html.includes(">12건<"),
     "admin page must not display fabricated history or metric values before the API responds");
   assert.ok(["currentPassword", "newPassword", "confirmPassword"].every((id) => html.includes(`data-password-toggle="${id}"`))
