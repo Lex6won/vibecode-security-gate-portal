@@ -203,9 +203,10 @@ async function assertLocalPickerContract() {
   assert.ok(html.includes('error.name === "AbortError"') && html.includes('저장 위치 선택을 취소했습니다.'), "save-location cancellation must be shown as guidance, not a browser error");
   assert.ok(html.includes('targetSelectionInFlight'), "native target picker must prevent duplicate picker windows");
 
-  // 외부 포털은 Cloudflare Access가 인증하므로 별도 로그인·상단 보관 안내를 노출하지 않는다.
-  assert.ok(!html.includes('id="loginGate"') && !html.includes('id="requestLoginLink"'),
-    "scan page must not duplicate Cloudflare Access with a portal email-login card");
+  // LAN 직접 접속(관문 없음)에서도 로그인할 수 있도록 이메일 매직링크 게이트를 노출한다.
+  // 관문(Access) 경로에서는 establishAccessSession 이 자동 로그인하므로 게이트가 뜨지 않는다(이중 로그인 아님).
+  assert.ok(html.includes('id="loginGate"') && html.includes('id="requestLoginLink"'),
+    "scan page must expose the email magic-link login gate for direct (non-Access) LAN access");
   assert.ok(html.includes('async function establishAccessSession()') && html.includes('"/api/auth/access-login"'),
     "scan page must automatically establish a portal session from Cloudflare Access");
   assert.ok(!html.includes('id="dataNotice"'), "scan page must not repeat the top-level retention notice");

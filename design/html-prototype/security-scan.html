@@ -508,6 +508,26 @@
         </div>
       </header>
 
+      <section class="panel-card" id="loginGate" hidden aria-labelledby="login-title" style="margin-bottom:14px; padding:22px 24px;">
+        <h2 id="login-title" style="margin:0 0 6px; font-size:19px; font-weight:900;">기관 메일로 로그인</h2>
+        <p style="margin:0 0 4px;">비밀번호 없이, 기관 메일 주소로 1회용 로그인 링크를 받아 접속합니다.</p>
+        <p id="loginNote" style="margin:0 0 12px; font-size:13px; color:var(--muted);">허용 메일: @gg.go.kr, @korea.kr</p>
+        <div id="accessLoginArea" hidden>
+          <p style="margin:0 0 10px;" id="accessLoginWho">확인 중</p>
+          <button class="button" id="accessLoginButton" type="button">바로 시작하기</button>
+          <p id="accessLoginNote" style="margin:8px 0 0; font-size:13px; color:var(--muted);"></p>
+        </div>
+        <div class="input-row" id="magicLoginRow" style="display:flex; flex-wrap:wrap; gap:10px; align-items:end;">
+          <label class="login-field" style="flex:1 1 260px; display:grid; gap:5px;"><span style="font-size:13px; font-weight:800;">기관 이메일</span>
+            <input id="loginEmail" type="email" placeholder="이름@gg.go.kr" autocomplete="email" style="padding:11px 12px; border:1px solid var(--line); border-radius:10px; font-size:14px;"></label>
+          <button class="button" id="requestLoginLink" type="button" style="min-height:46px;">로그인 링크 받기</button>
+        </div>
+        <div id="devLoginArea" hidden style="margin-top:10px;">
+          <p style="font-size:13px; color:var(--muted); margin-bottom:6px;">메일 발송이 연결되기 전이라 링크를 화면에 표시합니다. 아래를 누르면 로그인됩니다.</p>
+          <a class="button" id="devLoginLink" href="/auth/complete">로그인 완료하기</a>
+        </div>
+      </section>
+
       <nav class="flow-progress" id="scanFlowProgress" aria-label="보안점검 4단계" hidden>
         <ol class="flow-progress-list">
           <li class="flow-progress-item" data-flow-item="1" data-state="active">
@@ -1277,14 +1297,40 @@
     });
 
     // Cloudflare Access가 검증한 이메일로 포털 세션을 자동 생성한다.
+    // 단, LAN IP 직접 접속(관문 없음)에서는 자동 로그인이 성립하지 않으므로
+    // 이메일 매직링크 로그인 게이트를 표시해 로그인할 수 있게 한다.
     const scanGrid = document.querySelector(".scan-grid");
+    const loginGate = document.querySelector("#loginGate");
+    const loginEmail = document.querySelector("#loginEmail");
+    const requestLoginLink = document.querySelector("#requestLoginLink");
+    const devLoginArea = document.querySelector("#devLoginArea");
+    const devLoginLink = document.querySelector("#devLoginLink");
+    const loginNote = document.querySelector("#loginNote");
+    const accessLoginArea = document.querySelector("#accessLoginArea");
+    const accessLoginWho = document.querySelector("#accessLoginWho");
+    const accessLoginButton = document.querySelector("#accessLoginButton");
+    const accessLoginNote = document.querySelector("#accessLoginNote");
+    const magicLoginRow = document.querySelector("#magicLoginRow");
     let sessionProfileComplete = false;
     let accessLoginInFlight = false;
+
+    // 관문(Access)을 통과했지만 자동 로그인이 안 된 경우: 한 번의 클릭으로 시작하게 한다.
+    function applyAccessShortcut(session) {
+      const accessEmail = session && !session.logged_in ? session.access_email : null;
+      accessLoginArea.hidden = !accessEmail;
+      magicLoginRow.hidden = Boolean(accessEmail);
+      if (loginNote) loginNote.hidden = Boolean(accessEmail);
+      if (!accessEmail) return;
+      accessLoginWho.textContent = `보안 관문에서 ${accessEmail} 인증을 확인했습니다. 별도 로그인 없이 시작할 수 있습니다.`;
+    }
 
     function applySession(session) {
       const loggedIn = Boolean(session && session.logged_in);
       sessionSnapshot = loggedIn ? session : null;
       sessionProfileComplete = Boolean(loggedIn && String(session.organization || "").trim() && String(session.department || "").trim());
+      applyAccessShortcut(session);
+      document.body.classList.toggle("logged-out", !loggedIn);
+      loginGate.hidden = loggedIn;
       scanGrid.style.display = loggedIn ? "" : "none";
       scanFlowProgress.hidden = !loggedIn;
     }
@@ -1327,6 +1373,65 @@
 
     loadSession();
     updateStepStates();
+
+    requestLoginLink.addEventListener("click", async () => {
+      requestLoginLink.disabled = true;
+      requestLoginLink.textContent = "요청 중";
+      try {
+        const response = await fetch("/api/auth/request-link", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: loginEmail.value.trim() })
+        });
+        const result = await response.json();
+        loginNote.hidden = false;
+        if (response.ok) {
+          if (result.dev_login_url) {
+            devLoginArea.hidden = false;
+            devLoginLink.href = result.dev_login_url;
+            loginNote.textContent = `링크는 ${result.expires_in_minutes}분 동안 1회만 쓸 수 있습니다.`;
+          } else {
+            loginNote.textContent = result.message || "메일로 보낸 링크를 열면 로그인됩니다.";
+          }
+        } else {
+          loginNote.textContent = result.message || "요청하지 못했습니다. 입력을 확인해 주세요.";
+        }
+      } catch {
+        loginNote.hidden = false;
+        loginNote.textContent = "요청하지 못했습니다. 연결을 확인해 주세요.";
+      } finally {
+        requestLoginLink.disabled = false;
+        requestLoginLink.textContent = "로그인 링크 받기";
+      }
+    });
+
+    accessLoginButton.addEventListener("click", async () => {
+      accessLoginButton.disabled = true;
+      accessLoginNote.textContent = "";
+      try {
+        const response = await fetch("/api/auth/access-login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({})
+        });
+        const result = await response.json();
+        if (response.ok) { window.location.reload(); return; }
+        accessLoginNote.textContent = result.message || "시작하지 못했습니다. 다시 시도해 주세요.";
+      } catch {
+        accessLoginNote.textContent = "연결을 확인해 주세요.";
+      } finally {
+        accessLoginButton.disabled = false;
+      }
+    });
+
+    loginEmail.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" && !requestLoginLink.disabled) requestLoginLink.click();
+    });
+
+    if (new URLSearchParams(window.location.search).get("auth") === "expired") {
+      loginNote.hidden = false;
+      loginNote.textContent = "로그인 링크가 만료되었거나 이미 사용되었습니다. 새 링크를 다시 받아 주세요.";
+    }
 
     const resultSource = document.querySelector("#resultSource");
     const resultRetention = document.querySelector("#resultRetention");
