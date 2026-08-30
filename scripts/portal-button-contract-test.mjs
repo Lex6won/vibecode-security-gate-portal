@@ -249,7 +249,7 @@ async function assertToolsGuidePage() {
   // 하네스 release-index.json을 소비해 설치 파일을 내려받고, 클릭 후 설치 단계로 자동 전환한다.
   assert.ok(html.includes('id="harnessInstallerDownload"') && html.includes('fetch("/api/harness/release"')
     && html.includes('window.setTimeout(() => showHarnessStep(2), 250)'), "installer download must advance directly to the installation step");
-  assert.ok(html.includes("시작 메뉴</b>에서 <b>VibeCode Harness Manager"), "install guidance must say where the Manager actually is (Start Menu) — the demo installer does not auto-launch it");
+  assert.ok(html.includes("VibeCode Harness Manager</b>가 자동으로 열립니다. 열리지 않으면 <b>시작 메뉴</b>"), "install guidance must make the Manager auto-launch the primary path and Start Menu the fallback");
   assert.ok(html.includes('id="unsignedInstallNotice"') && html.includes("알 수 없는 게시자") && html.includes("추가 정보 → 실행"), "unsigned installer guidance must tell users the exact Windows action");
   assert.ok(html.includes("설치 완료 · 설정하기") && html.includes("3단계 · 설정"), "installation completion must lead users into project setup");
   assert.ok(html.includes('class="harness-step-label">내려받기</span>')

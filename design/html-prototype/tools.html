@@ -267,7 +267,7 @@
           <ol class="instruction-list">
             <li>다운로드가 끝나면 브라우저의 <b>다운로드</b>에서 설치 파일을 실행합니다.</li>
             <li>Windows 설치 창에서 <b>설치</b>를 누릅니다.</li>
-            <li>설치가 끝나면 <b>시작 메뉴</b>에서 <b>VibeCode Harness Manager</b>를 실행합니다.</li>
+            <li>설치가 끝나면 <b>VibeCode Harness Manager</b>가 자동으로 열립니다. 열리지 않으면 <b>시작 메뉴</b>에서 실행합니다.</li>
           </ol>
           <div class="unsigned-install-notice" id="unsignedInstallNotice" hidden></div>
         </div>
@@ -288,9 +288,8 @@
           <h2>Manager에서 적용</h2>
           <ol class="instruction-list">
             <li><b>프로젝트 폴더</b>를 선택합니다.</li>
-            <li><b>AI 도구</b>에서 Codex, Claude Code 또는 함께 사용을 선택합니다.</li>
-            <li><b>개발 방식</b>과 <b>점검 수준</b>을 선택한 뒤 적용합니다.</li>
-            <li>적용 결과에서 지침 파일과 검증 기준이 생성됐는지 확인합니다.</li>
+            <li>사용할 <b>AI 도구</b>, <b>개발 방식</b>, <b>점검 수준</b>을 선택합니다.</li>
+            <li><b>적용</b>을 누른 뒤 완료 메시지를 확인합니다.</li>
           </ol>
         </div>
         <div class="instruction-block">
@@ -413,7 +412,7 @@
         }
         if (data.is_demo) {
           unsignedInstallNotice.hidden = false;
-          unsignedInstallNotice.innerHTML = `이 포털에서 받은 설치 파일이 맞다면 Windows의 <b>“알 수 없는 게시자”</b> 안내에서 <b>추가 정보 → 실행</b>을 누르세요.`;
+          unsignedInstallNotice.innerHTML = `Windows의 <b>“알 수 없는 게시자”</b> 안내가 보이면 <b>추가 정보 → 실행</b>을 누르세요.`;
         }
         heroArea.innerHTML = `
           <a class="big-download" id="harnessInstallerDownload" href="${escapeHtml(data.download_url)}" target="_blank" rel="noreferrer noopener">
