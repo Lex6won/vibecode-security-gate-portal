@@ -34,13 +34,17 @@ const EXIT_WARN = 1;
 const EXIT_BLOCK = 2;
 
 /**
- * 체커(gvskb)를 찾을 수 없는 PATH — "체커가 없는 환경"을 실제로 만들어 본다.
- * 인터프리터 자체는 남겨야 게이트가 돌기 때문에, 그 디렉터리만 남긴다.
+ * "체커가 없는 환경"을 만든다.
+ *
+ * 처음에는 PATH 에서 체커를 빼는 식으로 했다가 원격 CI 에서 깨졌다. 두 가지가
+ * 틀렸다. 게이트는 체커를 PATH 가 아니라 **모듈 import** 로 찾으므로 PATH 로는
+ * 없는 상태를 만들 수 없고, 그 필터는 Windows 디렉터리 이름을 전제해 Linux 에서
+ * PATH 를 통째로 비워 인터프리터조차 띄우지 못했다.
+ *
+ * 그래서 게이트가 제공하는 명시적 이음매를 쓴다: 가져올 모듈 이름을 바꿔 실제
+ * ImportError 를 일으킨다. 실제 "미설치"와 같은 경로를 같은 방식으로 지난다.
  */
-function minimalPath() {
-  const keep = (process.env.PATH || "").split(";").filter((entry) => /[\\/](?:anaconda3|System32|nodejs)$/i.test(entry.replace(/[\\/]+$/, "")));
-  return keep.join(";");
-}
+const WITHOUT_CHECKER = { ...process.env, GVSKB_GATE_CHECKER_MODULE: "gvskb_intentionally_missing_for_smoke_test" };
 
 /** CI 는 이 스위치로 "인터프리터가 없어 못 했다"를 실패로 바꾼다. */
 const REQUIRE_CHECKER = process.env.PORTAL_REQUIRE_CHECKER === "1";
@@ -166,8 +170,7 @@ if (command === null) {
   //    예전에는 checker_error 경로가 일찍 돌아가 E2 사람검토 판단에 닿지 못했고,
   //    기본 모드(MONITOR)와 겹쳐 **E2 인데 action=pass · 종료 코드 0** 이 나왔다.
   //    체커가 답을 못 할 때야말로 절차 요건이 적용돼야 한다.
-  const withoutChecker = { ...process.env, PATH: minimalPath(), Path: minimalPath() };
-  const e2 = spawnSync(command, [pypiGate, "check", "requests", "--version", "2.32.3", "--env-grade", "E2", "--json"], { encoding: "utf8", env: withoutChecker });
+  const e2 = spawnSync(command, [pypiGate, "check", "requests", "--version", "2.32.3", "--env-grade", "E2", "--json"], { encoding: "utf8", env: WITHOUT_CHECKER });
   const e2Output = textOf(e2);
   assertLoaded(e2Output, "PyPI");
   let e2Decision;
@@ -176,14 +179,12 @@ if (command === null) {
   } catch {
     assert.fail(`E2 판정 JSON 을 읽을 수 없습니다:\n${e2Output}`);
   }
-  if (e2Decision.checker_verdict === "checker_unavailable") {
-    assert.equal(e2Decision.requires_human_review, true, "체커가 없어도 E2 사람검토 요건은 남아야 합니다");
-    assert.equal(e2Decision.action, "block", "체커가 없다고 E2 를 통과시키면 안 됩니다");
-    assert.equal(e2.status, EXIT_BLOCK, `E2(체커 없음)는 BLOCK(2)이어야 합니다(${e2.status})`);
-  } else {
-    // 이 PC 에 체커가 있어 정상 판정이 나온 경우. 그래도 E2 요건은 그대로다.
-    assert.equal(e2Decision.requires_human_review, true, "E2 는 검사 결과와 무관하게 사람검토 대상입니다");
-  }
+  // 이음매가 실제로 작동했는지부터 확인한다 — 체커가 있는 PC 에서 정상 판정이
+  // 나와 버리면 이 테스트는 '체커 없음' 경로를 본 것이 아니다.
+  assert.equal(e2Decision.checker_verdict, "checker_unavailable", `체커 없음 경로를 타지 않았습니다: ${e2Decision.checker_verdict}`);
+  assert.equal(e2Decision.requires_human_review, true, "체커가 없어도 E2 사람검토 요건은 남아야 합니다");
+  assert.equal(e2Decision.action, "block", "체커가 없다고 E2 를 통과시키면 안 됩니다");
+  assert.equal(e2.status, EXIT_BLOCK, `E2(체커 없음)는 BLOCK(2)이어야 합니다(${e2.status})`);
 }
 
 // ---------------------------------------------------------------------------
