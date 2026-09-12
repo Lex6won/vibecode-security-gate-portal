@@ -39,6 +39,22 @@ function check(name, fn) {
   }
 }
 
+/**
+ * 개발 PC 에서는 체커가 없을 수 있고, 그때는 확인하지 못한 항목을 건너뛴다.
+ * **CI 에서는 건너뛰기를 금지한다** — 건너뛴 항목이 있는 통과는 "확인했다"가
+ * 아니라 "확인하지 않았다"이고, 초록불 아래에서 그 차이는 보이지 않는다.
+ *
+ * CI 는 `PORTAL_REQUIRE_CHECKER=1` 로 이 스위치를 켠다.
+ */
+const REQUIRE_CHECKER = process.env.PORTAL_REQUIRE_CHECKER === "1";
+
+function skip(reason) {
+  if (REQUIRE_CHECKER) {
+    throw new Error(`${reason}\n    PORTAL_REQUIRE_CHECKER=1 에서는 건너뛸 수 없습니다 — 체커를 설치하세요.`);
+  }
+  skipped.push(reason);
+}
+
 /** 체커 ScanReport 의 최소 골격. 시나리오별로 필요한 부분만 덮어쓴다. */
 function report(overrides = {}) {
   return {
@@ -406,15 +422,20 @@ check("골든: 차단 사유를 화면에 옮길 수 있다", () => {
   assert.ok(first.labels.length > 0, "차단 사유 라벨이 있어야 한다");
 });
 
-check("골든: 엔진 상태가 실제로 채워져 있다(semgrep 미가용이 드러난다)", () => {
+check("골든: 엔진 상태가 실제로 채워져 있다", () => {
+  // 예전에는 `unavailable[0].name === "semgrep"` 을 요구했다. 그 fixture 가
+  // Windows 에서 만들어졌기 때문인데, **만든 PC 의 사정을 계약으로 굳힌 것**이다.
+  // semgrep 이 깔린 곳(리눅스 CI)에서 재생성하면 그 배열은 비고, 계약은 아무것도
+  // 바뀌지 않았는데 테스트가 깨진다. 검증할 것은 "어느 엔진이 빠졌나"가 아니라
+  // **빠진 엔진이 사유와 함께 값으로 드러나는가** 이다.
   const status = engineStatus(golden);
   assert.equal(status.known, true, "실제 산출물이면 엔진 목록이 있어야 한다");
-  assert.ok(status.used.includes("regex"));
-  assert.equal(
-    status.unavailable[0].name, "semgrep",
-    "이 산출물은 Windows 에서 만들어졌다 — semgrep 미수행이 값으로 드러나야 한다"
-  );
-  assert.ok(status.unavailable[0].reason, "무엇을 잃었는지 사유가 있어야 한다");
+  assert.ok(status.used.includes("regex"), "정규식 검사는 어느 환경에서나 수행된다");
+  assert.ok(Array.isArray(status.unavailable), "미수행 엔진 목록은 배열이어야 한다");
+  for (const engine of status.unavailable) {
+    assert.ok(engine.name, "미수행 엔진의 이름이 있어야 한다");
+    assert.ok(engine.reason, `무엇을 잃었는지 사유가 있어야 한다: ${engine.name}`);
+  }
 });
 
 check("골든: fixture 가 설치된 체커 버전과 일치한다(낡은 fixture 방지)", () => {
@@ -435,17 +456,18 @@ check("골든: fixture 가 설치된 체커 버전과 일치한다(낡은 fixtur
     if (attempt.status === 0) { probe = attempt; break; }
   }
   if (probe === null) {
-    skipped.push("fixture 버전 대조 — 이 PC 에 gvskb 가 없어 확인하지 못했습니다");
+    skip("fixture 버전 대조 — 이 PC 에 gvskb 가 없어 확인하지 못했습니다");
     return;
   }
   const installed = String(probe.stdout || "").trim().split(/\s+/).pop();
   assert.equal(
     golden.engine_version, installed,
     `fixture 가 낡았습니다(fixture ${golden.engine_version} ≠ 설치 ${installed}).\n`
-    + "    체커 저장소에서 새 산출물을 만들어 교체하세요:\n"
-    + "      gvskb scan <대상> --format json --check-deps -o tmp/golden\n"
-    + "      cp tmp/golden.json fixtures/checker-reports/gate-blocked-by-kev.json\n"
-    + "    (소스는 깨끗한데 패키지가 차단되는 대상을 쓰세요 — 그 조합이 이 fixture 의 요점입니다.)"
+    + "    재생성 명령과 입력 데이터는 체커 저장소의 스크립트에 고정돼 있습니다.\n"
+    + "    손으로 대상을 고르지 말고 그 스크립트를 쓰세요:\n"
+    + "      python scripts/regenerate_portal_fixture.py \\\n"
+    + "        --out <이 저장소>/fixtures/checker-reports/gate-blocked-by-kev.json\n"
+    + "    (스크립트가 '소스는 깨끗한데 패키지가 막는' 조합을 스스로 확인하고, 깨지면 쓰지 않습니다.)"
   );
 });
 
@@ -464,6 +486,14 @@ if (failures.length > 0) {
   for (const failure of failures) console.error(`  ✗ ${failure}`);
   process.exit(1);
 }
+// 건너뛴 항목이 남았는데 통과로 끝나면, 그 사실은 초록불 아래에 묻힌다.
+// skip() 이 이미 막지만 여기서 한 번 더 닫는다 — 나중에 다른 경로로 skipped 에
+// 밀어 넣는 코드가 생겨도 CI 는 통과하지 않는다.
+if (REQUIRE_CHECKER && skipped.length > 0) {
+  console.error(`checker contract test FAILED — PORTAL_REQUIRE_CHECKER=1 인데 건너뛴 항목이 있습니다 (${skipped.length}건)`);
+  for (const note of skipped) console.error(`  ✗ 건너뜀: ${note}`);
+  process.exit(1);
+}
 // 확인하지 못한 것은 통과로 바꿔 말하지 않는다 — 건너뛴 항목은 드러낸다.
 for (const note of skipped) console.log(`  · 건너뜀: ${note}`);
-console.log("checker contract test passed");
+console.log(`checker contract test passed${REQUIRE_CHECKER ? " (체커 필수 모드)" : ""}`);

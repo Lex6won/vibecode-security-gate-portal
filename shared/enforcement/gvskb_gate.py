@@ -20,6 +20,24 @@ import sys
 from pathlib import Path
 from typing import Any
 
+# 출력 스트림을 UTF-8 로 고정한다.
+#
+# 이 게이트의 판정 사유는 한국어로 적혀 있고 '—' 같은 문자가 섞인다. 한글
+# Windows 의 기본 콘솔 코드페이지(cp949)는 그 문자를 인코딩하지 못해서,
+# **판정을 다 해 놓고 그것을 화면에 쓰다가** UnicodeEncodeError 로 죽었다.
+#
+# 그냥 죽는 것으로 끝나지 않았다. 종료 코드가 1(WARN)이 되는데, npm 쪽
+# 래퍼(gvskb_gate.js)는 2(BLOCK)만 차단으로 보므로 **차단해야 할 패키지의
+# 설치가 그대로 진행됐다.** 크래시가 설치 허가로 바뀌는 경로였다.
+#
+# 환경변수 PYTHONIOENCODING 으로 덮는 것은 해결이 아니다 — 사용자는 이
+# 게이트를 자기 터미널에서 직접 실행하고(AGENTS.md 안내), 그 터미널은 그대로다.
+for _stream in (sys.stdout, sys.stderr):
+    # errors="replace" — 인코딩 문제로 판정 자체가 사라지는 것보다는
+    # 글자 하나가 깨져 나오는 편이 낫다.
+    if hasattr(_stream, "reconfigure"):
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+
 
 EXIT_PASS = 0
 EXIT_WARN = 1
@@ -254,6 +272,42 @@ def mode_action_for_unknown(mode: str, source_scope: str) -> str:
     return "block" if source_scope in {"single", "direct", "manifest_direct", ""} else "warn"
 
 
+def apply_env_grade_review(
+    env_grade: str,
+    *,
+    status: str,
+    verdict: str,
+    action: str,
+    reasons: list[str],
+) -> tuple[str, bool]:
+    """실행환경 등급에 따른 사람 검토 요건을 적용한다.
+
+    체커의 판정 내용에 딸린 것이 아니라 **절차 요건**이다. 그래서 체커가
+    정상 판정한 경로와 답하지 못한 경로(checker_unavailable) **양쪽에서**
+    똑같이 적용돼야 한다. 한 곳에만 두었더니 다른 경로에서 조용히 빠졌다.
+
+    이미 사람 검토를 거친 것(기관 승인 목록·레지스트리 승인)은 다시 묻지 않는다.
+
+    ``reasons`` 는 제자리에서 덧붙인다. 반환값은 (조정된 action, 사람 검토 필요 여부).
+    """
+    if (
+        env_grade not in HUMAN_REVIEW_ENV_GRADES
+        or status in PRIOR_REVIEW_CATALOG_STATUSES
+        or verdict in PRIOR_REVIEW_CHECKER_VERDICTS
+    ):
+        return action, False
+
+    reasons.append(
+        f"실행환경 등급 {env_grade}(내부 서버·공용 환경·CI)에서는 새 외부 패키지의 "
+        "자동 설치를 허용하지 않습니다 — 검사 결과와 무관한 절차 요건입니다."
+    )
+    reasons.append(
+        "조치: 보안담당자 확인을 받거나, 기관 승인 목록(approved-packages.yaml) 또는 "
+        "레지스트리 승인을 거친 뒤 다시 시도하세요."
+    )
+    return stronger_action(action, "block"), True
+
+
 def evaluate_package(
     *,
     name: str,
@@ -287,6 +341,17 @@ def evaluate_package(
     if checker_error:
         action = mode_action_for_unknown(mode, source_scope)
         reasons.append(checker_error)
+        # 체커가 답하지 못한 경우에도 실행환경 등급 요건은 그대로 적용한다.
+        #
+        # 예전에는 여기서 바로 돌아가느라 아래의 E2 판단에 닿지 못했고, 기본
+        # 모드(MONITOR)와 겹치면 **E2 인데도 action=pass · 종료 코드 0** 이 나왔다.
+        # requires_human_review 필드조차 없었다.
+        #
+        # E2 사람 검토는 체커의 판정 내용에 딸린 것이 아니라 **절차 요건**이다.
+        # 체커가 답을 못 할 때야말로 적용돼야 하는데 오히려 건너뛰고 있었다.
+        action, requires_human_review = apply_env_grade_review(
+            env_grade, status=status, verdict="checker_unavailable", action=action, reasons=reasons
+        )
         return {
             "action": action,
             "reasons": reasons,
@@ -295,6 +360,7 @@ def evaluate_package(
             "version": version,
             "mode": mode,
             "env_grade": env_grade,
+            "requires_human_review": requires_human_review,
             "catalog_status": status,
             "checker_verdict": "checker_unavailable",
             "source_scope": source_scope,
@@ -363,22 +429,9 @@ def evaluate_package(
 
     # 실행환경 등급에 따른 사람 검토 — **맨 마지막에** 판단한다.
     # 위의 모든 검사가 통과해도(깨끗해도) E2 는 자동 설치되지 않는다.
-    requires_human_review = False
-    if (
-        env_grade in HUMAN_REVIEW_ENV_GRADES
-        and status not in PRIOR_REVIEW_CATALOG_STATUSES
-        and verdict not in PRIOR_REVIEW_CHECKER_VERDICTS
-    ):
-        requires_human_review = True
-        action = stronger_action(action, "block")
-        reasons.append(
-            f"실행환경 등급 {env_grade}(내부 서버·공용 환경·CI)에서는 새 외부 패키지의 "
-            "자동 설치를 허용하지 않습니다 — 검사 결과와 무관한 절차 요건입니다."
-        )
-        reasons.append(
-            "조치: 보안담당자 확인을 받거나, 기관 승인 목록(approved-packages.yaml) 또는 "
-            "레지스트리 승인을 거친 뒤 다시 시도하세요."
-        )
+    action, requires_human_review = apply_env_grade_review(
+        env_grade, status=status, verdict=verdict, action=action, reasons=reasons
+    )
 
     if not reasons:
         reasons.append("체커와 하네스 정책 기준에서 설치 차단 사유가 없습니다.")

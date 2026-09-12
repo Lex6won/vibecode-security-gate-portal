@@ -18,6 +18,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+// Python 게이트와 같은 값을 쓴다(gvskb_gate.py). 두 곳에서 다르면 차단이
+// 경고로 읽히는 종류의 사고가 난다.
+const EXIT_WARN = 1;
+const EXIT_BLOCK = 2;
 const EXIT_USAGE = 64;
 const EXIT_NOT_INSTALLED = 65;
 
@@ -127,6 +131,18 @@ function parseArgs(argv) {
   return options;
 }
 
+/**
+ * 게이트를 실행하지 못했거나 죽었으면 **막는 쪽**으로 끝낸다.
+ *
+ * 예전에는 `result.status ?? 1` 이었다. 1 은 WARN 이라 "판정을 받지 못했다"가
+ * "경고지만 진행해도 된다"로 읽혔다. 판정을 받지 못한 것은 통과가 아니다.
+ */
+function exitStatusOf(result, label) {
+  if (typeof result.status === "number") return result.status;
+  console.error(`[gvskb-gate] ${label}: 게이트를 실행하지 못했습니다. 판정 없이 진행하지 않습니다.`);
+  return EXIT_BLOCK;
+}
+
 function runPythonGate(args, capture = false) {
   const python = resolvePython();
   if (!python) {
@@ -153,7 +169,7 @@ function checkCommand(options) {
   if (options.envGrade) args.push("--env-grade", options.envGrade);
   if (options.json) args.push("--json");
   const result = runPythonGate(args, false);
-  process.exit(result.status ?? 1);
+  process.exit(exitStatusOf(result, "BLOCK"));
 }
 
 function verifyManifestCommand(options) {
@@ -162,7 +178,7 @@ function verifyManifestCommand(options) {
   if (options.envGrade) args.push("--env-grade", options.envGrade);
   if (options.json) args.push("--json");
   const result = runPythonGate(args, false);
-  process.exit(result.status ?? 1);
+  process.exit(exitStatusOf(result, "BLOCK"));
 }
 
 function installCommand(options) {
@@ -173,29 +189,50 @@ function installCommand(options) {
   if (options.envGrade) args.push("--env-grade", options.envGrade);
 
   const check = runPythonGate(args, true);
-  if (check.status === 2) {
-    try {
-      const decision = JSON.parse(check.stdout);
-      console.error(`[gvskb-gate] BLOCK: ${decision.package} (${decision.ecosystem}, mode=${decision.mode})`);
-      for (const reason of (decision.reasons || []).slice(0, 5)) console.error(`- ${reason}`);
-      console.error("- 대체 패키지를 선택하거나 체커/레지스트리 검증 후 다시 시도하세요.");
-    } catch (_) {
-      console.error(check.stdout || "gvskb gate blocked this package.");
-    }
-    process.exit(2);
-  }
-  if ((check.status ?? 1) > 2) process.exit(check.status ?? 1);
 
-  if (check.stdout) {
-    try {
-      const decision = JSON.parse(check.stdout);
-      if (decision.action === "warn") {
-        console.warn(`[gvskb-gate] WARN: ${decision.package} (${decision.ecosystem}, mode=${decision.mode})`);
-        for (const reason of (decision.reasons || []).slice(0, 5)) console.warn(`- ${reason}`);
-      }
-    } catch (_) {
-      process.stdout.write(check.stdout);
+  // 설치를 진행하려면 **판정이 있어야 한다.** 예전에는 종료 코드만 봤고,
+  // 2(BLOCK)와 2 초과만 막고 나머지는 그대로 npm install 로 내려갔다. 그래서
+  // Python 게이트가 죽었을 때(종료 코드 1) 그것이 WARN 과 구별되지 않아
+  // **크래시가 설치 허가로 바뀌었다.** 실제로 한글 Windows 에서 그 일이 있었다.
+  //
+  // 그래서 순서를 뒤집는다. 판정을 읽지 못하면 진행하지 않는다.
+  let decision = null;
+  try {
+    decision = JSON.parse(check.stdout);
+  } catch (_) {
+    decision = null;
+  }
+
+  if (decision === null) {
+    console.error("[gvskb-gate] BLOCK: 패키지 게이트의 판정을 읽지 못했습니다. 설치를 진행하지 않습니다.");
+    if (check.stdout) process.stderr.write(check.stdout);
+    console.error(`- 게이트 종료 코드: ${check.status ?? "실행 실패"}`);
+    console.error("- 위 오류를 해결한 뒤 다시 시도하세요. 판정 없이 설치하지 않습니다.");
+    process.exit(EXIT_BLOCK);
+  }
+
+  // 사람 검토 요건은 위험 판정과 별개의 절차 요건이다 — action 이 무엇이든 막는다.
+  if (decision.action === "block" || decision.requires_human_review === true) {
+    const label = decision.requires_human_review === true && decision.action !== "block" ? "HOLD" : "BLOCK";
+    console.error(`[gvskb-gate] ${label}: ${decision.package} (${decision.ecosystem}, mode=${decision.mode})`);
+    for (const reason of (decision.reasons || []).slice(0, 5)) console.error(`- ${reason}`);
+    if (decision.requires_human_review === true) {
+      console.error("- 이 차단은 위험 판정이 아니라 절차 요건입니다. 보안담당자 확인 후 진행하세요.");
+    } else {
+      console.error("- 대체 패키지를 선택하거나 체커/레지스트리 검증 후 다시 시도하세요.");
     }
+    process.exit(EXIT_BLOCK);
+  }
+
+  // 판정은 받았는데 종료 코드가 통과/경고가 아니면, 모르는 상태다 — 진행하지 않는다.
+  if (typeof check.status !== "number" || check.status > EXIT_WARN) {
+    console.error(`[gvskb-gate] BLOCK: 게이트가 알 수 없는 상태로 끝났습니다(종료 코드 ${check.status ?? "실행 실패"}).`);
+    process.exit(EXIT_BLOCK);
+  }
+
+  if (decision.action === "warn") {
+    console.warn(`[gvskb-gate] WARN: ${decision.package} (${decision.ecosystem}, mode=${decision.mode})`);
+    for (const reason of (decision.reasons || []).slice(0, 5)) console.warn(`- ${reason}`);
   }
 
   const spec = version ? `${name}@${version}` : name;
