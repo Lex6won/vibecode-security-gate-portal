@@ -101,6 +101,82 @@ check("저장된 fixture 에 있던 필드가 사라지지 않았다", () => {
 });
 
 // ---------------------------------------------------------------------------
+// 4. 같은 버전 안에서 판정 내용이 바뀌지 않았는가
+//
+// 버전·스키마·최상위 필드 존재만 보면, 같은 0.3.0 안에서 gate 값이나 차단 사유
+// 형식이 바뀌어도 저장된 fixture 가 통과한다 — 낡았는데 낡지 않은 것처럼.
+// 그래서 실행마다 달라지는 값과 만든 PC 에 좌우되는 값을 빼고, 나머지는
+// **값 자체**를 비교한다.
+// ---------------------------------------------------------------------------
+
+/** 실행 시각·인텔 기준일·엔진 가용성처럼 판정의 내용이 아니라 환경인 값들. */
+const VOLATILE_FIELDS = new Set([
+  "generated_at",        // 실행 시각
+  "engines",             // semgrep 유무 등 — 만든 PC 의 사정
+  "intel_freshness",     // 인텔 캐시 기준일
+  "scan_mode",           // online/offline
+  "source_snapshot",     // 작업 트리 지문
+  "reproduce_command"    // 실행 경로가 섞일 수 있다
+]);
+
+function stableView(report) {
+  const view = {};
+  for (const key of Object.keys(report).sort()) {
+    if (!VOLATILE_FIELDS.has(key)) view[key] = report[key];
+  }
+  return view;
+}
+
+check("변동 필드를 뺀 나머지는 값이 같다", () => {
+  const goldenView = stableView(golden);
+  const freshView = stableView(fresh);
+  const differing = Object.keys({ ...goldenView, ...freshView })
+    .filter((key) => JSON.stringify(goldenView[key]) !== JSON.stringify(freshView[key]));
+  assert.deepEqual(
+    differing, [],
+    `같은 체커 버전인데 판정 내용이 다릅니다: ${differing.join(", ")}\n`
+    + "저장된 fixture 가 낡았거나, 체커가 버전을 올리지 않고 판정을 바꿨습니다.\n"
+    + `교체하세요: python <체커>/scripts/regenerate_portal_fixture.py --out ${goldenPath}`
+  );
+});
+
+// ---------------------------------------------------------------------------
+// 5. 어느 커밋에서 만들어졌는가
+//
+// 버전은 같은데 코드가 다를 수 있다. 재생성 스크립트는 산출물 옆에 만든 체커
+// 커밋을 .meta.json 으로 남기고, 여기서는 저장된 것과 방금 만든 것이 같은
+// 커밋인지 본다. CI 는 체커를 고정된 커밋으로 받으므로, 다르면 저장된
+// fixture 가 그 커밋에서 나온 것이 아니라는 뜻이다.
+// ---------------------------------------------------------------------------
+
+function metadataPathFor(path) {
+  return path.replace(/\.json$/, ".meta.json");
+}
+
+function loadOptional(path) {
+  try {
+    return JSON.parse(readFileSync(path, "utf8"));
+  } catch {
+    return null;
+  }
+}
+
+check("저장된 fixture 는 지금 검사에 쓰인 체커 커밋에서 만들어졌다", () => {
+  const goldenMeta = loadOptional(metadataPathFor(goldenPath));
+  const freshMeta = loadOptional(metadataPathFor(regeneratedPath));
+  assert.ok(goldenMeta, `저장된 fixture 옆에 .meta.json 이 없습니다: ${metadataPathFor(goldenPath)}\n재생성 스크립트로 다시 만들면 함께 생깁니다.`);
+  assert.ok(freshMeta, `재생성 결과 옆에 .meta.json 이 없습니다: ${metadataPathFor(regeneratedPath)}`);
+  assert.ok(goldenMeta.checker_commit, "저장된 fixture 의 체커 커밋이 비어 있습니다 — 저장소 밖에서 만들어졌습니다.");
+  assert.ok(freshMeta.checker_commit, "재생성 결과의 체커 커밋이 비어 있습니다 — 체커를 git 으로 받아 실행해야 합니다.");
+  assert.equal(
+    goldenMeta.checker_commit, freshMeta.checker_commit,
+    `저장된 fixture 는 다른 체커 커밋에서 만들어졌습니다(저장 ${goldenMeta.checker_commit.slice(0, 12)} ≠ 지금 ${freshMeta.checker_commit.slice(0, 12)}).\n`
+    + `교체하세요: python <체커>/scripts/regenerate_portal_fixture.py --out ${goldenPath}`
+  );
+  assert.equal(freshMeta.checker_worktree_dirty, false, "커밋되지 않은 변경이 섞인 체커로 만든 결과는 재현할 수 없습니다.");
+});
+
+// ---------------------------------------------------------------------------
 
 if (failures.length > 0) {
   console.error(`fixture 재생성 대조 FAILED (${failures.length}건)`);

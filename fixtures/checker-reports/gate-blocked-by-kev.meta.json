@@ -1,0 +1,12 @@
+{
+  "kind": "portal_fixture_generator",
+  "checker_commit": "a392e5a6f54721bcd0b491116772d8b7bf75d938",
+  "checker_worktree_dirty": false,
+  "engine_version": "0.3.0",
+  "schema_version": 1,
+  "ruleset_version": "2026.09.01a",
+  "ruleset_digest": "d22a81017c02b71eb504aa120393694f",
+  "generator_script": "regenerate_portal_fixture.py",
+  "generator_sha256": "786989ceb68bb0eba15ff96f321c277f09bb992c4b1e731f4a04f424ed33eb1a",
+  "generated_at": "2026-09-12T18:42:31+00:00"
+}

@@ -49,17 +49,30 @@ jobs:
       # 체커를 한 번만 받아서 **설치와 재생성에 같은 리비전을 쓴다.**
       # 따로 받으면 설치된 체커와 재생성 스크립트가 다른 커밋일 수 있고,
       # 그러면 버전 대조가 무엇을 대조한 것인지 말할 수 없게 된다.
+      # 체커는 **고정된 커밋**으로 받는다. 기본 브랜치를 따라가면 체커가 바뀔
+      # 때마다 포털 CI 가 사전 예고 없이 깨지거나, 더 나쁘게는 fixture 가 무엇을
+      # 기준으로 검증됐는지 말할 수 없게 된다. 아래 SHA 는 저장된 fixture 의
+      # .meta.json 이 가리키는 커밋과 같아야 한다 — 대조 단계가 그것을 확인한다.
+      #
+      # 체커를 올릴 때의 절차: 체커 커밋 → 그 커밋에서 fixture 재생성 → 여기 SHA
+      # 갱신, 세 가지를 한 PR 로 묶는다.
       - name: 체커 저장소 받기
         env:
           CHECKER_REPOSITORY: ${{ vars.CHECKER_REPOSITORY || 'https://github.com/Lex6won/vibecode-checker.git' }}
-          # 기본값은 기본 브랜치. 특정 커밋에 고정하려면 저장소 변수로 지정한다.
-          CHECKER_REF: ${{ vars.CHECKER_REF || '' }}
+          CHECKER_COMMIT: ${{ vars.CHECKER_COMMIT || 'a392e5a6f54721bcd0b491116772d8b7bf75d938' }}
         run: |
-          git clone "${CHECKER_REPOSITORY}" "${RUNNER_TEMP}/checker"
-          if [ -n "${CHECKER_REF}" ]; then
-            git -C "${RUNNER_TEMP}/checker" checkout "${CHECKER_REF}"
+          if ! printf '%s' "${CHECKER_COMMIT}" | grep -Eq '^[0-9a-f]{40}$'; then
+            echo "CHECKER_COMMIT 은 40자리 커밋 SHA 여야 합니다(브랜치 이름 불가): '${CHECKER_COMMIT}'" >&2
+            exit 1
           fi
-          git -C "${RUNNER_TEMP}/checker" rev-parse HEAD
+          git clone --no-checkout "${CHECKER_REPOSITORY}" "${RUNNER_TEMP}/checker"
+          git -C "${RUNNER_TEMP}/checker" checkout --detach "${CHECKER_COMMIT}"
+          actual="$(git -C "${RUNNER_TEMP}/checker" rev-parse HEAD)"
+          echo "체커 커밋: ${actual}"
+          if [ "${actual}" != "${CHECKER_COMMIT}" ]; then
+            echo "체크아웃된 커밋(${actual})이 고정값(${CHECKER_COMMIT})과 다릅니다." >&2
+            exit 1
+          fi
 
       # 실패하면 여기서 작업이 끝난다 — `|| true` 를 붙이지 않는 것이 요점이다.
       - name: 체커(gvskb) 설치
