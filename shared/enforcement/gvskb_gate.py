@@ -30,6 +30,52 @@ EXIT_NOT_INSTALLED = 65
 VALID_MODES = {"MONITOR", "WARN", "ENFORCE"}
 VALID_ECOSYSTEMS = {"pypi", "npm"}
 
+# 기관 프로파일이 쓰는 실행환경 등급 전체.
+VALID_ENV_GRADES = ("E0", "E1", "E2", "E3")
+
+# 체커(gvskb)가 **실제로 판정할 수 있는** 등급.
+#
+# 체커는 E3 를 의도적으로 받지 않는다 — MCP 도구 정의에 그렇게 적혀 있다:
+# "E3(대민·개인정보)는 바이브코딩 대상이 아니므로 받지 않음". CLI 도 `--env`
+# choices 를 E0~E2 로 제한한다.
+#
+# 문제는 이 게이트가 CLI·MCP 가 아니라 **파이썬 함수를 직접 호출**한다는 점이다
+# (import_checker). 두 경계의 문지기를 모두 지나치므로 E3 가 그대로 들어갔고,
+# 체커는 모르는 등급을 조용히 기본값(E1, 개인 PC)으로 바꿔 쿨다운을 적용하면서
+# 결과 최상위에는 전달받은 "E3" 를 그대로 적었다. 그래서 한 문서 안에서
+# "E3 로 점검함"과 "E1 쿨다운 적용"이 공존했다 — 대민 서비스를 개인 PC 기준으로
+# 검사해 놓고 기록만 대민으로 남는 상태다.
+#
+# 검사를 느슨하게 하고 기록을 세게 남기는 것보다, **자동 판정을 거부하고
+# 사람 심사로 넘기는 것**이 맞다. 기관 프로파일도 같은 말을 한다:
+# "E2/E3 package auto-approval is not allowed; human/platform review is required."
+CHECKER_SUPPORTED_ENV_GRADES = ("E0", "E1", "E2")
+
+# 검사 결과가 깨끗해도 **자동 설치를 허용하지 않는** 등급.
+#
+# 기관 정책이 두 문서에 명시돼 있다:
+#   institution-profile.yaml:46
+#     "E2/E3 package auto-approval is not allowed; human/platform review is required."
+#   references/harness-enforcement-contract.yaml (environment_grades.E2)
+#     auto_approval_possible: false / requires_human_review: true
+#
+# E3 는 체커가 판정 자체를 못 하므로 위 `env_grade_block` 에서 먼저 끝난다.
+# 여기서 다루는 것은 **체커가 정상 판정할 수 있는 E2**다 — 검사는 정상 수행하고,
+# 결과가 깨끗하더라도 마지막에 사람 확인을 요구한다. "위험해서 막는 것"이 아니라
+# "내부 서버·공용 환경에 새 외부 패키지가 들어오는 순간은 사람이 한 번 본다"는
+# 절차이므로, 사유 문구도 그렇게 쓴다.
+HUMAN_REVIEW_ENV_GRADES = ("E2",)
+
+# 사람 검토가 **이미 끝난** 것으로 볼 수 있는 근거.
+#
+# 기관 승인 목록에 있거나 레지스트리가 이 버전을 승인했다면 그 승인이 곧 사람
+# 검토 결과다. 여기서 한 번 더 막으면 승인 목록이 무의미해지고, 무의미한 게이트는
+# 우회되거나 꺼진다. 같은 정책 문서의 다른 규칙과도 이렇게 해야 앞뒤가 맞는다:
+#   references/harness-enforcement-contract.yaml (local_catalog_and_registry_priority)
+#     "If local allow and checker returns registry_approved/checked_clean, pass."
+PRIOR_REVIEW_CATALOG_STATUSES = ("local_approved",)
+PRIOR_REVIEW_CHECKER_VERDICTS = ("registry_approved",)
+
 
 def shared_root() -> Path:
     return Path(__file__).resolve().parents[1]
@@ -315,6 +361,25 @@ def evaluate_package(
         action = "warn"
         reasons.append("기관 승인 목록에는 없지만 체커 차단 사유는 없습니다. 담당자 검토 대상으로 남기세요.")
 
+    # 실행환경 등급에 따른 사람 검토 — **맨 마지막에** 판단한다.
+    # 위의 모든 검사가 통과해도(깨끗해도) E2 는 자동 설치되지 않는다.
+    requires_human_review = False
+    if (
+        env_grade in HUMAN_REVIEW_ENV_GRADES
+        and status not in PRIOR_REVIEW_CATALOG_STATUSES
+        and verdict not in PRIOR_REVIEW_CHECKER_VERDICTS
+    ):
+        requires_human_review = True
+        action = stronger_action(action, "block")
+        reasons.append(
+            f"실행환경 등급 {env_grade}(내부 서버·공용 환경·CI)에서는 새 외부 패키지의 "
+            "자동 설치를 허용하지 않습니다 — 검사 결과와 무관한 절차 요건입니다."
+        )
+        reasons.append(
+            "조치: 보안담당자 확인을 받거나, 기관 승인 목록(approved-packages.yaml) 또는 "
+            "레지스트리 승인을 거친 뒤 다시 시도하세요."
+        )
+
     if not reasons:
         reasons.append("체커와 하네스 정책 기준에서 설치 차단 사유가 없습니다.")
 
@@ -326,6 +391,9 @@ def evaluate_package(
         "version": version,
         "mode": mode,
         "env_grade": env_grade,
+        # 차단의 **성격**을 구분한다 — 위험해서 막은 것과 절차상 사람 확인이
+        # 필요한 것은 담당자가 할 행동이 다르다.
+        "requires_human_review": requires_human_review,
         "catalog_status": status,
         "checker_verdict": verdict,
         "checked": checked,
@@ -406,7 +474,10 @@ def print_text(decision: dict[str, Any]) -> None:
     print(f"[gvskb-gate] {action}: {package} ({ecosystem}, mode={mode})")
     for reason in decision.get("reasons", [])[:5]:
         print(f"- {reason}")
-    if decision.get("action") == "block":
+    if decision.get("requires_human_review"):
+        # 위험 차단과 절차 차단은 담당자가 할 행동이 다르다 — 문구를 섞지 않는다.
+        print("- 이 차단은 위험 판정이 아니라 절차 요건입니다. 보안담당자 확인 후 진행하세요.")
+    elif decision.get("action") == "block":
         print("- 대체 패키지를 선택하거나 체커/레지스트리 검증 후 다시 시도하세요.")
     elif decision.get("action") == "warn":
         print("- 개발은 계속할 수 있지만, 배포 전 체커 전체 점검과 최종 리포트 제출 대상입니다.")
@@ -414,6 +485,65 @@ def print_text(decision: dict[str, Any]) -> None:
 
 def exit_for_action(action: str) -> int:
     return {"pass": EXIT_PASS, "warn": EXIT_WARN, "block": EXIT_BLOCK}.get(action, EXIT_WARN)
+
+
+def resolve_env_grade(args_env_grade: str | None, profile: dict[str, Any]) -> str:
+    """요청된 실행환경 등급을 정규화한다(대소문자·공백 무관).
+
+    소문자 ``e2`` 는 체커에서 목록에 없는 값으로 취급돼 조용히 E1 으로 떨어졌다.
+    등급은 판정 기준을 바꾸는 값이므로 **여기서 한 번 정규화**해 아래로 내린다.
+
+    CLI ``--env-grade`` 는 argparse 의 ``type=str.upper`` 가 먼저 처리하므로 이
+    함수까지 소문자가 오지 않는다. 여기서 정규화가 실제로 쓰이는 입력은
+    환경변수 ``GVSKB_GATE_ENV_GRADE`` 와 기관 프로파일의 기본값이다.
+    """
+    return (args_env_grade or default_env_grade(profile)).strip().upper()
+
+
+def env_grade_block(env_grade: str, *, name: str, ecosystem: str,
+                    version: str | None, mode: str,
+                    source_scope: str = "single") -> dict[str, Any] | None:
+    """체커가 판정할 수 없는 등급이면 **자동 판정을 거부**하는 결정을 돌려준다.
+
+    ``None`` 이면 자동 판정을 계속 진행해도 되는 등급이다.
+
+    거부는 '위험하다'는 뜻이 아니라 **'이 도구가 답할 자격이 없다'** 는 뜻이다.
+    그래서 사유에 사람 심사 경로를 함께 적는다 — 막기만 하고 다음 행동을 알려
+    주지 않는 게이트는 우회되거나 꺼진다.
+    """
+    if env_grade in CHECKER_SUPPORTED_ENV_GRADES:
+        return None
+
+    if env_grade == "E3":
+        reasons = [
+            "E3(대민·개인정보·인증·핵심 행정정보) 등급은 자동 판정 대상이 아닙니다.",
+            "체커는 E3 를 지원하지 않습니다 — 이대로 진행하면 개인 PC 기준(E1)으로 "
+            "검사되면서 기록만 E3 로 남습니다.",
+            "기관 프로파일 규칙: E2/E3 패키지는 자동승인 금지, 보안담당자 검토가 필요합니다.",
+            "조치: 패키지검토요청서(shared/templates/11)를 작성해 보안담당자 심사로 진행하세요.",
+        ]
+    else:
+        reasons = [
+            f"알 수 없는 실행환경 등급입니다: {env_grade!r}. "
+            f"허용 값은 {', '.join(VALID_ENV_GRADES)} 입니다.",
+            "등급이 쿨다운 기준을 바꾸므로, 값을 확인하기 전에는 판정하지 않습니다.",
+        ]
+
+    return {
+        "action": "block",
+        "reasons": reasons,
+        "package": name,
+        "ecosystem": ecosystem,
+        "version": version,
+        "mode": mode,
+        "env_grade": env_grade,
+        "catalog_status": "not_listed",
+        # 체커에 물어보지 않았다는 사실을 값으로 남긴다 — '검사했는데 막았다'와
+        # '검사 자체를 하지 않았다'는 감사에서 전혀 다른 기록이다.
+        "checker_verdict": "unsupported_env_grade",
+        "requires_human_review": True,
+        "source_scope": source_scope,
+    }
 
 
 def install_pypi_package(name: str, version: str | None, extra_args: list[str]) -> int:
@@ -425,9 +555,19 @@ def install_pypi_package(name: str, version: str | None, extra_args: list[str]) 
 async def command_check(args: argparse.Namespace) -> int:
     profile = load_yaml(shared_root() / "institution-profile.yaml")
     mode = (args.mode or default_mode(profile)).upper()
-    env_grade = (args.env_grade or default_env_grade(profile)).upper()
+    env_grade = resolve_env_grade(args.env_grade, profile)
     ecosystem = normalize_ecosystem(args.ecosystem)
     name, version = parse_package_spec(args.package, ecosystem, args.version)
+
+    blocked = env_grade_block(env_grade, name=name, ecosystem=ecosystem,
+                              version=version, mode=mode)
+    if blocked is not None:
+        if args.json:
+            print(json.dumps(blocked, ensure_ascii=False, indent=2))
+        else:
+            print_text(blocked)
+        return exit_for_action(blocked["action"])
+
     catalog = collect_catalog(profile)
 
     checker_result: dict[str, Any] | None = None
@@ -463,8 +603,20 @@ async def command_install(args: argparse.Namespace) -> int:
 
     profile = load_yaml(shared_root() / "institution-profile.yaml")
     mode = (args.mode or default_mode(profile)).upper()
-    env_grade = (args.env_grade or default_env_grade(profile)).upper()
+    env_grade = resolve_env_grade(args.env_grade, profile)
     name, version = parse_package_spec(args.package, "pypi", args.version)
+
+    blocked = env_grade_block(env_grade, name=name, ecosystem="pypi",
+                              version=version, mode=mode)
+    if blocked is not None:
+        # 설치 경로에서는 특히 중요하다 — 판정하지 못한 채 설치가 진행되면
+        # 게이트가 있으나 마나다.
+        if args.json:
+            print(json.dumps(blocked, ensure_ascii=False, indent=2))
+        else:
+            print_text(blocked)
+        return exit_for_action(blocked["action"])
+
     catalog = collect_catalog(profile)
 
     checker_result: dict[str, Any] | None = None
@@ -488,7 +640,10 @@ async def command_install(args: argparse.Namespace) -> int:
     )
 
     print_text(decision)
-    if decision["action"] == "block":
+    # `action` 이 block 이 아니어도 사람 검토 요건이 걸려 있으면 설치하지 않는다.
+    # 두 조건을 따로 두는 이유: 판정 로직이 바뀌어 action 매핑이 달라져도 절차
+    # 요건이 조용히 통과되면 안 된다(게이트의 마지막 문은 이중으로 잠근다).
+    if decision["action"] == "block" or decision.get("requires_human_review"):
         return EXIT_BLOCK
     return install_pypi_package(name, version, args.pip_args)
 
@@ -496,9 +651,19 @@ async def command_install(args: argparse.Namespace) -> int:
 async def command_verify_manifest(args: argparse.Namespace) -> int:
     profile = load_yaml(shared_root() / "institution-profile.yaml")
     mode = (args.mode or default_mode(profile)).upper()
-    env_grade = (args.env_grade or default_env_grade(profile)).upper()
+    env_grade = resolve_env_grade(args.env_grade, profile)
     ecosystem = normalize_ecosystem(args.ecosystem)
     path = Path(args.path).resolve()
+
+    blocked = env_grade_block(env_grade, name=str(path.name), ecosystem=ecosystem,
+                              version=None, mode=mode, source_scope="manifest")
+    if blocked is not None:
+        if args.json:
+            print(json.dumps(blocked, ensure_ascii=False, indent=2))
+        else:
+            print_text(blocked)
+        return exit_for_action(blocked["action"])
+
     catalog = collect_catalog(profile)
 
     if not path.exists():
@@ -588,7 +753,11 @@ def build_parser() -> argparse.ArgumentParser:
     def add_common(p: argparse.ArgumentParser) -> None:
         p.add_argument("--ecosystem", choices=sorted(VALID_ECOSYSTEMS), default="pypi")
         p.add_argument("--mode", choices=sorted(VALID_MODES))
-        p.add_argument("--env-grade", choices=["E0", "E1", "E2", "E3"])
+        # type=str.upper 가 choices 검사보다 **먼저** 돈다 — `--env-grade e2` 처럼
+        # 소문자로 넣어도 받는다. 이게 없으면 argparse 가 먼저 거절해서
+        # `resolve_env_grade` 의 정규화가 이 경로에서는 아무 일도 하지 않는다.
+        # E3 는 선택지에 남긴다 — argparse 오류보다 "왜 안 되는지" 설명이 낫다.
+        p.add_argument("--env-grade", type=str.upper, choices=["E0", "E1", "E2", "E3"])
         p.add_argument("--json", action="store_true")
 
     check = sub.add_parser("check", help="Check one package before adding it.")

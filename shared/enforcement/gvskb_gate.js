@@ -7,15 +7,23 @@
  *   node shared/enforcement/gvskb_gate.js install react
  */
 
-const { spawnSync } = require("node:child_process");
-const fs = require("node:fs");
-const path = require("node:path");
+// ESM 입니다 — 포털 package.json 이 "type": "module" 이라 CommonJS(`require`)로는
+// **실행 즉시 죽습니다**(ReferenceError: require is not defined in ES module scope).
+// 실측(2026-09-12): 이 파일은 그 상태로 방치돼 있었고, AGENTS.md 는 npm 패키지를
+// 추가할 때 이 스크립트를 거치라고 안내하고 있었다 — 즉 **npm 쪽 패키지 게이트가
+// 한 번도 동작하지 않았다.** 아무 에러 보고도 없었던 이유는 아무도 실행해 보지
+// 않았기 때문이다. 그래서 `npm run check` 에 실제 실행 테스트를 넣었다.
+import { spawnSync } from "node:child_process";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 const EXIT_USAGE = 64;
 const EXIT_NOT_INSTALLED = 65;
 
 function scriptDir() {
-  return __dirname;
+  // ESM 에는 __dirname 이 없다.
+  return path.dirname(fileURLToPath(import.meta.url));
 }
 
 function pythonGatePath() {
@@ -66,8 +74,8 @@ function splitNpmSpec(spec, explicitVersion) {
 
 function usage() {
   console.error(`Usage:
-  node shared/enforcement/gvskb_gate.js check <package> [--version <version>] [--mode MONITOR|WARN|ENFORCE] [--env-grade E1|E2|E3] [--json]
-  node shared/enforcement/gvskb_gate.js install <package> [--version <version>] [--mode MONITOR|WARN|ENFORCE] [--env-grade E1|E2|E3] [--allow-scripts] [-- <npm args>]
+  node shared/enforcement/gvskb_gate.js check <package> [--version <version>] [--mode MONITOR|WARN|ENFORCE] [--env-grade E0|E1|E2] [--json]
+  node shared/enforcement/gvskb_gate.js install <package> [--version <version>] [--mode MONITOR|WARN|ENFORCE] [--env-grade E0|E1|E2] [--allow-scripts] [-- <npm args>]
   node shared/enforcement/gvskb_gate.js verify-manifest <package.json> [--mode MONITOR|WARN|ENFORCE] [--json]
 
 Set GVSKB_GATE_PYTHON if Windows python alias points to Microsoft Store.`);
@@ -102,7 +110,11 @@ function parseArgs(argv) {
     } else if (item === "--mode") {
       options.mode = rest[++i];
     } else if (item === "--env-grade") {
-      options.envGrade = rest[++i];
+      // 대소문자만 달라도 체커가 목록에 없는 값으로 보고 조용히 기본 등급으로
+      // 떨어뜨린다. 등급은 판정 기준을 바꾸는 값이므로 여기서 정규화한다.
+      // 유효성 판단(E3 거부 포함)은 Python 게이트 한 곳에서만 한다 — 정책을
+      // 두 언어에 복제하면 갈라진다.
+      options.envGrade = String(rest[++i] ?? "").trim().toUpperCase();
     } else if (item === "--json") {
       options.json = true;
     } else if (item === "--allow-scripts") {

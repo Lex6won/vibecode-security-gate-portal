@@ -16,7 +16,15 @@ import {
   upsertAccountOnLogin, updateAccountProfile, accountSummary
 } from "./account-store.mjs";
 import { writeZipEntries } from "./hwpx-template.mjs";
-import { dependencyRiskSummary } from "./scan-summary.mjs";
+import {
+  dependencyRiskSummary,
+  scanDecision,
+  coverageTruncated as coverageTruncatedFromReport,
+  dependencyIncomplete as dependencyIncompleteFromReport,
+  suppressionSummary as suppressionSummaryFromReport,
+  engineStatus as engineStatusFromReport,
+  DECISION_SOURCE_LEGACY
+} from "./scan-summary.mjs";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 const ROOT = resolve(__dirname, "..");
@@ -256,6 +264,9 @@ function persistedJobRecord(job) {
     target_label: job.target_label || "",
     status: job.status,
     decision: job.decision,
+    // 판정 규칙의 세대. 없는 기록은 `gate` 도입 이전(legacy)이며, 불러올 때 표시만
+    // 붙이고 값은 **재계산하지 않는다** — 과거 결재 근거를 소급해 바꾸지 않기 위해서다.
+    decision_source: job.decision_source || null,
     summary: job.summary || null,
     steps: job.steps || [],
     reports: (job.reports || []).map(({ file_name, path, url }) => ({ file_name, path, url })),
@@ -294,6 +305,10 @@ function loadScanHistory() {
         const record = JSON.parse(line);
         if (record?.id) {
           const job = { temporary_paths: [], ...record };
+          // 저장된 판정은 그대로 둔다. `gate` 도입 이전 기록에 새 규칙을 소급
+          // 적용하면 이미 결재가 끝난 점검들이 한꺼번에 뒤집힌다. 값은 보존하고
+          // **어느 규칙으로 내린 것인지 표시만** 붙인다(파일은 고치지 않는다).
+          if (!job.decision_source) job.decision_source = DECISION_SOURCE_LEGACY;
           refreshDependencySummaryFromStoredReport(job);
           jobs.set(record.id, job);
         }
@@ -1311,16 +1326,17 @@ async function runScanJob(job) {
   const dependencyRisk = dependencyRiskSummary(parsed?.dependency_audit);
   const dependencyFindingCount = dependencyRisk.vulnerable_package_count;
   const profileFallback = parsed?.profile_fallback || null;
-  const coverageTruncated = (parsed?.skipped_files || []).some((item) => String(item.reason || "").includes("max_files="));
-  const dependencyIncomplete = (parsed?.dependency_audit?.audits || []).some((audit) => Number(audit.unchecked_count || 0) > 0 || Number(audit.truncated_count || 0) > 0);
-  const baseDecision = profileFallback || coverageTruncated || dependencyIncomplete
-    ? "incomplete"
-    : parsed?.decision || (
-      scannedFileCount === 0 ? "needs_review" : parsed?.summary?.blocked ? "blocked" : findingCount > 0 ? "needs_review" : "allow"
-    );
-  const decision = scanTimedOut
-    ? "incomplete"
-    : job.mode === "quick" && baseDecision === "allow" ? "quick_complete" : baseDecision;
+  const coverageTruncated = coverageTruncatedFromReport(parsed);
+  const dependencyIncomplete = dependencyIncompleteFromReport(parsed);
+  const suppression = suppressionSummaryFromReport(parsed);
+  const engines = engineStatusFromReport(parsed);
+  // 판정은 체커 `gate.verdict` 가 단일 권위다 — 포털은 옮겨 적기만 한다.
+  // 파생 추론(summary.blocked 폴백)은 화면과 첨부 보고서를 갈라놓았던 결함이라 제거했다.
+  const verdict = scanDecision(parsed, { mode: job.mode, timedOut: scanTimedOut });
+  const decision = verdict.decision;
+  if (verdict.reason && decision === "incomplete" && !scanTimedOut) {
+    job.error = verdict.reason;
+  }
   if (scanTimedOut) {
     const limitMinutes = Math.round(scanTimeoutMs / 60000);
     job.error = `검사 시간이 ${limitMinutes}분을 넘어 중단했습니다. 대상을 나누어 올리거나, 불필요한 폴더(node_modules 등)를 빼고 다시 시도해 주세요.`;
@@ -1348,6 +1364,9 @@ async function runScanJob(job) {
   updateJob(job, {
     status: scan.ok || parsed ? "completed" : "failed",
     decision,
+    // 어떤 규칙으로 내린 판정인지 기록에 남긴다 — 규칙 전환 전후의 통계가
+    // 말없이 섞이지 않게 하고, 과거 기록을 재계산하지 않기 위한 구분자다.
+    decision_source: verdict.decision_source,
     steps: [
       { name: "prepare_target", status: "completed" },
       { name: "code_scan", status: scan.ok || parsed ? "completed" : "failed" },
@@ -1379,7 +1398,26 @@ async function runScanJob(job) {
       sbom_status: sbomStatus,
       profile_fallback: profileFallback,
       coverage_truncated: coverageTruncated,
-      dependency_incomplete: dependencyIncomplete
+      dependency_incomplete: dependencyIncomplete,
+      // 체커의 배포 판정 원본. 화면 판정과 나란히 두어 옮겨 적기가 틀리면 바로 보이게 한다.
+      gate_verdict: verdict.gate_verdict,
+      schema_version: verdict.schema_version,
+      incomplete_reasons: verdict.incomplete_reasons,
+      // 면제는 숨기지 않고 센다 — 심사자가 "지적을 끈 것"을 볼 수 있어야 한다.
+      suppression_applied: suppression.applied,
+      suppression_expired: suppression.expired,
+      suppression_invalid: suppression.invalid,
+      suppression_inline_ignored: suppression.inline_ignored,
+      // 엔진 상태가 없으면 '미상'이다 — "검사했는데 깨끗함"과 구분되어야 한다.
+      engines_known: engines.known,
+      engines_used: engines.used,
+      engines_unavailable: engines.unavailable,
+      engines_failed: engines.failed,
+      // 판정 신원 — 어떤 엔진·룰셋이, 어느 시점 소스를 보고 내린 결론인가.
+      // 제출 문서가 실제 배포본에 대한 것임을 증명하는 최소 정보다.
+      engine_version: parsed?.engine_version || null,
+      ruleset_version: parsed?.ruleset_version || null,
+      source_snapshot: parsed?.source_snapshot || null
     }
   });
   await cleanupJobTargets(job);
@@ -1626,6 +1664,7 @@ function publicJob(job) {
     target_label: targetLabel,
     status: job.status,
     decision: job.decision,
+    decision_source: job.decision_source || null,
     summary: job.summary || null,
     steps: job.steps || [],
     reports: retainedReports.map(({ file_name, url, kind }) => ({ file_name, url, kind: kind || artifactKind(file_name) })),
@@ -1769,6 +1808,93 @@ function displayDecision(decision) {
   return "점검 완료";
 }
 
+/** 판정이 무엇에 근거했는지 — 체커 원본 판정과 판정 기준(엔진·룰셋) 신원. */
+function decisionBasisText(job) {
+  const summary = job.summary || {};
+  const verdictLabel = {
+    blocked: "차단",
+    conditional: "조건부",
+    approved: "승인",
+    undetermined: "판정 불가"
+  }[summary.gate_verdict] || null;
+  const parts = [];
+  parts.push(verdictLabel ? `체커 판정 ${verdictLabel}` : "체커 판정 없음(구버전 결과)");
+  if (job.decision === "incomplete" && Array.isArray(summary.incomplete_reasons) && summary.incomplete_reasons.length) {
+    const labels = {
+      scan_timeout: "검사 시간 초과",
+      profile_fallback: "정책 프로파일 미적용",
+      coverage_truncated: "검사 범위 절단",
+      dependency_incomplete: "의존성 판정 불가",
+      gate_missing: "체커 판정 필드 없음",
+      gate_verdict_unknown: "체커 판정값 해석 불가"
+    };
+    parts.push(`재점검 사유: ${summary.incomplete_reasons.map((code) => labels[code] || code).join(", ")}`);
+  }
+  const identity = [summary.engine_version && `엔진 ${summary.engine_version}`, summary.ruleset_version && `룰셋 ${summary.ruleset_version}`]
+    .filter(Boolean).join(" · ");
+  if (identity) parts.push(identity);
+  // 검사 당시 소스 스냅샷 — 제출 보고서가 실제 배포본에 대한 것임을 특정한다.
+  const snapshot = summary.source_snapshot;
+  if (snapshot?.commit) {
+    parts.push(`소스 ${String(snapshot.commit).slice(0, 12)}${snapshot.dirty ? " (커밋되지 않은 변경 있음)" : ""}`);
+  }
+  return parts.join(" | ");
+}
+
+/** 얼마나 봤는가. 절단됐으면 "이상 없음"의 범위가 좁다는 뜻이다. */
+function scanScopeText(job) {
+  const summary = job.summary || {};
+  const parts = [`파일 ${Number(summary.scanned_file_count || 0)}개`];
+  if (summary.coverage_truncated) parts.push("⚠ 파일 수 상한으로 일부 미검사");
+  if (summary.dependency_incomplete) parts.push("⚠ 일부 패키지 판정 불가('안전' 아님)");
+  if (summary.profile_fallback) parts.push("⚠ 요청한 정책이 적용되지 않음");
+  return parts.join(" · ");
+}
+
+/**
+ * 면제(예외) 처리 현황.
+ *
+ * 숨기지 않고 센다 — 지적을 끄고 '이상 없음'을 받아 결재에 올리는 경로가
+ * 심사자 눈에 보여야 한다. 인라인 주석(`gvskb: ignore`)은 승인자·사유·만료가
+ * 없으므로 승인된 예외와 **구분해서** 적는다.
+ */
+function suppressionText(job) {
+  const summary = job.summary || {};
+  const applied = Number(summary.suppression_applied || 0);
+  const inline = summary.suppression_inline_ignored;
+  const parts = [];
+  parts.push(applied > 0 ? `승인된 예외 ${applied}건` : "승인된 예외 없음");
+  if (inline === null || inline === undefined) {
+    parts.push("주석 무시 집계 미상(체커 갱신 필요)");
+  } else if (Number(inline) > 0) {
+    parts.push(`⚠ 주석 무시 ${Number(inline)}건 — 승인자·사유 기록 없음`);
+  }
+  const expired = Number(summary.suppression_expired || 0);
+  const invalid = Number(summary.suppression_invalid || 0);
+  if (expired > 0) parts.push(`만료된 예외 ${expired}건(무효 처리)`);
+  if (invalid > 0) parts.push(`형식 오류 예외 ${invalid}건(무효 처리)`);
+  return parts.join(" · ");
+}
+
+/**
+ * 어떤 검사 엔진이 실제로 돌았는가.
+ *
+ * semgrep 은 네이티브 Windows 에서 빠지므로, 같은 코드가 PC 에 따라 다르게
+ * 판정될 수 있다. 목록이 없으면 '미상'이라고 적는다 — '전부 돌았음'이 아니다.
+ */
+function engineText(job) {
+  const summary = job.summary || {};
+  if (!summary.engines_known) return "미상 — 엔진 목록을 제공하지 않는 체커 버전";
+  const used = Array.isArray(summary.engines_used) ? summary.engines_used : [];
+  const unavailable = Array.isArray(summary.engines_unavailable) ? summary.engines_unavailable : [];
+  const failed = Array.isArray(summary.engines_failed) ? summary.engines_failed : [];
+  const parts = [`수행: ${used.join(", ") || "없음"}`];
+  const nameOf = (item) => (typeof item === "string" ? item : String(item?.name || "unknown"));
+  if (unavailable.length) parts.push(`⚠ 미수행: ${unavailable.map(nameOf).join(", ")}`);
+  if (failed.length) parts.push(`⚠ 실패: ${failed.map(nameOf).join(", ")}`);
+  return parts.join(" · ");
+}
+
 function reviewRequestDocument(job, reports) {
   const rows = [
     ["점검 대상", job.target_label || "-"],
@@ -1777,7 +1903,13 @@ function reviewRequestDocument(job, reports) {
     ["요청 기관", job.owner_organization || "-"],
     ["요청 부서", job.owner_department || "-"],
     ["요청자", job.owner_email || "-"],
-    ["점검 판정", displayDecision(job.decision)]
+    ["점검 판정", displayDecision(job.decision)],
+    // 아래 네 줄은 판정의 **근거와 한계**다. 이것이 없으면 심사자는 "이상 없음"이
+    // 무엇을 근거로, 어디까지 본 결과인지 알 수 없다.
+    ["판정 근거", decisionBasisText(job)],
+    ["검사 범위", scanScopeText(job)],
+    ["면제 처리", suppressionText(job)],
+    ["검사 엔진", engineText(job)]
   ];
   const tableRows = rows.map(([label, value]) => `<tr><th>${escapeRequestHtml(label)}</th><td>${escapeRequestHtml(value)}</td></tr>`).join("");
   const attachmentNames = reports.map((report) => {

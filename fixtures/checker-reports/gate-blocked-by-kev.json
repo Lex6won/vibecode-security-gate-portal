@@ -1,0 +1,140 @@
+{
+  "schema_version": 1,
+  "target": "a.py",
+  "language": null,
+  "scenario": null,
+  "profile": "public-default-strict",
+  "summary": {
+    "finding_count": 0,
+    "by_severity": {
+      "critical": 0,
+      "high": 0,
+      "medium": 0,
+      "low": 0
+    },
+    "by_decision": {
+      "block": 0,
+      "warn": 0,
+      "allow": 0
+    },
+    "highest_severity": null,
+    "blocked": false,
+    "location_count": 0,
+    "block_location_count": 0,
+    "by_path_class": {
+      "runtime": {
+        "total": 0,
+        "block": 0
+      },
+      "test": {
+        "total": 0,
+        "block": 0
+      },
+      "sample": {
+        "total": 0,
+        "block": 0
+      }
+    }
+  },
+  "findings": [],
+  "scanned_files": [
+    "a.py"
+  ],
+  "skipped_files": [],
+  "external_surface": [],
+  "scan_mode": null,
+  "reproduce_command": null,
+  "engine_version": "0.3.0",
+  "generated_at": "2026-09-12T15:53:25+00:00",
+  "ruleset_version": "2026.09.01a",
+  "ruleset_digest": "d22a81017c02b71eb504aa120393694f",
+  "ruleset_drift": null,
+  "ruleset_note": null,
+  "intel_freshness": null,
+  "dependency_audit": {
+    "audits": [
+      {
+        "blocked": false,
+        "parsed_count": 1,
+        "checked_count": 1,
+        "unchecked_count": 0,
+        "truncated_count": 0,
+        "checks": [
+          {
+            "name": "kevpkg",
+            "version": "1.0.0",
+            "ecosystem": "npm",
+            "checked": true,
+            "in_kev": true,
+            "vulnerability_count": 1
+          }
+        ]
+      }
+    ]
+  },
+  "gate": {
+    "verdict": "blocked",
+    "blocked": true,
+    "conditional": false,
+    "requires_action": true,
+    "block_reasons": [
+      {
+        "package": "kevpkg",
+        "version": "1.0.0",
+        "criteria": [
+          "kev"
+        ],
+        "labels": [
+          "CISA KEV 등재 — 실제로 악용되고 있음"
+        ],
+        "recommended_version": null
+      }
+    ],
+    "conditional_criteria": [
+      "vulnerable"
+    ],
+    "exposure": {
+      "secret": 0,
+      "pii": 0,
+      "secret_live": 0,
+      "secret_attenuated": 0,
+      "pii_live": 0,
+      "pii_attenuated": 0
+    },
+    "blocked_source": false,
+    "blocked_dependency": true,
+    "source_block_count": 0,
+    "dependency_vulnerable": 1,
+    "dependency_unchecked": 0,
+    "dependency_not_found": 0,
+    "reason": "배포 불가 — CISA KEV 등재 — 실제로 악용되고 있음에 해당하는 패키지가 있습니다(kevpkg 1.0.0). 사유 기록으로 넘길 수 없는 등급입니다."
+  },
+  "posture_notes": [],
+  "duplicate_files": [],
+  "profile_fallback": null,
+  "vendor_bundles": [],
+  "suppression_summary": null,
+  "coverage": {
+    "truncated": false,
+    "over_limit_count": 0,
+    "max_files": 0,
+    "scanned_count": 1,
+    "skipped_count": 0
+  },
+  "engines": {
+    "used": [
+      "regex",
+      "python-ast",
+      "js-taint"
+    ],
+    "unavailable": [
+      {
+        "name": "semgrep",
+        "reason": "semgrep 실행 파일 또는 룰이 없습니다 — JS/TS AST 정밀 분석이 수행되지 않았습니다(네이티브 Windows 미지원). regex·taint 검사는 수행됐습니다."
+      }
+    ],
+    "failed": []
+  },
+  "source_snapshot": null,
+  "disclaimer": "이 결과는 자동 보안 보조 검토입니다. 공공기관 운영 반영 전에는 기관 보안 담당자의 정책과 최신 법령·지침을 함께 확인해야 합니다."
+}
