@@ -12,4 +12,8 @@ if (!existsSync(releaseFile)) {
 }
 
 process.env.PORTAL_HARNESS_LOCAL_RELEASE_FILE = releaseFile;
+// This is the checker wheel currently installed for the localhost portal.
+// Keeping an explicit pilot pin turns accidental checker replacement into a
+// configuration error instead of silently accepting a different executable.
+process.env.PORTAL_EXPECTED_CHECKER_COMMIT ||= "b27fccacf77c602800f70cf1e62bfde3ec8e2e4a";
 await import("../src/server.js");
