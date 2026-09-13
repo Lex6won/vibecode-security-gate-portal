@@ -387,9 +387,20 @@ check("골든: 실제 산출물에 포털이 읽는 필드가 모두 있다", ()
   for (const field of ["truncated", "over_limit_count", "scanned_count"]) {
     assert.ok(field in golden.coverage, `coverage 에 '${field}' 가 없습니다`);
   }
-  for (const field of ["used", "unavailable", "failed"]) {
+  for (const field of ["used", "unavailable", "failed", "required"]) {
     assert.ok(field in golden.engines, `engines 에 '${field}' 가 없습니다`);
   }
+});
+
+check("골든: 필수 엔진(required)이 대상 언어에 맞고 모두 수행됐다", () => {
+  // fixture 는 a.py 하나를 검사한 결과 — regex·python-ast 가 필수여야 하고 둘 다 used 에 있다.
+  assert.deepEqual(golden.engines.required, ["regex", "python-ast"]);
+  for (const name of golden.engines.required) {
+    assert.ok(golden.engines.used.includes(name), `필수 엔진 ${name} 이 used 에 없다`);
+  }
+  const decision = scanDecision(golden, { mode: "standard" });
+  assert.deepEqual(decision.missing_required_engines, []);
+  assert.equal(decision.decision, "blocked", "필수 엔진이 다 돌았으므로 체커 판정(blocked)이 그대로 옮겨진다");
 });
 
 check("골든: 계약 버전이 포털이 아는 범위 안이다", () => {

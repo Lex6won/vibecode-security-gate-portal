@@ -295,7 +295,7 @@
         <div class="instruction-block">
           <h2>적용 기준</h2>
           <div class="mini-grid" style="margin-top:14px;">
-            <div class="mini"><b>AI 도구</b><span id="toolListText">확인 중… (<code>codex</code>, <code>claude</code>, <code>both</code> 중 선택 가능)</span></div>
+            <div class="mini"><b>AI 도구</b><span id="toolListText">확인 중… (Codex · Claude Code · Claude 데스크톱 · ChatGPT 데스크톱 · Lovable+GitHub — Lovable 은 GitHub PR/CI 게이트만 적용)</span></div>
             <div class="mini"><b>개발 방식</b><span><code>python_internal</code>, <code>node_web</code>, <code>typescript_web</code>, <code>typescript_postgres</code></span></div>
             <div class="mini"><b>점검 수준</b><span><code>L1</code> 시제품, <code>L2</code> 내부 업무 도구, <code>L3</code> 엄격한 점검</span></div>
           </div>
@@ -407,8 +407,12 @@
           return;
         }
         if (data.supported_tools?.length) {
-          const names = data.supported_tools.map((tool) => `<code>${escapeHtml(tool.label)}</code>`).join(", ");
-          toolListText.innerHTML = `${names} 지원 (CLI 선택값은 <code>codex</code>, <code>claude</code>, <code>antigravity</code> 등 개별 이름 또는 <code>both</code>/<code>all</code>)`;
+          // 도구마다 강제 시점이 다르다 — 이름만 나열하면 "전부 파일 생성 전에 막는다"로
+          // 읽힌다. Lovable 은 GitHub PR/CI 게이트만이라는 사실을 그대로 적는다.
+          const names = data.supported_tools
+            .map((tool) => `<code>${escapeHtml(tool.label)}</code>${tool.enforcement_note ? ` <small>(${escapeHtml(tool.enforcement_note)})</small>` : ""}`)
+            .join(", ");
+          toolListText.innerHTML = `${names} 지원. 공통 최종 강제 지점은 Git 훅·PR·CI 입니다. (CLI 선택값은 <code>codex</code>, <code>claude</code>, <code>claude-desktop</code>, <code>chatgpt-desktop</code>, <code>lovable</code> 또는 <code>all</code>)`;
         }
         if (data.is_demo) {
           unsignedInstallNotice.hidden = false;

@@ -142,15 +142,53 @@ export function suppressionSummary(report) {
 export function engineStatus(report) {
   const engines = report?.engines;
   if (!engines || typeof engines !== "object") {
-    return { known: false, used: [], unavailable: [], failed: [] };
+    return { known: false, used: [], unavailable: [], failed: [], required: [], required_known: false };
   }
   const list = (value) => (Array.isArray(value) ? value : []);
   return {
     known: true,
     used: list(engines.used).map((item) => String(item)),
     unavailable: list(engines.unavailable),
-    failed: list(engines.failed)
+    failed: list(engines.failed),
+    // 체커(f1117d8 이후)가 대상 언어로 계산해 주는 필수 엔진. 구버전 보고서에는 없다.
+    required: list(engines.required).map((item) => String(item)),
+    required_known: Array.isArray(engines.required)
   };
+}
+
+/**
+ * 필수 엔진이 빠진 검사인가 — fail-closed 의 근거.
+ *
+ * 시험운영 기준: regex 는 항상, Python 소스가 있으면 python-ast, JS/TS 소스가
+ * 있으면 js-taint 가 필수다. 이 판정은 체커가 `engines.required` 로 준다(언어별
+ * 필수 엔진을 포털이 하드코딩하지 않는다). 필수 엔진이 `failed` 나 `unavailable`
+ * 이면 `missing_required` — 이 검사로는 판정할 수 없다. 필수가 아닌 엔진(semgrep)
+ * 이 빠지면 `degraded` — 판정은 하되 화면에 경고로 남긴다.
+ *
+ * `required` 가 없는 구버전 보고서는 보수적으로 다룬다: 어떤 엔진이든 **실행 중
+ * 실패(failed)** 했으면 필수 실패로 본다(무엇이 필수였는지 모르므로), 단순
+ * 미설치(unavailable)는 degraded 로 둔다(semgrep 이 Windows 에서 늘 그렇다).
+ */
+export function engineGate(report) {
+  const status = engineStatus(report);
+  const nameOf = (item) => (typeof item === "string" ? item : String(item?.name || "unknown"));
+  const failed = status.failed.map(nameOf);
+  const unavailable = status.unavailable.map(nameOf);
+  if (!status.known) {
+    return { known: false, missing_required: [], degraded: [], failed, unavailable };
+  }
+  let missingRequired;
+  let degraded;
+  if (status.required_known) {
+    const required = new Set(status.required);
+    missingRequired = [...failed, ...unavailable].filter((name) => required.has(name));
+    degraded = [...failed, ...unavailable].filter((name) => !required.has(name));
+  } else {
+    missingRequired = [...failed];
+    degraded = [...unavailable];
+  }
+  const unique = (items) => Array.from(new Set(items));
+  return { known: true, missing_required: unique(missingRequired), degraded: unique(degraded), failed, unavailable };
 }
 
 /**
@@ -178,6 +216,14 @@ export function scanDecision(report, { mode = "standard", timedOut = false } = {
   if (report?.profile_fallback) incompleteReasons.push("profile_fallback");
   if (coverageTruncated(report)) incompleteReasons.push("coverage_truncated");
   if (dependencyIncomplete(report)) incompleteReasons.push("dependency_incomplete");
+  // 필수 엔진이 빠진 검사는 판정하지 않는다 — "안 돌아간 검사의 초록불"이 바로
+  // 이 도구가 막으려는 침묵이다. 발견(findings)은 그대로 보존된다(보고서는 남는다).
+  const engineGateResult = engineGate(report);
+  if (engineGateResult.missing_required.length > 0) {
+    const failedSet = new Set(engineGateResult.failed);
+    const anyFailed = engineGateResult.missing_required.some((name) => failedSet.has(name));
+    incompleteReasons.push(anyFailed ? "engine_required_failed" : "engine_required_unavailable");
+  }
 
   const gateVerdict = typeof report?.gate?.verdict === "string" ? report.gate.verdict : null;
   const mapped = gateVerdict ? GATE_VERDICT_TO_DECISION[gateVerdict] : undefined;
@@ -193,6 +239,9 @@ export function scanDecision(report, { mode = "standard", timedOut = false } = {
         + "포털을 갱신한 뒤 다시 점검하세요. 형식을 넘겨짚어 판정하지 않습니다.";
     } else if (incompleteReasons[0] === "gate_missing") {
       reason = "체커 결과에 배포 판정(gate)이 없습니다 — 체커를 최신 버전으로 갱신한 뒤 다시 점검하세요.";
+    } else if (incompleteReasons.includes("engine_required_failed") || incompleteReasons.includes("engine_required_unavailable")) {
+      reason = `필수 검사 엔진(${engineGateResult.missing_required.join(", ")})이 수행되지 않아 판정할 수 없습니다 — `
+        + "서버 체커 설치 상태를 확인한 뒤 다시 점검하세요. 엔진이 빠진 결과를 통과로 읽지 않습니다.";
     } else {
       reason = "";
     }
@@ -208,6 +257,9 @@ export function scanDecision(report, { mode = "standard", timedOut = false } = {
     // null = 이 필드가 생기기 전 체커. '검증했는데 1이었다'와 구분해서 기록한다.
     schema_version: schemaVersion,
     incomplete_reasons: incompleteReasons,
+    // 판정에는 영향 없이 화면·보고서에 남길 경고(보조 엔진 미수행 등).
+    degraded_engines: engineGateResult.degraded,
+    missing_required_engines: engineGateResult.missing_required,
     reason
   };
 }

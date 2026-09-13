@@ -45,7 +45,7 @@
   "scan_mode": null,
   "reproduce_command": null,
   "engine_version": "0.3.0",
-  "generated_at": "2026-09-13T01:21:34+00:00",
+  "generated_at": "2026-09-13T10:08:35+00:00",
   "ruleset_version": "2026.09.01a",
   "ruleset_digest": "d22a81017c02b71eb504aa120393694f",
   "ruleset_drift": null,
@@ -133,7 +133,11 @@
         "reason": "semgrep 실행 파일 또는 룰이 없습니다 — JS/TS AST 정밀 분석이 수행되지 않았습니다(네이티브 Windows 미지원). regex·taint 검사는 수행됐습니다."
       }
     ],
-    "failed": []
+    "failed": [],
+    "required": [
+      "regex",
+      "python-ast"
+    ]
   },
   "source_snapshot": null,
   "disclaimer": "이 결과는 자동 보안 보조 검토입니다. 공공기관 운영 반영 전에는 기관 보안 담당자의 정책과 최신 법령·지침을 함께 확인해야 합니다."

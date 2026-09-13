@@ -910,10 +910,77 @@ async function receiveBrowserTarget(request) {
 // PC에서 실행되는 도구 관리자가 맡는다(docs/22 §7). 서버에 남는 것은
 // "서버 자체의 체커 버전"을 알려 주는 /api/tools/versions 뿐이다.
 
+// ---- 서버 체커 신원 검증 ---------------------------------------------------
+// 버전 문자열(0.3.0)만으로는 같은 버전 안의 다른 커밋을 구분할 수 없다. 체커는
+// `gvskb status --json` 으로 커밋(build_info 또는 git)·설치 digest·룰셋 버전·
+// 계약 버전을 준다. 운영자가 PORTAL_EXPECTED_CHECKER_COMMIT 을 두면 실행본이 그
+// 커밋인지 시작 시점에 대조하고, 다르면 **경고가 아니라 configuration_error** 로
+// 점검을 받지 않는다 — 어느 체커로 판정했는지 말할 수 없는 포털은 시험운영을 시작할
+// 수 없다. 값이 없으면 `unverified` 로 정직하게 남긴다(시험운영은 값을 두는 것이 원칙).
+const EXPECTED_CHECKER_COMMIT = String(runtimeEnv.PORTAL_EXPECTED_CHECKER_COMMIT || "").trim().toLowerCase();
+if (EXPECTED_CHECKER_COMMIT && !/^[0-9a-f]{7,40}$/.test(EXPECTED_CHECKER_COMMIT)) {
+  throw new Error("PORTAL_EXPECTED_CHECKER_COMMIT 은 7~40자리 16진수 커밋 SHA 여야 합니다.");
+}
+const CHECKER_IDENTITY_CACHE_MS = 5 * 60 * 1000;
+let checkerIdentityCache = { at: 0, value: null };
+
+function emptyCheckerIdentity(error) {
+  return {
+    commit: null, commit_source: null, install_digest: null, ruleset_version: null, ruleset_digest: null,
+    scan_report_schema_version: null, expected_commit: EXPECTED_CHECKER_COMMIT || null, identity_match: null,
+    identity_state: EXPECTED_CHECKER_COMMIT ? "configuration_error" : "unavailable",
+    error
+  };
+}
+
+function checkerIdentityFromStatus(payload) {
+  const identity = payload?.install_identity || {};
+  const actual = String(identity.commit_id || "").toLowerCase() || null;
+  let match = null;
+  if (EXPECTED_CHECKER_COMMIT) {
+    match = Boolean(actual) && (actual.startsWith(EXPECTED_CHECKER_COMMIT) || EXPECTED_CHECKER_COMMIT.startsWith(actual));
+  }
+  return {
+    commit: actual,
+    commit_source: identity.commit_source || null,
+    install_digest: payload?.install_digest?.sha256 || null,
+    ruleset_version: payload?.ruleset?.version || null,
+    ruleset_digest: payload?.ruleset?.digest || null,
+    scan_report_schema_version: payload?.scan_report_schema_version ?? null,
+    expected_commit: EXPECTED_CHECKER_COMMIT || null,
+    identity_match: match,
+    // ok: 예상값과 일치 · unverified: 예상값 미설정 · configuration_error: 불일치 또는 커밋 미상
+    identity_state: !EXPECTED_CHECKER_COMMIT ? "unverified" : match ? "ok" : "configuration_error"
+  };
+}
+
+async function refreshCheckerIdentity({ force = false } = {}) {
+  if (!force && checkerIdentityCache.value && Date.now() - checkerIdentityCache.at < CHECKER_IDENTITY_CACHE_MS) {
+    return checkerIdentityCache.value;
+  }
+  const status = await runCommand("gvskb", ["status", "--json"], { timeout_ms: 20000 });
+  let value;
+  if (!status.ok) {
+    value = emptyCheckerIdentity("gvskb status 실행 실패");
+  } else {
+    try {
+      value = checkerIdentityFromStatus(JSON.parse(status.stdout));
+    } catch {
+      value = emptyCheckerIdentity("gvskb status 출력이 JSON 이 아닙니다");
+    }
+  }
+  checkerIdentityCache = { at: Date.now(), value };
+  if (value.identity_state === "configuration_error") {
+    console.error(`[portal] 체커 신원 불일치: 예상 ${value.expected_commit} · 실행본 ${value.commit || "미상"} — 점검을 받지 않습니다.`);
+  }
+  return value;
+}
+
 async function serverCheckerVersion() {
-  const [version, doctor] = await Promise.all([
+  const [version, doctor, identity] = await Promise.all([
     runCommand("gvskb", ["version"], { timeout_ms: 15000 }),
-    runCommand("gvskb", ["doctor"], { timeout_ms: 60000 })
+    runCommand("gvskb", ["doctor"], { timeout_ms: 60000 }),
+    refreshCheckerIdentity()
   ]);
   const doctorText = `${doctor.stdout}
 ${doctor.stderr}`;
@@ -922,24 +989,30 @@ ${doctor.stderr}`;
   return {
     installed: version.ok,
     version: version.ok ? version.stdout.trim() : null,
-    doctor_status: hasError ? "error" : hasWarn ? "warn" : "ok"
+    doctor_status: hasError ? "error" : hasWarn ? "warn" : "ok",
+    ...identity
   };
 }
 
 // P5 후속: 하네스가 게시하는 release-index.json 을 실시간으로 읽어와 설치 안내에 반영한다.
 // 하드코딩하지 않는 이유 — 정식 서명본으로 바뀌면(installer_published) 하네스 쪽 JSON만
-// 바뀌고 포털 코드는 그대로다. Lovable 은 보안부서 정책 확인 전까지 표기하지 않는다(연동합의 2차 개정).
+// 바뀌고 포털 코드는 그대로다.
+//
+// 지원 도구는 아래 다섯 개뿐이다(시험운영 결정 2026-09-13). 피드가 다른 이름을 실어도
+// 표시하지 않는다(allowlist). Google Antigravity 는 폐기됐다 — 피드에 남아 있어도 걸러진다.
+// 도구마다 **강제 시점**이 다르다는 사실을 함께 보여준다. Claude Code 만 파일 생성 전
+// 훅으로 막고, 나머지는 Git 훅·CI·GitHub PR 이 강제 지점이다. "모든 도구가 파일 생성
+// 전에 차단한다"고 말하지 않는다 — 공통 최종 강제 지점은 Git/PR/CI 다.
 const HARNESS_RELEASE_URL = runtimeEnv.PORTAL_HARNESS_RELEASE_URL
   || "https://lex6won.github.io/vibecode-harness/releases/release-index.json";
 const HARNESS_RELEASE_CACHE_MS = 5 * 60 * 1000;
-const HARNESS_TOOL_LABELS = {
-  codex: "Codex CLI",
-  "claude-code": "Claude Code",
-  "google-antigravity": "Google Antigravity",
-  "claude-desktop": "Claude 데스크톱",
-  "chatgpt-codex-desktop": "ChatGPT 데스크톱"
-  // lovable-github: 보안부서 정책 확인 전까지 의도적으로 미표기.
-};
+const HARNESS_TOOLS = Object.freeze({
+  codex: { label: "Codex CLI", enforcement: "instructions_git_hook_verify", enforcement_note: "지침 + Git 훅 + gg verify" },
+  "claude-code": { label: "Claude Code", enforcement: "pre_tool_hook", enforcement_note: "작업 전 훅(파일 생성 전 차단) + Git 훅" },
+  "claude-desktop": { label: "Claude 데스크톱", enforcement: "git_ci", enforcement_note: "Git 훅 · CI" },
+  "chatgpt-codex-desktop": { label: "ChatGPT 데스크톱", enforcement: "git_ci", enforcement_note: "Git 훅 · CI" },
+  "lovable-github": { label: "Lovable+GitHub", enforcement: "github_pr_ci", enforcement_note: "GitHub PR/CI 게이트만 적용 — 작업 전 차단 없음" }
+});
 let harnessReleaseCache = { at: 0, value: null };
 
 // 외부 피드에서 온 값을 그대로 링크로 쓰지 않는다. https 가 아닌 주소(javascript: 등)는
@@ -966,8 +1039,13 @@ async function fetchHarnessRelease() {
     if (!response.ok) throw new Error(`http_${response.status}`);
     const data = await response.json();
     const supportedTools = (data.capabilities?.supported_tools || [])
-      .filter((tool) => Object.hasOwn(HARNESS_TOOL_LABELS, tool))
-      .map((tool) => ({ id: tool, label: HARNESS_TOOL_LABELS[tool] }));
+      .filter((tool) => Object.hasOwn(HARNESS_TOOLS, tool))
+      .map((tool) => ({
+        id: tool,
+        label: HARNESS_TOOLS[tool].label,
+        enforcement: HARNESS_TOOLS[tool].enforcement,
+        enforcement_note: HARNESS_TOOLS[tool].enforcement_note
+      }));
     const value = {
       available: true,
       status: data.status || null,
@@ -1378,6 +1456,9 @@ async function runScanJob(job) {
       engines_used: engines.used,
       engines_unavailable: engines.unavailable,
       engines_failed: engines.failed,
+      engines_required: engines.required,
+      engines_missing_required: verdict.missing_required_engines,
+      engines_degraded: verdict.degraded_engines,
       // 판정 신원 — 어떤 엔진·룰셋이, 어느 시점 소스를 보고 내린 결론인가.
       // 제출 문서가 실제 배포본에 대한 것임을 증명하는 최소 정보다.
       engine_version: parsed?.engine_version || null,
@@ -1853,8 +1934,12 @@ function engineText(job) {
   const used = Array.isArray(summary.engines_used) ? summary.engines_used : [];
   const unavailable = Array.isArray(summary.engines_unavailable) ? summary.engines_unavailable : [];
   const failed = Array.isArray(summary.engines_failed) ? summary.engines_failed : [];
+  const required = Array.isArray(summary.engines_required) ? summary.engines_required : [];
+  const missingRequired = Array.isArray(summary.engines_missing_required) ? summary.engines_missing_required : [];
   const parts = [`수행: ${used.join(", ") || "없음"}`];
+  if (required.length) parts.push(`필수: ${required.join(", ")}`);
   const nameOf = (item) => (typeof item === "string" ? item : String(item?.name || "unknown"));
+  if (missingRequired.length) parts.push(`✖ 필수 엔진 미수행(판정 불가): ${missingRequired.join(", ")}`);
   if (unavailable.length) parts.push(`⚠ 미수행: ${unavailable.map(nameOf).join(", ")}`);
   if (failed.length) parts.push(`⚠ 실패: ${failed.map(nameOf).join(", ")}`);
   return parts.join(" · ");
@@ -1985,6 +2070,16 @@ async function promoteDraftReports(job) {
 async function startScan(request, response) {
   const account = requireUser(request, response);
   if (!account) return;
+  // 체커 신원이 예상과 다르면 점검을 받지 않는다 — 어느 체커로 판정했는지 말할 수
+  // 없는 결과는 결재 증적이 될 수 없다. 경고로 내리면 계속 쓰이므로 여기서 막는다.
+  const identity = await refreshCheckerIdentity();
+  if (identity.identity_state === "configuration_error") {
+    json(response, 503, {
+      error: "configuration_error",
+      message: `서버 체커가 예상 버전(${identity.expected_commit})과 다릅니다(실행본 ${identity.commit || "미상"}). 관리자가 설치를 확인할 때까지 점검을 시작할 수 없습니다.`
+    });
+    return;
+  }
   // 소속(기관명·부서명)은 가입 때가 아니라 첫 점검 직전에 받는다 — 진입장벽을 낮추되,
   // 관측·이력에 부서 스냅샷이 비는 일은 없게 점검 시작은 소속 없이는 못 한다.
   if (!String(account.organization || "").trim() || !String(account.department || "").trim()) {
@@ -2035,7 +2130,13 @@ async function startScan(request, response) {
 
 async function handleApi(request, response, pathname, searchParams = new URLSearchParams()) {
   if (request.method === "GET" && pathname === "/health") {
-    json(response, 200, { status: "ok", app: "vibecode-security-gate-portal" });
+    const identity = await refreshCheckerIdentity();
+    const configurationError = identity.identity_state === "configuration_error";
+    json(response, configurationError ? 503 : 200, {
+      status: configurationError ? "configuration_error" : "ok",
+      app: "vibecode-security-gate-portal",
+      checker_identity: identity
+    });
     return;
   }
 
@@ -2577,4 +2678,12 @@ createServer(async (request, response) => {
   }
 }).listen(PORT, BIND_HOST, () => {
   console.log(`VibeCode Security Gate Portal: http://${BIND_HOST}:${PORT}`);
+  // 시작 시 체커 신원을 한 번 대조해 로그에 남긴다(불일치면 error 로그 + /health 503 + 점검 거부).
+  refreshCheckerIdentity({ force: true }).then((identity) => {
+    const expected = identity.expected_commit
+      ? ` · 예상 ${identity.expected_commit}`
+      : " · 예상값 미설정(PORTAL_EXPECTED_CHECKER_COMMIT)";
+    const ruleset = identity.ruleset_version ? ` · 룰셋 ${identity.ruleset_version}` : "";
+    console.log(`[portal] 체커 신원: ${identity.identity_state} (실행본 ${identity.commit || "미상"}${expected}${ruleset})`);
+  }).catch(() => {});
 });

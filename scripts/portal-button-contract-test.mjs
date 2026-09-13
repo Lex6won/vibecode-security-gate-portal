@@ -261,7 +261,9 @@ async function assertToolsGuidePage() {
     && html.includes('class="harness-step-label">설치하기</span>')
     && html.includes('class="harness-step-label">설정하기</span>'),
   "harness progress labels must match the download, install, and setup stages");
-  assert.ok(!html.includes("lovable"), "unapproved tool (Lovable) must not be named in the harness install guidance");
+  // Lovable 은 표시하되 강제 수준(GitHub PR/CI 게이트만)을 함께 적는다. 폐기된 Antigravity 는 어디에도 없다.
+  assert.ok(html.includes("Lovable") && html.includes("GitHub PR/CI"), "Lovable must be listed with its PR/CI-only enforcement level");
+  assert.ok(!/antigravity/i.test(html), "retired Antigravity must not appear in the harness install guidance");
 }
 
 async function assertMyHistoryPage() {

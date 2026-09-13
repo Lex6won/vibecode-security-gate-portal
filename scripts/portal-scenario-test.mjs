@@ -591,7 +591,8 @@ async function scenarioHarnessReleaseGuard(fixture) {
       download_url: "javascript:alert(document.cookie)",
       sha256: "deadbeef"
     },
-    capabilities: { supported_tools: ["codex", "lovable-github"] }
+    // 폐기된 도구(google-antigravity)·모르는 도구는 피드가 실어도 걸러지고, Lovable 은 강제 수준과 함께 보인다.
+    capabilities: { supported_tools: ["codex", "lovable-github", "google-antigravity", "unknown-tool"] }
   });
   const feed = createHttpServer((request, response) => {
     response.writeHead(200, { "Content-Type": "application/json" });
@@ -633,7 +634,12 @@ async function scenarioHarnessReleaseGuard(fixture) {
     const headers = new Headers({ "X-VibeCode-Local-Token": localApiToken });
     const release = await (await fetch(`http://127.0.0.1:${portalPort}/api/harness/release`, { headers })).json();
     assert.equal(release.download_url, null, "a non-https installer URL from the feed must be dropped, never rendered as a link");
-    assert.ok(!release.supported_tools.some((tool) => tool.id.includes("lovable")), "Lovable must stay filtered even when the feed advertises it");
+    assert.deepEqual(release.supported_tools.map((tool) => tool.id), ["codex", "lovable-github"],
+      "retired (google-antigravity) and unknown tools must be filtered; Lovable is shown");
+    const lovable = release.supported_tools.find((tool) => tool.id === "lovable-github");
+    assert.equal(lovable.enforcement, "github_pr_ci", "Lovable must carry its real enforcement level (PR/CI gate only)");
+    assert.ok(lovable.enforcement_note.includes("GitHub PR/CI"), "Lovable enforcement note must name the PR/CI gate");
+    assert.ok(release.supported_tools.every((tool) => tool.enforcement && tool.enforcement_note), "every tool states its enforcement point");
   } finally {
     server.kill();
     await Promise.race([once(server, "exit"), wait(2000)]);
@@ -884,11 +890,23 @@ async function scenarioToolsSurface() {
   assert.ok(["ok", "warn", "error"].includes(versions.checker.doctor_status));
   assert.ok(versions.note.includes("도구 관리자"), "the response must say PC tool state belongs to the tool manager");
 
-  // 하네스의 release-index.json 을 그대로 소비한다 — Lovable 은 정책 확인 전까지 걸러진다.
+  // 서버 체커 신원 — 예상 커밋 대조 상태가 값으로 드러나야 한다(unverified 도 정직한 값이다).
+  assert.ok(["ok", "unverified", "configuration_error", "unavailable"].includes(versions.checker.identity_state),
+    "checker identity state must be one of the contract values");
+  assert.ok("commit" in versions.checker && "ruleset_version" in versions.checker && "scan_report_schema_version" in versions.checker,
+    "checker identity must expose commit, ruleset version and schema version");
+
+  // 하네스의 release-index.json 을 그대로 소비한다 — 지원 도구 5종(allowlist)만, 강제 수준과 함께.
   const release = await fetchJson("/api/harness/release");
   assert.equal(typeof release.available, "boolean", "release endpoint must always report availability honestly");
   if (release.available) {
-    assert.ok(!release.supported_tools.some((tool) => tool.id.includes("lovable")), "Lovable must stay filtered out pending security policy review");
+    assert.ok(!release.supported_tools.some((tool) => tool.id.includes("antigravity")), "retired Antigravity must never be listed");
+    for (const tool of release.supported_tools) {
+      assert.ok(["codex", "claude-code", "claude-desktop", "chatgpt-codex-desktop", "lovable-github"].includes(tool.id), `unexpected tool ${tool.id}`);
+      assert.ok(tool.enforcement_note, `${tool.id} must state its enforcement point`);
+    }
+    const lovable = release.supported_tools.find((tool) => tool.id === "lovable-github");
+    if (lovable) assert.equal(lovable.enforcement, "github_pr_ci");
     assert.ok(release.download_url?.startsWith("https://"), "installer download URL must be present when available");
   }
 }
