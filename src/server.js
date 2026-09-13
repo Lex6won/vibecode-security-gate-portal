@@ -6,7 +6,7 @@ import { cpus } from "node:os";
 import { pipeline } from "node:stream/promises";
 import { basename, dirname, extname, isAbsolute, join, normalize, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createPublicKey, randomBytes, randomUUID, scryptSync, timingSafeEqual, verify as cryptoVerify } from "node:crypto";
+import { createHash, createPublicKey, randomBytes, randomUUID, scryptSync, timingSafeEqual, verify as cryptoVerify } from "node:crypto";
 import Busboy from "busboy";
 import { initObservationStore, toObservationRecord, hasSubmission, recordSubmission, observationSummary, usageStatsSnapshot, observationRecordsSnapshot } from "./observation-store.mjs";
 import { initWhitelistStore, whitelistStatus, setWhitelistEntry, whitelistSnapshot, whitelistSummary, recordWhitelistExport } from "./whitelist-store.mjs";
@@ -1005,6 +1005,10 @@ ${doctor.stderr}`;
 // 전에 차단한다"고 말하지 않는다 — 공통 최종 강제 지점은 Git/PR/CI 다.
 const HARNESS_RELEASE_URL = runtimeEnv.PORTAL_HARNESS_RELEASE_URL
   || "https://lex6won.github.io/vibecode-harness/releases/release-index.json";
+const HARNESS_LOCAL_RELEASE_FILE = isAbsolute(runtimeEnv.PORTAL_HARNESS_LOCAL_RELEASE_FILE || "")
+  ? resolve(runtimeEnv.PORTAL_HARNESS_LOCAL_RELEASE_FILE)
+  : null;
+const HARNESS_LOCAL_DOWNLOAD_PATH = "/downloads/vibecode-harness-local-test-installer";
 const HARNESS_RELEASE_CACHE_MS = 5 * 60 * 1000;
 const HARNESS_TOOLS = Object.freeze({
   codex: { label: "Codex CLI", enforcement: "instructions_git_hook_verify", enforcement_note: "지침 + Git 훅 + gg verify" },
@@ -1014,6 +1018,89 @@ const HARNESS_TOOLS = Object.freeze({
   "lovable-github": { label: "Lovable+GitHub", enforcement: "github_pr_ci", enforcement_note: "GitHub PR/CI 게이트만 적용 — 작업 전 차단 없음" }
 });
 let harnessReleaseCache = { at: 0, value: null };
+
+function supportedHarnessTools(data) {
+  return (data.capabilities?.supported_tools || [])
+    .filter((tool) => Object.hasOwn(HARNESS_TOOLS, tool))
+    .map((tool) => ({
+      id: tool,
+      label: HARNESS_TOOLS[tool].label,
+      enforcement: HARNESS_TOOLS[tool].enforcement,
+      enforcement_note: HARNESS_TOOLS[tool].enforcement_note
+    }));
+}
+
+function sha256Stream(path) {
+  return new Promise((resolveHash, rejectHash) => {
+    const hash = createHash("sha256");
+    const input = createReadStream(path);
+    input.on("data", (chunk) => hash.update(chunk));
+    input.once("error", rejectHash);
+    input.once("end", () => resolveHash(hash.digest("hex")));
+  });
+}
+
+async function readLocalHarnessRelease() {
+  if (!HARNESS_LOCAL_RELEASE_FILE) return null;
+  if (!["127.0.0.1", "localhost", "::1"].includes(BIND_HOST)) {
+    throw new Error("local_harness_release_requires_loopback_bind");
+  }
+  const releaseDir = dirname(HARNESS_LOCAL_RELEASE_FILE);
+  const data = JSON.parse(await readFile(HARNESS_LOCAL_RELEASE_FILE, "utf8"));
+  const fileName = String(data.installer?.file_name || "");
+  if (!/^[A-Za-z0-9._-]+\.exe$/.test(fileName) || basename(fileName) !== fileName) {
+    throw new Error("invalid_local_harness_installer_name");
+  }
+  const installerPath = resolve(join(releaseDir, fileName));
+  if (!pathInside(releaseDir, installerPath) || !existsSync(installerPath) || !statSync(installerPath).isFile()) {
+    throw new Error("local_harness_installer_missing");
+  }
+  const actualSha256 = await sha256Stream(installerPath);
+  const declaredSha256 = String(data.installer?.sha256 || "").toLowerCase();
+  if (!/^[a-f0-9]{64}$/.test(declaredSha256) || declaredSha256 !== actualSha256) {
+    throw new Error("local_harness_installer_hash_mismatch");
+  }
+  const artifact = {
+    path: installerPath,
+    file_name: fileName,
+    sha256: actualSha256,
+    size: statSync(installerPath).size
+  };
+  return {
+    artifact,
+    release: {
+      available: true,
+      status: "local_test_installer_ready",
+      is_demo: true,
+      message: "이 PC의 로컬 시험운영용 미서명 설치파일입니다. 운영 배포에는 사용할 수 없습니다.",
+      version: data.installer?.version || null,
+      download_url: HARNESS_LOCAL_DOWNLOAD_PATH,
+      sha256: actualSha256,
+      signature_status: "unsigned_local_test",
+      expires_at: data.installer?.expires_at || null,
+      supported_tools: supportedHarnessTools(data)
+    }
+  };
+}
+
+async function serveLocalHarnessInstaller(response) {
+  if (!HARNESS_LOCAL_RELEASE_FILE) return notFound(response);
+  try {
+    const local = await readLocalHarnessRelease();
+    if (!local) return notFound(response);
+    response.writeHead(200, {
+      "Content-Type": "application/vnd.microsoft.portable-executable",
+      "Content-Length": String(local.artifact.size),
+      "Content-Disposition": `attachment; filename="${local.artifact.file_name}"`,
+      "X-Content-Type-Options": "nosniff",
+      "Cache-Control": "no-store",
+      "X-VibeCode-Artifact-SHA256": local.artifact.sha256
+    });
+    createReadStream(local.artifact.path).pipe(response);
+  } catch {
+    notFound(response);
+  }
+}
 
 // 외부 피드에서 온 값을 그대로 링크로 쓰지 않는다. https 가 아닌 주소(javascript: 등)는
 // 버리고 null 로 만든다 — 화면은 download_url 이 없으면 "확인할 수 없습니다"로 닫히므로
@@ -1031,6 +1118,17 @@ async function fetchHarnessRelease() {
   if (Date.now() - harnessReleaseCache.at < HARNESS_RELEASE_CACHE_MS && harnessReleaseCache.value) {
     return harnessReleaseCache.value;
   }
+  if (HARNESS_LOCAL_RELEASE_FILE) {
+    try {
+      const local = await readLocalHarnessRelease();
+      harnessReleaseCache = { at: Date.now(), value: local.release };
+      return local.release;
+    } catch {
+      const value = { available: false, status: "local_test_installer_invalid" };
+      harnessReleaseCache = { at: Date.now(), value };
+      return value;
+    }
+  }
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 8000);
@@ -1038,14 +1136,7 @@ async function fetchHarnessRelease() {
     clearTimeout(timeout);
     if (!response.ok) throw new Error(`http_${response.status}`);
     const data = await response.json();
-    const supportedTools = (data.capabilities?.supported_tools || [])
-      .filter((tool) => Object.hasOwn(HARNESS_TOOLS, tool))
-      .map((tool) => ({
-        id: tool,
-        label: HARNESS_TOOLS[tool].label,
-        enforcement: HARNESS_TOOLS[tool].enforcement,
-        enforcement_note: HARNESS_TOOLS[tool].enforcement_note
-      }));
+    const supportedTools = supportedHarnessTools(data);
     const value = {
       available: true,
       status: data.status || null,
@@ -2615,6 +2706,10 @@ createServer(async (request, response) => {
   try {
     const url = new URL(request.url || "/", `http://127.0.0.1:${PORT}`);
     if (!requireTrustedLocalRequest(request, response, url.pathname)) return;
+    if (request.method === "GET" && url.pathname === HARNESS_LOCAL_DOWNLOAD_PATH) {
+      await serveLocalHarnessInstaller(response);
+      return;
+    }
     if (url.pathname === "/health" || url.pathname.startsWith("/api/")) {
       await handleApi(request, response, url.pathname, url.searchParams);
       return;

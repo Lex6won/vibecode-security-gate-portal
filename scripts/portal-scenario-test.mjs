@@ -3,7 +3,7 @@
 // 입력은 업로드(browser_folder/browser_archive)와 GitHub URL뿐이다.
 // 로컬 픽커·로컬 절대경로·save_dir·설치/MCP 라우트는 제거됐음을 함께 검증한다.
 import assert from "node:assert/strict";
-import { createSign, generateKeyPairSync } from "node:crypto";
+import { createHash, createSign, generateKeyPairSync } from "node:crypto";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { existsSync } from "node:fs";
@@ -647,6 +647,76 @@ async function scenarioHarnessReleaseGuard(fixture) {
   }
 }
 
+async function scenarioLocalHarnessInstaller(fixture) {
+  const portalPort = Number(process.env.PORTAL_LOCAL_INSTALLER_TEST_PORT || 8801);
+  const releaseDir = join(fixture.fixtureDir, "local-harness-release");
+  const installerName = "Gyeonggi-VibeCode-Harness-Demo-Unsigned-Setup.exe";
+  const installerBytes = Buffer.from("local-test-installer-bytes\n", "utf8");
+  const installerSha256 = createHash("sha256").update(installerBytes).digest("hex");
+  await mkdir(releaseDir, { recursive: true });
+  await writeFile(join(releaseDir, installerName), installerBytes);
+  const releaseFile = join(releaseDir, "release-index.json");
+  await writeFile(releaseFile, JSON.stringify({
+    installer: { file_name: installerName, version: "0.2.0-local", sha256: installerSha256 },
+    capabilities: {
+      supported_tools: ["codex", "claude-code", "claude-desktop", "chatgpt-codex-desktop", "lovable-github", "google-antigravity"]
+    }
+  }));
+
+  const server = spawn(process.execPath, ["src/server.js"], {
+    cwd: process.cwd(),
+    env: {
+      ...process.env,
+      PORT: String(portalPort),
+      ADMIN_INITIAL_PASSWORD: adminPassword,
+      ADMIN_AUTH_FILE: join(fixture.fixtureDir, "local-installer-admin.json"),
+      PORTAL_SCAN_HISTORY_FILE: join(fixture.fixtureDir, "local-installer-history.jsonl"),
+      PORTAL_OBSERVATION_DIR: join(fixture.fixtureDir, "local-installer-observations"),
+      PORTAL_ACCOUNT_DIR: join(fixture.fixtureDir, "local-installer-accounts"),
+      PORTAL_WHITELIST_DIR: join(fixture.fixtureDir, "local-installer-whitelist"),
+      PORTAL_HARNESS_LOCAL_RELEASE_FILE: releaseFile,
+      PORTAL_LOCAL_API_TOKEN: localApiToken,
+      PYTHONUTF8: "1",
+      PYTHONIOENCODING: "utf-8"
+    },
+    stdio: ["ignore", "ignore", "ignore"],
+    windowsHide: true
+  });
+  try {
+    let ready = false;
+    for (let attempt = 0; attempt < 40 && !ready; attempt += 1) {
+      if (server.exitCode !== null) throw new Error("local installer test server died");
+      try {
+        const health = await fetch(`http://127.0.0.1:${portalPort}/health`);
+        ready = health.ok;
+      } catch {
+        await wait(250);
+      }
+    }
+    assert.ok(ready, "local installer test server did not become ready");
+    const headers = new Headers({ "X-VibeCode-Local-Token": localApiToken });
+    const releaseResponse = await fetch(`http://127.0.0.1:${portalPort}/api/harness/release`, { headers });
+    assert.equal(releaseResponse.status, 200);
+    const release = await releaseResponse.json();
+    assert.equal(release.available, true);
+    assert.equal(release.status, "local_test_installer_ready");
+    assert.equal(release.is_demo, true);
+    assert.equal(release.signature_status, "unsigned_local_test");
+    assert.equal(release.sha256, installerSha256);
+    assert.equal(release.download_url, "/downloads/vibecode-harness-local-test-installer");
+    assert.ok(!release.supported_tools.some((tool) => tool.id === "google-antigravity"));
+
+    const download = await fetch(`http://127.0.0.1:${portalPort}${release.download_url}`);
+    assert.equal(download.status, 200);
+    assert.equal(download.headers.get("x-vibecode-artifact-sha256"), installerSha256);
+    assert.match(String(download.headers.get("content-disposition")), /attachment/);
+    assert.deepEqual(Buffer.from(await download.arrayBuffer()), installerBytes);
+  } finally {
+    server.kill();
+    await Promise.race([once(server, "exit"), wait(2000)]);
+  }
+}
+
 // Cloudflare Access 연동: 서명이 유효한 JWT 만 로그인으로 인정한다.
 // 위조 토큰(다른 키 서명)·무토큰은 거부, 미설정 서버는 라우트 자체가 없어야 한다.
 async function scenarioAccessLogin(fixture) {
@@ -1147,6 +1217,7 @@ try {
   await scenarioQueueAndCapacity(fixture);
   await scenarioHostAllowlist(fixture);
   await scenarioHarnessReleaseGuard(fixture);
+  await scenarioLocalHarnessInstaller(fixture);
   await scenarioAccessLogin(fixture);
   // 미설정 서버(메인 테스트 서버)에서는 라우트 자체가 닫혀 있어야 한다.
   const accessDisabled = await fetch(`${baseUrl}/api/auth/access-login`, { method: "POST", headers: localHeaders({ "Content-Type": "application/json" }), body: "{}" });
@@ -1169,6 +1240,7 @@ try {
       queue_and_capacity: true,
       host_allowlist: true,
       harness_release_guard: true,
+      local_harness_installer: true,
       access_login: true,
       report_retention: true
     }

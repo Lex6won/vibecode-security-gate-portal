@@ -22,6 +22,7 @@ tmp/
 .env
 *.local
 .local/
+local-artifacts/
 
 # OS/editor
 .DS_Store
