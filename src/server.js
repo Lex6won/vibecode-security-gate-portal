@@ -16,6 +16,7 @@ import {
   upsertAccountOnLogin, updateAccountProfile, accountSummary
 } from "./account-store.mjs";
 import { writeZipEntries } from "./hwpx-template.mjs";
+import { REPORT_EXTENSIONS, koreaReportTimestamp, reportStemForJob as buildReportStem, safeReportNamePart } from "./report-naming.mjs";
 import {
   dependencyRiskSummary,
   scanDecision,
@@ -989,15 +990,6 @@ async function fetchHarnessRelease() {
   }
 }
 
-function safeReportNamePart(value) {
-  return String(value || "")
-    .normalize("NFKC")
-    .replace(/[<>:"/\\|?*\u0000-\u001F]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, 48);
-}
-
 function targetLabelForDisplay(targetType, targetRef, targetLabel = "") {
   if (targetType === "github_url") {
     try {
@@ -1011,44 +1003,17 @@ function targetLabelForDisplay(targetType, targetRef, targetLabel = "") {
   return String(targetLabel || "").trim().slice(0, 160);
 }
 
-function koreaReportTimestamp(date = new Date()) {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Seoul",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    hourCycle: "h23"
-  }).formatToParts(date).reduce((result, part) => ({ ...result, [part.type]: part.value }), {});
-  return `${parts.year}-${parts.month}-${parts.day}_${parts.hour}${parts.minute}`;
-}
-
+/**
+ * 보고서 파일 이름. 이름 규칙은 src/report-naming.mjs 에 있고(작업 id 포함 —
+ * 동시 점검이 같은 이름을 고르던 결함의 수정), 여기서는 실제 디렉터리를
+ * 들여다보는 존재 검사만 붙인다.
+ */
 function reportStemForJob(job, targetPath) {
-  let targetName = "";
-  if (job.target_type === "github_url") {
-    try {
-      const pathParts = new URL(String(job.target_ref)).pathname.split("/").filter(Boolean);
-      targetName = safeReportNamePart(String(pathParts.at(-1) || "").replace(/\.git$/i, ""));
-    } catch {
-      targetName = "";
-    }
-  }
-  if (!targetName) targetName = safeReportNamePart(job.target_label);
-  if (!targetName) targetName = safeReportNamePart(basename(targetPath));
-  // 점검 방식을 파일명에 남긴다 — 간편/표준 보고서가 이름부터 구분돼야
-  // "차이가 없다"는 오해가 생기지 않는다(실제로는 프로파일·규칙 수가 다르다).
-  const modeName = job.mode === "quick" ? "간편점검" : "표준점검";
-  const base = [targetName, koreaReportTimestamp(new Date()), modeName].filter(Boolean).join("_");
-  let candidate = base;
-  let suffix = 2;
-  while ([".json", ".html", ".md", ".sbom.cdx.json"].some((extension) =>
-    existsSync(join(REPORT_DIR, `${candidate}${extension}`)) || existsSync(join(DRAFT_REPORT_DIR, `${candidate}${extension}`))
-  )) {
-    candidate = `${base}_${suffix}`;
-    suffix += 1;
-  }
-  return candidate;
+  return buildReportStem(job, targetPath, {
+    exists: (candidate) => REPORT_EXTENSIONS.some((extension) =>
+      existsSync(join(REPORT_DIR, `${candidate}${extension}`)) || existsSync(join(DRAFT_REPORT_DIR, `${candidate}${extension}`))
+    )
+  });
 }
 
 async function renderReadableReports(job, jsonPath, outputBase) {

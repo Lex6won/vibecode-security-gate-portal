@@ -59,7 +59,7 @@ jobs:
       - name: 체커 저장소 받기
         env:
           CHECKER_REPOSITORY: ${{ vars.CHECKER_REPOSITORY || 'https://github.com/Lex6won/vibecode-checker.git' }}
-          CHECKER_COMMIT: ${{ vars.CHECKER_COMMIT || 'a392e5a6f54721bcd0b491116772d8b7bf75d938' }}
+          CHECKER_COMMIT: ${{ vars.CHECKER_COMMIT || '119e0f5376bb560b335f25765a564825a5766398' }}
         run: |
           if ! printf '%s' "${CHECKER_COMMIT}" | grep -Eq '^[0-9a-f]{40}$'; then
             echo "CHECKER_COMMIT 은 40자리 커밋 SHA 여야 합니다(브랜치 이름 불가): '${CHECKER_COMMIT}'" >&2

@@ -209,7 +209,7 @@ async function scenarioQuickScan(fixture) {
   assert.ok(!result.artifacts.some((report) => report.kind === "sbom"),
     "a source-only target must not claim that an SBOM was generated");
   assert.equal(result.report_render_error, null, "completed scans must make the user-facing HTML report available");
-  const reportNamePattern = /^민원 조회 도구_\d{4}-\d{2}-\d{2}_\d{4}_간편점검(?:_\d+)?\.(?:html|md|json)$/;
+  const reportNamePattern = /^민원 조회 도구_\d{4}-\d{2}-\d{2}_\d{4}_간편점검_[0-9a-f]{8}(?:_\d+)?\.(?:html|md|json)$/;
   assert.ok(result.artifacts.some((report) => reportNamePattern.test(report.file_name) && report.file_name.endsWith(".html")),
     "quick scan HTML report names must include the target name and Korean scan date");
   assert.ok(result.artifacts.some((report) => reportNamePattern.test(report.file_name) && report.file_name.endsWith(".md")),
@@ -262,7 +262,7 @@ async function scenarioStandardScan(fixture) {
   assert.equal(result.summary.coverage_truncated, false, "standard scan fixture must not silently truncate files");
   assert.equal(result.summary.dependency_incomplete, false, "standard scan fixture must complete the dependency check");
   assert.equal(result.report_render_error, null, "standard scans must make the user-facing HTML report available");
-  assert.ok(result.artifacts.every((report) => /^standard-fixture_\d{4}-\d{2}-\d{2}_\d{4}_표준점검(?:_\d+)?\./.test(report.file_name)),
+  assert.ok(result.artifacts.every((report) => /^standard-fixture_\d{4}-\d{2}-\d{2}_\d{4}_표준점검_[0-9a-f]{8}(?:_\d+)?\./.test(report.file_name)),
     "standard scan report names must include the selected folder name and Korean scan date");
   return result;
 }
@@ -319,7 +319,7 @@ async function scenarioAutoObservations(fixture) {
     "completed scans must create a CycloneDX SBOM artifact");
   assert.equal(result.summary.sbom_status, "generated",
     "a target with a supported package manifest must identify its generated SBOM");
-  assert.ok(result.artifacts.some((artifact) => /^obs-fixture_\d{4}-\d{2}-\d{2}_\d{4}_간편점검(?:_\d+)?\.sbom\.cdx\.json$/.test(artifact.file_name)),
+  assert.ok(result.artifacts.some((artifact) => /^obs-fixture_\d{4}-\d{2}-\d{2}_\d{4}_간편점검_[0-9a-f]{8}(?:_\d+)?\.sbom\.cdx\.json$/.test(artifact.file_name)),
     "SBOM names must include the selected target name and Korean scan date");
 
   const removedRoute = await fetch(`${baseUrl}/api/scan/${result.id}/submit-observations`, { method: "POST", headers: localHeaders() });

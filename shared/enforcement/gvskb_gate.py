@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import importlib
 import json
 import os
 import subprocess
@@ -224,18 +223,13 @@ def catalog_status(name: str, ecosystem: str, catalog: dict[str, dict[str, set[s
     return "not_listed"
 
 
-#: 체커 모듈 이름. 테스트가 "체커 미설치" 경로를 **실제 ImportError 로** 만들 수
-#: 있게 열어 둔 이음매다. PATH 를 지우는 식으로는 안 된다 — 체커는 PATH 가 아니라
-#: import 로 찾고, PATH 를 지우면 인터프리터도 같이 사라진다(원격 CI 에서 실측).
-CHECKER_MODULE_ENV = "GVSKB_GATE_CHECKER_MODULE"
-DEFAULT_CHECKER_MODULE = "gvskb.tools.check_package"
-
-
 def import_checker():
-    module_name = os.environ.get(CHECKER_MODULE_ENV, "").strip() or DEFAULT_CHECKER_MODULE
+    # 체커는 언제나 이 모듈 하나다. 환경변수로 다른 모듈을 고르게 하는 이음매를
+    # 잠깐 두었다가 뺐다 — 실행 환경을 쥔 쪽이 정책 체커를 다른 코드로 바꿀 수
+    # 있는 문이 되기 때문이다. 테스트가 '체커 없음'을 만들 방법은 운영 코드
+    # 바깥(테스트가 준비하는 sys.path)에 있어야 한다.
     try:
-        module = importlib.import_module(module_name)
-        audit_manifest = module.audit_manifest
+        from gvskb.tools.check_package import audit_manifest  # type: ignore
     except Exception as exc:
         raise RuntimeError(
             "vibecode-checker(gvskb)가 설치되어 있지 않습니다. "

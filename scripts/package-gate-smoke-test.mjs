@@ -34,17 +34,29 @@ const EXIT_WARN = 1;
 const EXIT_BLOCK = 2;
 
 /**
- * "체커가 없는 환경"을 만든다.
+ * "체커가 없는 환경"을 만든다 — **운영 코드를 건드리지 않고.**
  *
- * 처음에는 PATH 에서 체커를 빼는 식으로 했다가 원격 CI 에서 깨졌다. 두 가지가
- * 틀렸다. 게이트는 체커를 PATH 가 아니라 **모듈 import** 로 찾으므로 PATH 로는
- * 없는 상태를 만들 수 없고, 그 필터는 Windows 디렉터리 이름을 전제해 Linux 에서
- * PATH 를 통째로 비워 인터프리터조차 띄우지 못했다.
+ * 두 번 틀렸다. 처음엔 PATH 에서 체커를 뺐는데, 게이트는 체커를 PATH 가 아니라
+ * 모듈 import 로 찾으므로 소용이 없었고 Linux 에서는 인터프리터까지 사라졌다.
+ * 다음엔 게이트에 환경변수로 모듈을 고르는 이음매를 두었는데, 그것은 실행
+ * 환경을 쥔 쪽이 정책 체커를 다른 코드로 바꿀 수 있는 문이었다(검토에서 지적).
  *
- * 그래서 게이트가 제공하는 명시적 이음매를 쓴다: 가져올 모듈 이름을 바꿔 실제
- * ImportError 를 일으킨다. 실제 "미설치"와 같은 경로를 같은 방식으로 지난다.
+ * 그래서 테스트가 sys.path 앞에 `gvskb` 그림자 패키지를 놓는다. import 하면
+ * ImportError 를 내므로 게이트는 실제 미설치와 같은 경로를 같은 방식으로 지난다.
+ * 게이트 코드에는 아무 문도 없다.
  */
-const WITHOUT_CHECKER = { ...process.env, GVSKB_GATE_CHECKER_MODULE: "gvskb_intentionally_missing_for_smoke_test" };
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+
+function withoutCheckerEnv() {
+  const shadowRoot = mkdtempSync(join(tmpdir(), "portal-gate-no-checker-"));
+  mkdirSync(join(shadowRoot, "gvskb"));
+  writeFileSync(join(shadowRoot, "gvskb", "__init__.py"),
+    'raise ImportError("smoke test: checker deliberately absent")\n');
+  const separator = process.platform === "win32" ? ";" : ":";
+  const existing = process.env.PYTHONPATH ? `${separator}${process.env.PYTHONPATH}` : "";
+  return { shadowRoot, env: { ...process.env, PYTHONPATH: `${shadowRoot}${existing}` } };
+}
 
 /** CI 는 이 스위치로 "인터프리터가 없어 못 했다"를 실패로 바꾼다. */
 const REQUIRE_CHECKER = process.env.PORTAL_REQUIRE_CHECKER === "1";
@@ -170,7 +182,13 @@ if (command === null) {
   //    예전에는 checker_error 경로가 일찍 돌아가 E2 사람검토 판단에 닿지 못했고,
   //    기본 모드(MONITOR)와 겹쳐 **E2 인데 action=pass · 종료 코드 0** 이 나왔다.
   //    체커가 답을 못 할 때야말로 절차 요건이 적용돼야 한다.
-  const e2 = spawnSync(command, [pypiGate, "check", "requests", "--version", "2.32.3", "--env-grade", "E2", "--json"], { encoding: "utf8", env: WITHOUT_CHECKER });
+  const absent = withoutCheckerEnv();
+  let e2;
+  try {
+    e2 = spawnSync(command, [pypiGate, "check", "requests", "--version", "2.32.3", "--env-grade", "E2", "--json"], { encoding: "utf8", env: absent.env });
+  } finally {
+    rmSync(absent.shadowRoot, { recursive: true, force: true });
+  }
   const e2Output = textOf(e2);
   assertLoaded(e2Output, "PyPI");
   let e2Decision;
