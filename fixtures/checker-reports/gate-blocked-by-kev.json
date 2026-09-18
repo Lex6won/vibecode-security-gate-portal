@@ -19,8 +19,19 @@
     },
     "highest_severity": null,
     "blocked": false,
+    "has_block_level_findings": false,
     "location_count": 0,
     "block_location_count": 0,
+    "by_confidence": {
+      "confirmed": 0,
+      "likely": 0,
+      "pattern-only": 0
+    },
+    "block_by_confidence": {
+      "confirmed": 0,
+      "likely": 0,
+      "pattern-only": 0
+    },
     "by_path_class": {
       "runtime": {
         "total": 0,
@@ -31,6 +42,14 @@
         "block": 0
       },
       "sample": {
+        "total": 0,
+        "block": 0
+      },
+      "upload-data": {
+        "total": 0,
+        "block": 0
+      },
+      "build-tool": {
         "total": 0,
         "block": 0
       }
@@ -44,10 +63,10 @@
   "external_surface": [],
   "scan_mode": null,
   "reproduce_command": null,
-  "engine_version": "0.3.0",
-  "generated_at": "2026-09-13T10:08:35+00:00",
-  "ruleset_version": "2026.09.01a",
-  "ruleset_digest": "d22a81017c02b71eb504aa120393694f",
+  "engine_version": "0.4.0",
+  "generated_at": "2026-09-18T14:03:52+00:00",
+  "ruleset_version": "2026.09.18a",
+  "ruleset_digest": "0ee2a66a9440b25e170305f85eec9954",
   "ruleset_drift": null,
   "ruleset_note": null,
   "intel_freshness": null,
@@ -107,6 +126,7 @@
     "dependency_vulnerable": 1,
     "dependency_unchecked": 0,
     "dependency_not_found": 0,
+    "coverage_gap": "",
     "reason": "배포 불가 — CISA KEV 등재 — 실제로 악용되고 있음에 해당하는 패키지가 있습니다(kevpkg 1.0.0). 사유 기록으로 넘길 수 없는 등급입니다."
   },
   "posture_notes": [],
@@ -119,7 +139,12 @@
     "over_limit_count": 0,
     "max_files": 0,
     "scanned_count": 1,
-    "skipped_count": 0
+    "skipped_count": 0,
+    "max_file_bytes": 0,
+    "oversized_source_count": 0,
+    "oversized_source_files": [],
+    "oversized_data_count": 0,
+    "complete": true
   },
   "engines": {
     "used": [

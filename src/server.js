@@ -21,6 +21,8 @@ import {
   dependencyRiskSummary,
   scanDecision,
   coverageTruncated as coverageTruncatedFromReport,
+  oversizedSourceCount as oversizedSourceCountFromReport,
+  oversizedSourceFiles as oversizedSourceFilesFromReport,
   dependencyIncomplete as dependencyIncompleteFromReport,
   suppressionSummary as suppressionSummaryFromReport,
   engineStatus as engineStatusFromReport,
@@ -1461,6 +1463,8 @@ async function runScanJob(job) {
   const dependencyFindingCount = dependencyRisk.vulnerable_package_count;
   const profileFallback = parsed?.profile_fallback || null;
   const coverageTruncated = coverageTruncatedFromReport(parsed);
+  const oversizedSourceCount = oversizedSourceCountFromReport(parsed);
+  const oversizedSourceFiles = oversizedSourceFilesFromReport(parsed).slice(0, 5);
   const dependencyIncomplete = dependencyIncompleteFromReport(parsed);
   const suppression = suppressionSummaryFromReport(parsed);
   const engines = engineStatusFromReport(parsed);
@@ -1532,6 +1536,9 @@ async function runScanJob(job) {
       sbom_status: sbomStatus,
       profile_fallback: profileFallback,
       coverage_truncated: coverageTruncated,
+      // 크기 상한을 넘어 검사되지 않은 실행 소스 — "이상 없음"이 아니라 "판정 밖"이다.
+      oversized_source_count: oversizedSourceCount,
+      oversized_source_files: oversizedSourceFiles,
       dependency_incomplete: dependencyIncomplete,
       // 체커의 배포 판정 원본. 화면 판정과 나란히 두어 옮겨 적기가 틀리면 바로 보이게 한다.
       gate_verdict: verdict.gate_verdict,
@@ -1961,6 +1968,7 @@ function decisionBasisText(job) {
       scan_timeout: "검사 시간 초과",
       profile_fallback: "정책 프로파일 미적용",
       coverage_truncated: "검사 범위 절단",
+      coverage_oversized_source: "실행 소스 파일 크기 상한 초과(미검사)",
       dependency_incomplete: "의존성 판정 불가",
       gate_missing: "체커 판정 필드 없음",
       gate_verdict_unknown: "체커 판정값 해석 불가"
@@ -1983,6 +1991,10 @@ function scanScopeText(job) {
   const summary = job.summary || {};
   const parts = [`파일 ${Number(summary.scanned_file_count || 0)}개`];
   if (summary.coverage_truncated) parts.push("⚠ 파일 수 상한으로 일부 미검사");
+  if (Number(summary.oversized_source_count || 0) > 0) {
+    const names = (summary.oversized_source_files || []).join(", ");
+    parts.push(`⚠ 실행 소스 ${Number(summary.oversized_source_count)}개가 크기 상한으로 미검사${names ? ` (${names})` : ""}`);
+  }
   if (summary.dependency_incomplete) parts.push("⚠ 일부 패키지 판정 불가('안전' 아님)");
   if (summary.profile_fallback) parts.push("⚠ 요청한 정책이 적용되지 않음");
   return parts.join(" · ");

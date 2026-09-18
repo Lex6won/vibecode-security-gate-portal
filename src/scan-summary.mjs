@@ -101,6 +101,25 @@ export function coverageTruncated(report) {
   );
 }
 
+/**
+ * 크기 상한을 넘어 검사되지 않은 **실행 소스**가 있는가.
+ *
+ * 체커 2026-09-18 부터 `coverage.oversized_source_count`·`coverage.complete` 를 준다.
+ * 실측(999건 사례)에서 유일한 서버 파일 `server.js`(1MB)가 빠졌는데 `truncated` 는
+ * 파일 **수** 상한만 알아 false 였다 — 그 검사가 "온전한 검사"로 읽혔다.
+ * 구버전 보고서(필드 없음)는 0 으로 본다 — 없는 사실을 지어내지 않는다.
+ */
+export function oversizedSourceCount(report) {
+  const coverage = report?.coverage;
+  if (!coverage || typeof coverage !== "object") return 0;
+  return numberAtLeastZero(coverage.oversized_source_count);
+}
+
+export function oversizedSourceFiles(report) {
+  const files = report?.coverage?.oversized_source_files;
+  return Array.isArray(files) ? files.filter((f) => typeof f === "string") : [];
+}
+
 /** 의존성 감사가 일부라도 판정하지 못했는가(판정 불가·상한 절단). */
 export function dependencyIncomplete(report) {
   return (report?.dependency_audit?.audits || []).some(
@@ -215,6 +234,9 @@ export function scanDecision(report, { mode = "standard", timedOut = false } = {
   }
   if (report?.profile_fallback) incompleteReasons.push("profile_fallback");
   if (coverageTruncated(report)) incompleteReasons.push("coverage_truncated");
+  // 실행 소스가 크기 상한에 걸려 빠진 검사도 온전하지 않다 — 체커 게이트도 승인을
+  // 내리지 않지만(undetermined/conditional+coverage), 포털은 자기 사유로도 기록한다.
+  if (oversizedSourceCount(report) > 0) incompleteReasons.push("coverage_oversized_source");
   if (dependencyIncomplete(report)) incompleteReasons.push("dependency_incomplete");
   // 필수 엔진이 빠진 검사는 판정하지 않는다 — "안 돌아간 검사의 초록불"이 바로
   // 이 도구가 막으려는 침묵이다. 발견(findings)은 그대로 보존된다(보고서는 남는다).

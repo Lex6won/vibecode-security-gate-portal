@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
-import { dependencyRiskSummary, engineGate, scanDecision } from "../src/scan-summary.mjs";
+import { dependencyRiskSummary, engineGate, oversizedSourceCount, scanDecision } from "../src/scan-summary.mjs";
 
 const report = {
   audits: [
@@ -124,6 +124,27 @@ const finding = { rule_id: "KISA-PY-INPUT-05", severity: "high", decision: "bloc
     required: ["regex", "python-ast"] }, { verdict: "blocked" }), { mode: "standard" });
   assert.equal(r.decision, "incomplete");
   assert.equal(r.gate_verdict, "blocked", "체커 원본 판정은 그대로 보존해 기록한다");
+}
+
+// ---------------------------------------------------------------------------
+// 크기 상한 초과 실행 소스 — 체커(2026-09-18) `coverage.oversized_source_*`.
+// 유일한 서버 파일이 빠진 검사는 allow 가 될 수 없다. 구버전(필드 없음)은 0.
+// ---------------------------------------------------------------------------
+{
+  const base = engineReport({ used: ["regex", "js-taint"], unavailable: [], failed: [], required: ["regex", "js-taint"] });
+  base.coverage = { truncated: false, over_limit_count: 0, max_files: 20000, scanned_count: 10, skipped_count: 1,
+    max_file_bytes: 8000000, oversized_source_count: 1, oversized_source_files: ["server.js"], oversized_data_count: 0, complete: false };
+  base.gate.verdict = "undetermined";
+  assert.equal(oversizedSourceCount(base), 1);
+  const r = scanDecision(base, { mode: "standard" });
+  assert.equal(r.decision, "incomplete");
+  assert.ok(r.incomplete_reasons.includes("coverage_oversized_source"), r.incomplete_reasons);
+  // 데이터 파일만 넘은 경우는 범위 결손이 아니다
+  const ok = engineReport({ used: ["regex"], unavailable: [], failed: [], required: ["regex"] });
+  ok.coverage = { truncated: false, over_limit_count: 0, max_files: 20000, scanned_count: 10, skipped_count: 1,
+    oversized_source_count: 0, oversized_source_files: [], oversized_data_count: 3, complete: true };
+  assert.equal(scanDecision(ok, { mode: "standard" }).decision, "allow");
+  assert.equal(oversizedSourceCount({ coverage: { truncated: false } }), 0, "구버전 보고서는 0");
 }
 
 console.log("scan summary test passed");
