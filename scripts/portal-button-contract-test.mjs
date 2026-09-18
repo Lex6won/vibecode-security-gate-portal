@@ -203,12 +203,13 @@ async function assertLocalPickerContract() {
   assert.ok(html.includes('error.name === "AbortError"') && html.includes('저장 위치 선택을 취소했습니다.'), "save-location cancellation must be shown as guidance, not a browser error");
   assert.ok(html.includes('targetSelectionInFlight'), "native target picker must prevent duplicate picker windows");
 
-  // LAN 직접 접속(관문 없음)에서도 로그인할 수 있도록 이메일 매직링크 게이트를 노출한다.
-  // 관문(Access) 경로에서는 establishAccessSession 이 자동 로그인하므로 게이트가 뜨지 않는다(이중 로그인 아님).
+  // 로컬 개발 모드에서는 매직링크 게이트를 제공하고 Access 모드에서는 서버가 내려준 인증 방식만 따른다.
   assert.ok(html.includes('id="loginGate"') && html.includes('id="requestLoginLink"'),
-    "scan page must expose the email magic-link login gate for direct (non-Access) LAN access");
-  assert.ok(html.includes('async function establishAccessSession()') && html.includes('"/api/auth/access-login"'),
-    "scan page must automatically establish a portal session from Cloudflare Access");
+    "scan page must retain the local development login gate");
+  assert.ok(html.includes('async function establishPortalSession(authProvider)')
+    && html.includes('session.auth_provider === "local-dev"')
+    && html.includes('"/api/auth/access-login"'),
+    "scan page must use the server-declared authentication provider");
   assert.ok(!html.includes('id="dataNotice"'), "scan page must not repeat the top-level retention notice");
   assert.ok(!html.includes("submit-observations"), "the manual observation submission must be gone from the user flow");
   assert.ok(html.includes('id="requestReview"'), "completed scans must offer a security-review request action");
@@ -268,7 +269,7 @@ async function assertToolsGuidePage() {
 
 async function assertMyHistoryPage() {
   const html = await fetchText("/my");
-  assert.ok(html.includes('async function establishAccessSession()') && html.includes('"/api/auth/access-login"')
+  assert.ok(html.includes('async function establishPortalSession(authProvider)') && html.includes('"/api/auth/access-login"')
     && html.includes('"/api/auth/development-login"'),
   "my history must establish the same Access or local development session as the scan page");
   assert.ok(html.includes('id="historyCard"') && html.indexOf('id="historyCard"') < html.indexOf('id="profileCard"'),

@@ -28,6 +28,7 @@ import {
   engineStatus as engineStatusFromReport,
   DECISION_SOURCE_LEGACY
 } from "./scan-summary.mjs";
+import { resolvePortalAuthConfig } from "./auth-config.mjs";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 const ROOT = resolve(__dirname, "..");
@@ -125,9 +126,11 @@ const loginFailures = { count: 0, locked_until: 0 };
 // P3(계정): 매직링크 가입·로그인. 기관 프로파일 — 허용 이메일 도메인은 설정으로 교체 가능.
 const ALLOWED_EMAIL_DOMAINS = String(runtimeEnv.PORTAL_ALLOWED_EMAIL_DOMAINS || "gg.go.kr,korea.kr")
   .split(",").map((value) => value.trim().toLowerCase()).filter(Boolean);
-// SMTP 미확정(§9): 개발 모드는 링크를 응답으로 돌려줘 화면에 표시한다. 실발송 어댑터는 SMTP 확정 후.
-const AUTH_DEV_MODE = runtimeEnv.PORTAL_AUTH_MODE !== "smtp";
-const LOCAL_DEVELOPMENT_AUTH = AUTH_DEV_MODE && ["127.0.0.1", "localhost", "::1"].includes(BIND_HOST);
+// Resolve the deployment/authentication pair once at startup and fail closed on unsafe combinations.
+const AUTH_CONFIG = resolvePortalAuthConfig(runtimeEnv, BIND_HOST);
+const DEPLOYMENT_MODE = AUTH_CONFIG.deploymentMode;
+const AUTH_PROVIDER = AUTH_CONFIG.authProvider;
+const LOCAL_DEVELOPMENT_AUTH = AUTH_CONFIG.localDevelopmentAuth;
 
 // ---- Cloudflare Access 연동(선택) -------------------------------------------
 // 터널(portal.<도메인>) 관문을 통과한 요청에는 Cloudflare 가 서명한 JWT 헤더
@@ -141,7 +144,7 @@ const ACCESS_BASE = ACCESS_TEAM_DOMAIN
       ? ACCESS_TEAM_DOMAIN.replace(/\/$/, "")
       : `https://${ACCESS_TEAM_DOMAIN}`)
   : "";
-const ACCESS_ENABLED = Boolean(ACCESS_BASE && ACCESS_AUD);
+const ACCESS_ENABLED = AUTH_CONFIG.accessEnabled;
 const ACCESS_CERTS_TTL_MS = 60 * 60 * 1000;
 let accessCertsCache = { at: 0, keys: null };
 
@@ -2238,6 +2241,8 @@ async function handleApi(request, response, pathname, searchParams = new URLSear
     json(response, configurationError ? 503 : 200, {
       status: configurationError ? "configuration_error" : "ok",
       app: "vibecode-security-gate-portal",
+      deployment_mode: DEPLOYMENT_MODE,
+      auth_provider: AUTH_PROVIDER,
       checker_identity: identity
     });
     return;
@@ -2352,6 +2357,10 @@ async function handleApi(request, response, pathname, searchParams = new URLSear
 
   // ---- P3: 매직링크 가입·로그인 -------------------------------------------
   if (request.method === "POST" && pathname === "/api/auth/request-link") {
+    if (AUTH_PROVIDER !== "local-dev") {
+      notFound(response);
+      return;
+    }
     const body = await readJson(request);
     const email = normalizeEmail(body.email);
     if (!isValidEmail(email)) {
@@ -2365,17 +2374,6 @@ async function handleApi(request, response, pathname, searchParams = new URLSear
       });
       return;
     }
-    // 관문(Cloudflare Access)을 통과해 들어온 요청은 그 신원과 같은 계정으로만 로그인할 수 있다.
-    // LAN 직접 접속은 관문 JWT 가 없어 null 이므로 시연용 개발 로그인 흐름은 그대로 유지된다.
-    const accessIdentity = await accessEmailFromRequest(request);
-    if (accessIdentity && accessIdentity !== email) {
-      await recordAuthAudit("link_identity_mismatch", email, { access_identity: accessIdentity });
-      json(response, 403, {
-        error: "email_mismatch",
-        message: "보안 관문에서 인증된 계정으로만 로그인할 수 있습니다."
-      });
-      return;
-    }
     if (!linkRequestAllowed(email)) {
       json(response, 429, { error: "too_many_requests", message: "요청이 잦습니다. 15분 뒤 다시 시도해 주세요." });
       return;
@@ -2385,12 +2383,7 @@ async function handleApi(request, response, pathname, searchParams = new URLSear
     const { token, expires_in_minutes } = createLoginToken(email, body);
     await recordAuthAudit("link_requested", email, { new_account: isNew });
     const loginPath = `/auth/complete?token=${token}`;
-    if (AUTH_DEV_MODE) {
-      // SMTP 미확정 — 링크를 응답으로 돌려줘 화면에 표시한다(테스트·시연용). 실발송 전환 시 이 필드는 사라진다.
-      json(response, 200, { status: "sent", mode: "dev", dev_login_url: loginPath, expires_in_minutes });
-      return;
-    }
-    json(response, 200, { status: "sent", mode: "email", expires_in_minutes, message: "메일로 받은 링크를 열면 로그인됩니다." });
+    json(response, 200, { status: "sent", mode: "dev", dev_login_url: loginPath, expires_in_minutes });
     return;
   }
 
@@ -2402,6 +2395,8 @@ async function handleApi(request, response, pathname, searchParams = new URLSear
       const accessEmail = await accessEmailFromRequest(request);
       json(response, 200, {
         logged_in: false,
+        deployment_mode: DEPLOYMENT_MODE,
+        auth_provider: AUTH_PROVIDER,
         report_retention_days: REPORT_RETENTION_DAYS || null,
         access_email: accessEmail,
         access_registered: accessEmail ? Boolean(getAccount(accessEmail)) : false
@@ -2410,6 +2405,8 @@ async function handleApi(request, response, pathname, searchParams = new URLSear
     }
     json(response, 200, {
       logged_in: true,
+      deployment_mode: DEPLOYMENT_MODE,
+      auth_provider: AUTH_PROVIDER,
       email: account.email,
       organization: account.organization || "",
       department: account.department || "",
@@ -2785,6 +2782,10 @@ createServer(async (request, response) => {
   }
 }).listen(PORT, BIND_HOST, () => {
   console.log(`VibeCode Security Gate Portal: http://${BIND_HOST}:${PORT}`);
+  console.log(`[portal] deployment=${DEPLOYMENT_MODE} auth=${AUTH_PROVIDER}`);
+  if (AUTH_CONFIG.inferredLocalDefaults) {
+    console.warn("[portal] local auth defaults were inferred; set PORTAL_DEPLOYMENT_MODE and PORTAL_AUTH_PROVIDER explicitly");
+  }
   // 시작 시 체커 신원을 한 번 대조해 로그에 남긴다(불일치면 error 로그 + /health 503 + 점검 거부).
   refreshCheckerIdentity({ force: true }).then((identity) => {
     const expected = identity.expected_commit

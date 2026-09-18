@@ -4,10 +4,11 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
+import { stripSqlLineComments } from "../src/sql-structure.mjs";
 
 const root = join(fileURLToPath(new URL(".", import.meta.url)), "..");
 const sql = readFileSync(join(root, "db", "schema.postgresql.sql"), "utf8");
-const clean = sql.split("\n").map((line) => line.replace(/--.*$/, "")).join("\n");
+const clean = stripSqlLineComments(sql);
 const problems = [];
 
 let depth = 0;

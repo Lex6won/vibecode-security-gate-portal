@@ -373,10 +373,13 @@
 
 하네스팀 연동합의(28번)에 따라 P3를 구현하며 확정된 실제 계약. 본문과 다른 부분은 이 추기가 우선한다.
 
-**인증 (매직링크, 비밀번호 없음)**
-- `POST /api/auth/request-link` `{email, organization?, department?}` — 도메인 허용목록(기본 gg.go.kr·korea.kr, `PORTAL_ALLOWED_EMAIL_DOMAINS`) 검사. 신규 가입은 기관명·부서명 필수(`registration_required`). 이메일당 15분 5회 제한(429). 개발 모드(`PORTAL_AUTH_MODE`≠smtp)는 `dev_login_url` 을 응답에 실어 화면에 표시한다 — SMTP 확정 시 발송 어댑터로 교체.
+**인증 (2026-09-19 운영 경계 개정)**
+- `PORTAL_DEPLOYMENT_MODE=local|pilot|production`, `PORTAL_AUTH_PROVIDER=local-dev|cloudflare-access|smtp`를 사용한다. `local-dev`는 loopback의 `local` 모드에서만 허용되고, `pilot`·`production`은 인증 제공자·허용 호스트·40자리 체커 커밋 고정값이 없으면 기동을 거부한다.
+- `POST /api/auth/request-link` `{email, organization?, department?}` — `local/local-dev`에서만 존재하며 도메인 허용목록을 검사한 뒤 개발용 `dev_login_url`을 반환한다. `cloudflare-access` 모드에서는 404다.
+- `POST /api/auth/access-login` — `cloudflare-access`에서 서명·발급자·Audience·만료·이메일 도메인을 모두 검증한 JWT만 포털 세션으로 교환한다. 원격 Access 원본은 HTTPS만 허용하며 `local-dev`에서는 이 API가 404다.
+- `smtp` 값은 실제 메일 발송 어댑터 구현 전까지 fail-closed로 서버 기동을 거부한다. 로그인 토큰을 사용자 응답으로 대신 반환하지 않는다.
 - `GET /auth/complete?token=` — 1회용·15분 만료. 성공 시 `portal_session` HttpOnly 쿠키(12h) 발급 후 `/scan` 으로. 실패 시 `/scan?auth=expired`.
-- `GET /api/auth/session` / `POST /api/auth/logout` / `POST /api/auth/profile` `{organization, department}` (변경 이력 기록).
+- `GET /api/auth/session`은 `deployment_mode`, `auth_provider`를 함께 반환한다. `POST /api/auth/logout` / `POST /api/auth/profile` `{organization, department}` (변경 이력 기록).
 - 계정 저장: `src/account-store.mjs` (파일 기반, 이메일 평문 — 링크 발송에 필요. DB 전환 시 함수만 교체). 감사 로그 `auth-audit.jsonl`.
 
 **소유자 검증**

@@ -19,6 +19,7 @@ const powershell = join(process.env.SystemRoot || "C:\\Windows", "System32", "Wi
 const adminId = "gg0018@gg.go.kr";
 const adminPassword = "ScenarioAdmin!2026";
 const localApiToken = "portal-scenario-local-token";
+const checkerCommit = (await readFile(join(process.cwd(), "config", "checker.commit"), "utf8")).trim();
 let adminCookie = "";
 let userCookie = "";
 
@@ -450,6 +451,8 @@ async function scenarioQueueAndCapacity(fixture) {
       PORTAL_ACCOUNT_DIR: join(fixture.fixtureDir, "queue-accounts"),
       PORTAL_WHITELIST_DIR: join(fixture.fixtureDir, "queue-whitelist"),
       PORTAL_LOCAL_API_TOKEN: localApiToken,
+      PORTAL_DEPLOYMENT_MODE: "local",
+      PORTAL_AUTH_PROVIDER: "local-dev",
       PYTHONUTF8: "1",
       PYTHONIOENCODING: "utf-8",
       ...extraEnv
@@ -760,6 +763,10 @@ async function scenarioAccessLogin(fixture) {
       PORTAL_WHITELIST_DIR: join(fixture.fixtureDir, "access-whitelist"),
       PORTAL_ACCESS_TEAM_DOMAIN: teamBase,
       PORTAL_ACCESS_AUD: aud,
+      PORTAL_DEPLOYMENT_MODE: "pilot",
+      PORTAL_AUTH_PROVIDER: "cloudflare-access",
+      PORTAL_ALLOWED_HOSTS: `127.0.0.1:${portalPort}`,
+      PORTAL_EXPECTED_CHECKER_COMMIT: checkerCommit,
       PORTAL_LOCAL_API_TOKEN: localApiToken,
       PYTHONUTF8: "1",
       PYTHONIOENCODING: "utf-8"
@@ -824,19 +831,18 @@ async function scenarioAccessLogin(fixture) {
     assert.equal(hinted.access_email, "access-user@gg.go.kr");
     assert.equal(hinted.access_registered, true);
 
-    // 터널 사칭 차단: 관문을 통과한 요청은 그 신원과 같은 이메일로만 로그인 링크를 받을 수 있다.
+    // 공개 관문 모드에서는 개발용 매직링크 표면 전체가 존재하지 않아야 한다.
     const linkHeaders = (jwt) => ({ "Content-Type": "application/json", "X-VibeCode-Local-Token": localApiToken, "Cf-Access-Jwt-Assertion": jwt });
     const mismatch = await fetch(`${base}/api/auth/request-link`, {
       method: "POST", headers: linkHeaders(makeJwt(good.privateKey)),
       body: JSON.stringify({ email: "someone.else@gg.go.kr" })
     });
-    assert.equal(mismatch.status, 403, "request-link through the gateway must reject a different email");
-    assert.equal((await mismatch.json()).error, "email_mismatch", "gateway impersonation must be reported as an identity mismatch");
+    assert.equal(mismatch.status, 404, "request-link must not exist in gateway mode");
     const selfLink = await fetch(`${base}/api/auth/request-link`, {
       method: "POST", headers: linkHeaders(makeJwt(good.privateKey)),
       body: JSON.stringify({ email: "access-user@gg.go.kr" })
     });
-    assert.equal(selfLink.status, 200, "request-link through the gateway must accept the matching identity");
+    assert.equal(selfLink.status, 404, "even the matching gateway identity must not receive a development link");
   } finally {
     server.kill();
     await Promise.race([once(server, "exit"), wait(2000)]);
@@ -1172,6 +1178,8 @@ const child = spawn(process.execPath, ["src/server.js"], {
     PORTAL_REPORT_DIR: join(fixture.fixtureDir, "reports"),
     PORTAL_LOCAL_API_TOKEN: localApiToken,
     PORTAL_DEV_AUTO_LOGIN_EMAIL: "dev-scenario@gg.go.kr",
+    PORTAL_DEPLOYMENT_MODE: "local",
+    PORTAL_AUTH_PROVIDER: "local-dev",
     PYTHONUTF8: "1",
     PYTHONIOENCODING: "utf-8"
   },

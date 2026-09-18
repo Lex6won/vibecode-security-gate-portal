@@ -270,18 +270,18 @@
       renderScans(data.scans || []);
     }
 
-    async function establishAccessSession() {
+    async function establishPortalSession(authProvider) {
       if (accessLoginInFlight) return null;
       accessLoginInFlight = true;
       try {
-        let response = await fetch("/api/auth/access-login", {
+        const endpoint = authProvider === "local-dev"
+          ? "/api/auth/development-login"
+          : "/api/auth/access-login";
+        const response = await fetch(endpoint, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({})
         });
-        if (response.status === 404) {
-          response = await fetch("/api/auth/development-login", { method: "POST" });
-        }
         if (!response.ok) return null;
         return await (await fetch("/api/auth/session", { cache: "no-store" })).json();
       } catch {
@@ -314,8 +314,8 @@
     (async function init() {
       try {
         let session = await (await fetch("/api/auth/session", { cache: "no-store" })).json();
-        if (!session.logged_in && (session.access_email || window.location.hostname === "127.0.0.1" || window.location.hostname === "localhost")) {
-          session = await establishAccessSession() || session;
+        if (!session.logged_in && (session.access_email || session.auth_provider === "local-dev")) {
+          session = await establishPortalSession(session.auth_provider) || session;
         }
         await applySession(session);
       } catch {

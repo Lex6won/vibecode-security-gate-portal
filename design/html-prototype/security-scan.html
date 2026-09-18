@@ -510,7 +510,7 @@
 
       <section class="panel-card" id="loginGate" hidden aria-labelledby="login-title" style="margin-bottom:14px; padding:22px 24px;">
         <h2 id="login-title" style="margin:0 0 6px; font-size:19px; font-weight:900;">기관 메일로 로그인</h2>
-        <p style="margin:0 0 4px;">비밀번호 없이, 기관 메일 주소로 1회용 로그인 링크를 받아 접속합니다.</p>
+        <p id="loginLead" style="margin:0 0 4px;">비밀번호 없이, 기관 메일 주소로 1회용 로그인 링크를 받아 접속합니다.</p>
         <p id="loginNote" style="margin:0 0 12px; font-size:13px; color:var(--muted);">허용 메일: @gg.go.kr, @korea.kr</p>
         <div id="accessLoginArea" hidden>
           <p style="margin:0 0 10px;" id="accessLoginWho">확인 중</p>
@@ -1311,15 +1311,27 @@
     const accessLoginButton = document.querySelector("#accessLoginButton");
     const accessLoginNote = document.querySelector("#accessLoginNote");
     const magicLoginRow = document.querySelector("#magicLoginRow");
+    const loginTitle = document.querySelector("#login-title");
+    const loginLead = document.querySelector("#loginLead");
     let sessionProfileComplete = false;
     let accessLoginInFlight = false;
 
     // 관문(Access)을 통과했지만 자동 로그인이 안 된 경우: 한 번의 클릭으로 시작하게 한다.
     function applyAccessShortcut(session) {
+      const accessProvider = Boolean(session && session.auth_provider === "cloudflare-access");
       const accessEmail = session && !session.logged_in ? session.access_email : null;
       accessLoginArea.hidden = !accessEmail;
-      magicLoginRow.hidden = Boolean(accessEmail);
-      if (loginNote) loginNote.hidden = Boolean(accessEmail);
+      magicLoginRow.hidden = accessProvider;
+      loginTitle.textContent = accessProvider ? "보안 관문 인증" : "기관 메일로 로그인";
+      loginLead.textContent = accessProvider
+        ? "기관 보안 관문에서 인증된 계정으로만 접속할 수 있습니다."
+        : "비밀번호 없이, 기관 메일 주소로 1회용 로그인 링크를 받아 접속합니다.";
+      if (loginNote) {
+        loginNote.hidden = Boolean(accessEmail);
+        if (accessProvider && !accessEmail) {
+          loginNote.textContent = "보안 관문 인증을 확인하지 못했습니다. 관문 주소로 다시 접속해 주세요.";
+        }
+      }
       if (!accessEmail) return;
       accessLoginWho.textContent = `보안 관문에서 ${accessEmail} 인증을 확인했습니다. 별도 로그인 없이 시작할 수 있습니다.`;
     }
@@ -1335,18 +1347,18 @@
       scanFlowProgress.hidden = !loggedIn;
     }
 
-    async function establishAccessSession() {
+    async function establishPortalSession(authProvider) {
       if (accessLoginInFlight) return null;
       accessLoginInFlight = true;
       try {
-        let response = await fetch("/api/auth/access-login", {
+        const endpoint = authProvider === "local-dev"
+          ? "/api/auth/development-login"
+          : "/api/auth/access-login";
+        const response = await fetch(endpoint, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({})
         });
-        if (response.status === 404) {
-          response = await fetch("/api/auth/development-login", { method: "POST" });
-        }
         if (!response.ok) return null;
         return await (await fetch("/api/auth/session", { cache: "no-store" })).json();
       } catch {
@@ -1360,8 +1372,8 @@
       try {
         const response = await fetch("/api/auth/session", { cache: "no-store" });
         const session = await response.json();
-        if (!session.logged_in && (session.access_email || window.location.hostname === "127.0.0.1" || window.location.hostname === "localhost")) {
-          const established = await establishAccessSession();
+        if (!session.logged_in && (session.access_email || session.auth_provider === "local-dev")) {
+          const established = await establishPortalSession(session.auth_provider);
           applySession(established || session);
           return;
         }
