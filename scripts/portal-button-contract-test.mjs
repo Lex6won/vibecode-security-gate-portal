@@ -185,6 +185,9 @@ async function assertLocalPickerContract() {
   assert.ok(html.includes('const picker = activeTarget === "folder" ? folderPickerInput : archivePickerInput') && html.includes('picker.click()'), "folder selection button must open the browser file picker");
   assert.ok(html.includes('fetch("/api/local/upload-target"'), "browser-selected source files must be sent to the local scanner");
   assert.ok(html.includes('id="targetProgress"'), "source selection must show immediate progress feedback");
+  assert.ok(html.includes('id="targetProgressGuide"') && html.includes("function diagnoseTarget(") && html.includes("await readZipEntries(archive)"), "oversized or nested-archive targets must be diagnosed before upload with repackaging steps");
+  assert.ok(html.includes("if (diagnosis) {") && html.indexOf("if (diagnosis) {") < html.indexOf('fetch("/api/local/upload-target"'), "a diagnosed target must stop before the upload request");
+  assert.ok(html.includes("description: reason || \"선택한 파일을 준비하지 못했습니다.\""), "server rejection reasons must be shown instead of a generic failure");
   assert.equal((html.match(/data-mode=/g) || []).length, 2, "scan page must expose only quick and standard modes");
   assert.ok(!html.includes('data-mode="submission"') && !html.includes('id="resultZip"'), "submission mode and ZIP result must be removed from the user flow");
   assert.ok(html.includes('state: "선택 창 여는 중"') && html.includes('state: "파일 읽는 중"'), "source selection must explain picker and file-reading progress");

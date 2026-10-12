@@ -266,6 +266,10 @@
     .selection-progress strong { display: block; color: var(--ink); font-size: 17px; line-height: 1.35; font-weight: 900; }
     .selection-progress p { margin: 7px 0 0; color: var(--muted); font-size: 14px; line-height: 1.55; font-weight: 800; }
     .selection-progress .progress-track { margin-top: 16px; }
+    .target-guide { margin: 12px 0 0; padding-left: 22px; color: var(--ink); font-size: 14px; line-height: 1.6; font-weight: 700; }
+    .target-guide li + li { margin-top: 6px; }
+    .target-guide small { display: block; color: var(--muted); font-size: 13px; font-weight: 700; }
+    .target-guide code { font-family: inherit; font-weight: 900; }
 
     /* 실제 기능 계약을 유지한 4단계 업무 흐름 */
     .flow-progress {
@@ -758,6 +762,7 @@
       <div class="selection-progress">
         <strong id="targetProgressState">선택 창 여는 중</strong>
         <p id="targetProgressDetail">Windows 탐색기에서 검사할 소스를 선택해 주세요.</p>
+        <ol class="target-guide" id="targetProgressGuide" hidden></ol>
         <div class="progress-track" aria-hidden="true"><span id="targetProgressBar"></span></div>
       </div>
       <div class="modal-actions" id="targetProgressActions" hidden>
@@ -793,6 +798,7 @@
     const targetProgressState = document.querySelector("#targetProgressState");
     const targetProgressDetail = document.querySelector("#targetProgressDetail");
     const targetProgressBar = document.querySelector("#targetProgressBar");
+    const targetProgressGuide = document.querySelector("#targetProgressGuide");
     const targetProgressActions = document.querySelector("#targetProgressActions");
     const confirmTargetProgress = document.querySelector("#confirmTargetProgress");
     const savePath = document.querySelector("#savePath");
@@ -902,19 +908,30 @@
       openTargetPicker();
     }
 
-    function showTargetProgress({ title, description, state, detail, percent, completed = false }) {
+    function showTargetProgress({ title, description, state, detail, percent, completed = false, guide = [] }) {
       targetProgressTitle.textContent = title;
       targetProgressDescription.textContent = description;
       targetProgressState.textContent = state;
       targetProgressDetail.textContent = detail;
+      targetProgressGuide.replaceChildren(...guide.map(({ text, note }) => {
+        const item = document.createElement("li");
+        item.append(text);
+        if (note) {
+          const small = document.createElement("small");
+          small.textContent = note;
+          item.append(small);
+        }
+        return item;
+      }));
+      targetProgressGuide.hidden = guide.length === 0;
       targetProgressBar.style.width = `${Math.max(0, Math.min(100, percent))}%`;
       targetProgressBar.classList.toggle("done", completed);
       targetProgressActions.hidden = !completed;
       openModal(targetProgress);
     }
 
-    function completeTargetProgress({ title, description, state, detail, startScan = false }) {
-      showTargetProgress({ title, description, state, detail, percent: 100, completed: true });
+    function completeTargetProgress({ title, description, state, detail, startScan = false, guide = [] }) {
+      showTargetProgress({ title, description, state, detail, percent: 100, completed: true, guide });
       confirmTargetProgress.textContent = startScan ? "확인하고 점검 시작" : "확인";
       confirmTargetProgress.dataset.startScan = startScan ? "true" : "false";
     }
@@ -943,6 +960,167 @@
       picker.click();
     }
 
+    // 업로드 전에 용량·구성을 진단해, 막힐 대상이면 무엇을 빼고 어떻게 다시 묶을지 알려 준다.
+    // 한도는 서버(src/server.js)와 같다. 서버가 최종 판단하고, 여기서는 안내만 한다.
+    const UPLOAD_LIMIT_BYTES = 500 * 1024 * 1024;
+    const EXTRACT_LIMIT_BYTES = 2 * 1024 * 1024 * 1024;
+    const UPLOAD_LIMIT_FILES = 10000;
+    const NESTED_ARCHIVE_EXTS = new Set(["zip", "7z", "rar", "tar", "gz", "tgz", "bz2", "xz"]);
+    const NON_CODE_EXTS = new Set([
+      "pdf", "hwp", "hwpx", "doc", "docx", "xls", "xlsx", "ppt", "pptx",
+      "jpg", "jpeg", "png", "gif", "webp", "bmp", "tif", "tiff", "psd", "ico", "heic",
+      "mp4", "mov", "avi", "mkv", "webm", "mp3", "wav", "m4a", "ogg",
+      "bin", "glb", "ktx2", "basis", "fbx", "obj", "dds",
+      "ttf", "otf", "woff", "woff2", "eot", "exe", "dll", "iso", "dmg"
+    ]);
+
+    function formatBytes(bytes) {
+      if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(2)}GB`;
+      if (bytes >= 1024 ** 2) return `${Math.round(bytes / 1024 ** 2).toLocaleString()}MB`;
+      return `${Math.max(1, Math.round(bytes / 1024)).toLocaleString()}KB`;
+    }
+
+    // ZIP 끝의 목차(central directory)만 읽는다. 파일 전체를 올리거나 풀지 않는다.
+    async function readZipEntries(file) {
+      const readBytes = async (start, end) => new DataView(await file.slice(start, end).arrayBuffer());
+      const tailStart = Math.max(0, file.size - 65557);
+      const tail = await readBytes(tailStart, file.size);
+      let eocd = -1;
+      for (let i = tail.byteLength - 22; i >= 0; i -= 1) {
+        if (tail.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
+      }
+      if (eocd < 0) return null;
+      let count = tail.getUint16(eocd + 10, true);
+      let cdSize = tail.getUint32(eocd + 12, true);
+      let cdOffset = tail.getUint32(eocd + 16, true);
+      if (count === 0xffff || cdSize === 0xffffffff || cdOffset === 0xffffffff) {
+        if (eocd < 20 || tail.getUint32(eocd - 20, true) !== 0x07064b50) return null;
+        const zip64At = Number(tail.getBigUint64(eocd - 12, true));
+        const zip64 = await readBytes(zip64At, zip64At + 56);
+        if (zip64.getUint32(0, true) !== 0x06064b50) return null;
+        count = Number(zip64.getBigUint64(32, true));
+        cdSize = Number(zip64.getBigUint64(40, true));
+        cdOffset = Number(zip64.getBigUint64(48, true));
+      }
+      if (cdSize > 64 * 1024 * 1024 || cdOffset + cdSize > file.size) return null;
+      const cd = await readBytes(cdOffset, cdOffset + cdSize);
+      const utf8 = new TextDecoder("utf-8", { fatal: true });
+      const legacy = new TextDecoder("euc-kr");
+      const entries = [];
+      let at = 0;
+      for (let n = 0; n < count && at + 46 <= cd.byteLength; n += 1) {
+        if (cd.getUint32(at, true) !== 0x02014b50) return null;
+        let size = cd.getUint32(at + 24, true);
+        const nameLength = cd.getUint16(at + 28, true);
+        const extraLength = cd.getUint16(at + 30, true);
+        const commentLength = cd.getUint16(at + 32, true);
+        const nameBytes = new Uint8Array(cd.buffer, cd.byteOffset + at + 46, nameLength);
+        let name;
+        // UTF-8 표시가 없는 맥 압축도 이름은 UTF-8인 경우가 많아, UTF-8을 먼저 시도하고 안 되면 Windows 한글(CP949)로 읽는다.
+        try { name = utf8.decode(nameBytes); } catch { name = legacy.decode(nameBytes); }
+        if (size === 0xffffffff) {
+          let extraAt = at + 46 + nameLength;
+          const extraEnd = extraAt + extraLength;
+          while (extraAt + 4 <= extraEnd) {
+            const id = cd.getUint16(extraAt, true);
+            const length = cd.getUint16(extraAt + 2, true);
+            if (id === 0x0001 && length >= 8) { size = Number(cd.getBigUint64(extraAt + 4, true)); break; }
+            extraAt += 4 + length;
+          }
+        }
+        if (!name.endsWith("/")) entries.push({ name: name.normalize("NFC"), size });
+        at += 46 + nameLength + extraLength + commentLength;
+      }
+      return entries;
+    }
+
+    // 항목을 "빼도 되는 것"별로 묶는다. 코드·설정 파일은 그대로 둔다.
+    function classifyEntries(entries) {
+      const groups = {
+        git: { bytes: 0, count: 0 }, deps: { bytes: 0, count: 0 }, mac: { bytes: 0, count: 0 },
+        nested: { bytes: 0, count: 0, names: [] }, media: { bytes: 0, count: 0, exts: new Map() }
+      };
+      let total = 0;
+      for (const { name, size } of entries) {
+        total += size;
+        const parts = name.split("/");
+        const base = parts[parts.length - 1];
+        const ext = base.includes(".") ? base.split(".").pop().toLowerCase() : "";
+        let group = null;
+        if (parts.includes("__MACOSX") || base === ".DS_Store") group = "mac";
+        else if (parts.includes(".git")) group = "git";
+        else if (parts.includes("node_modules")) group = "deps";
+        else if (NESTED_ARCHIVE_EXTS.has(ext)) group = "nested";
+        else if (NON_CODE_EXTS.has(ext)) group = "media";
+        if (!group) continue;
+        groups[group].bytes += size;
+        groups[group].count += 1;
+        if (group === "nested") groups.nested.names.push(base);
+        if (group === "media") groups.media.exts.set(ext, (groups.media.exts.get(ext) || 0) + 1);
+      }
+      return { groups, total, count: entries.length };
+    }
+
+    function diagnoseTarget({ kind, entries, uploadBytes }) {
+      const { groups, total, count } = classifyEntries(entries);
+      const reasons = [];
+      if (uploadBytes > UPLOAD_LIMIT_BYTES) reasons.push(`${kind === "archive" ? "ZIP 파일이" : "선택한 폴더가"} ${formatBytes(uploadBytes)}로 업로드 한도 500MB를 넘습니다.`);
+      if (kind === "archive" && total > EXTRACT_LIMIT_BYTES) reasons.push(`압축을 풀면 ${formatBytes(total)}로 한도 2GB를 넘습니다.`);
+      if (count > UPLOAD_LIMIT_FILES && kind === "folder") reasons.push(`파일이 ${count.toLocaleString()}개로 한도 ${UPLOAD_LIMIT_FILES.toLocaleString()}개를 넘습니다.`);
+      if (groups.nested.count) reasons.push(`안에 압축파일이 ${groups.nested.count}개 있어 그 안의 코드는 점검되지 않습니다.`);
+      if (!reasons.length) return null;
+
+      const steps = [];
+      if (groups.nested.count) {
+        const shown = groups.nested.names.slice(0, 3).join(", ");
+        steps.push({
+          text: `안쪽 압축파일 ${groups.nested.count}개를 풀어서 폴더째 넣기`,
+          note: `${shown}${groups.nested.count > 3 ? " 외" : ""} · 압축 안의 압축은 점검기가 열지 않습니다.`
+        });
+      }
+      if (groups.git.bytes) steps.push({ text: `.git 폴더 빼기 (${formatBytes(groups.git.bytes)})`, note: "커밋 이력이라 점검 대상이 아닙니다." });
+      if (groups.deps.bytes) steps.push({ text: `node_modules 폴더 빼기 (${formatBytes(groups.deps.bytes)})`, note: "설치할 때 다시 받는 라이브러리입니다. 사용 패키지는 package.json으로 점검합니다." });
+      if (groups.media.bytes) {
+        const topExts = [...groups.media.exts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 4)
+          .map(([ext, n]) => `${ext} ${n.toLocaleString()}개`).join(", ");
+        steps.push({
+          text: `문서·이미지·영상·3D 데이터 빼기 (${formatBytes(groups.media.bytes)})`,
+          note: `${topExts} · 코드(.js .html .css .py 등)와 설정 파일(.json .yaml .env.example .htaccess 등)만 남기세요.`
+        });
+      }
+      if (groups.nested.count && !groups.media.bytes) {
+        // 안쪽 압축의 내용은 풀기 전에는 알 수 없으므로 일반 기준을 안내한다.
+        steps.push({
+          text: "푼 내용에서 .git·node_modules와 문서·이미지·영상·3D 데이터 빼기",
+          note: ".pdf .jpg .png .mp4 .bin .glb 등 · 코드(.js .html .css .py 등)와 설정 파일(.json .yaml .htaccess 등)만 남기세요."
+        });
+      }
+      if (groups.mac.count) steps.push({ text: `__MACOSX·.DS_Store 빼기`, note: "맥에서 압축할 때 생기는 부산물입니다." });
+      const removable = groups.git.bytes + groups.deps.bytes + groups.media.bytes + groups.mac.bytes + groups.nested.bytes;
+      steps.push({
+        text: kind === "archive" ? "남은 파일을 다시 ZIP으로 묶어 올리기" : "정리한 폴더를 다시 선택하기",
+        note: groups.nested.count
+          ? "안쪽 압축을 푼 뒤의 크기는 미리 알 수 없습니다. 500MB 이하인지 확인하세요."
+          : `정리 후 예상 크기: 약 ${formatBytes(Math.max(0, total - removable))} (한도 500MB)`
+      });
+      if (kind === "archive" && (groups.git.count || groups.deps.count)) {
+        steps.push({ text: "또는 [폴더 선택]으로 올리기", note: ".git·node_modules는 폴더 선택 시 자동으로 빠집니다." });
+      }
+      return { reasons, steps };
+    }
+
+    function showTargetDiagnosis(diagnosis) {
+      selectedReady = false;
+      targetHelp.textContent = "검사 대상을 정리해서 다시 선택하세요.";
+      completeTargetProgress({
+        title: "정리해서 다시 올려 주세요",
+        description: diagnosis.reasons.join(" "),
+        state: "이렇게 정리하면 점검할 수 있습니다",
+        detail: "올리기 전에 확인한 결과입니다. 원본 파일은 그대로 두고, 점검용 사본을 만들어 정리하세요.",
+        guide: diagnosis.steps
+      });
+    }
+
     async function uploadBrowserTarget(files, kind) {
       if (!files.length) {
         targetSelectionInFlight = false;
@@ -960,6 +1138,24 @@
       try {
         const selectedFiles = Array.from(files).filter((file) => !file.webkitRelativePath.split("/").some((part) => part === "node_modules" || part === ".git"));
         if (!selectedFiles.length) throw new Error("검사할 소스 파일이 없습니다.");
+        let diagnosis = null;
+        if (kind === "archive") {
+          const archive = selectedFiles[0];
+          const zipEntries = await readZipEntries(archive).catch(() => null);
+          if (zipEntries || archive.size > UPLOAD_LIMIT_BYTES) {
+            diagnosis = diagnoseTarget({ kind, entries: zipEntries || [], uploadBytes: archive.size });
+          }
+        } else {
+          diagnosis = diagnoseTarget({
+            kind,
+            entries: selectedFiles.map((file) => ({ name: file.webkitRelativePath || file.name, size: file.size })),
+            uploadBytes: selectedFiles.reduce((sum, file) => sum + file.size, 0)
+          });
+        }
+        if (diagnosis) {
+          showTargetDiagnosis(diagnosis);
+          return;
+        }
         showTargetProgress({
           title: "검사 대상을 준비하고 있습니다.",
           description: "선택한 파일을 읽어 로컬 점검을 준비합니다.",
@@ -991,10 +1187,12 @@
         });
       } catch (error) {
         selectedReady = false;
+        // 서버가 돌려준 한국어 사유(용량 초과 등)는 그대로 보여 준다. 네트워크 오류 같은 영문 메시지는 숨긴다.
+        const reason = /[가-힣]/.test(String(error?.message || "")) ? error.message : "";
         targetHelp.textContent = "파일을 준비하지 못했습니다. 폴더 또는 ZIP 파일을 다시 선택하세요.";
         completeTargetProgress({
           title: "검사 대상 준비 실패",
-          description: "선택한 파일을 준비하지 못했습니다.",
+          description: reason || "선택한 파일을 준비하지 못했습니다.",
           state: "다시 선택 필요",
           detail: "폴더 또는 ZIP 파일을 다시 선택해 주세요."
         });

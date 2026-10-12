@@ -115,6 +115,8 @@ const LOCAL_HOSTS = new Set([
 const MAX_ARCHIVE_BYTES = 500 * 1024 * 1024;
 const MAX_EXTRACTED_BYTES = 2 * 1024 * 1024 * 1024;
 const MAX_ARCHIVE_ENTRIES = 50000;
+// 안쪽 압축 판별 패턴. PowerShell 스크립트에 그대로 들어가므로 작은따옴표를 쓰지 않는다.
+const NESTED_ARCHIVE_PATTERN = "\\.(zip|7z|rar|tar|gz|tgz|bz2|xz)$";
 const MAX_COMPRESSION_RATIO = 200;
 const SCAN_HISTORY_FILE = runtimePath("PORTAL_SCAN_HISTORY_FILE", join(ROOT, ".local", "scan-history.jsonl"));
 const REPORT_DIR = runtimePath("PORTAL_REPORT_DIR", join(ROOT, "reports"));
@@ -764,15 +766,16 @@ function escapePowerShellLiteral(value) {
 
 async function inspectZip(archivePath) {
   const archive = escapePowerShellLiteral(archivePath);
-  const script = `Add-Type -AssemblyName System.IO.Compression.FileSystem; $zip = [System.IO.Compression.ZipFile]::OpenRead('${archive}'); $count = 0; $total = 0; $bad = ''; foreach ($e in $zip.Entries) { $count++; $total += $e.Length; $n = $e.FullName.Replace('\\', '/'); if ($n -match '^[A-Za-z]:' -or $n.StartsWith('/') -or $n -match '(^|/)\\.\\.(/|$)') { if (-not $bad) { $bad = $n } } }; $zip.Dispose(); [Console]::Out.Write("$count\`n$total\`n$bad")`;
+  const script = `Add-Type -AssemblyName System.IO.Compression.FileSystem; $zip = [System.IO.Compression.ZipFile]::OpenRead('${archive}'); $count = 0; $total = 0; $bad = ''; $nested = 0; foreach ($e in $zip.Entries) { $count++; $total += $e.Length; $n = $e.FullName.Replace('\\', '/'); if ($n -match '^[A-Za-z]:' -or $n.StartsWith('/') -or $n -match '(^|/)\\.\\.(/|$)') { if (-not $bad) { $bad = $n } }; if ($n -notmatch '(^|/)__MACOSX/' -and $n -match '${NESTED_ARCHIVE_PATTERN}') { $nested++ } }; $zip.Dispose(); [Console]::Out.Write("$count\`n$total\`n$nested\`n$bad")`;
   const inspected = await runCommand(POWERSHELL, ["-NoProfile", "-Command", script], { timeout_ms: 120000 });
   if (!inspected.ok) {
     throw new Error("압축파일 구조를 확인하지 못해 검사를 시작하지 않았습니다. 파일이 손상되지 않았는지 확인하세요.");
   }
-  const [entries, totalBytes, badEntry] = inspected.stdout.split(/\r?\n/);
+  const [entries, totalBytes, nestedArchives, badEntry] = inspected.stdout.split(/\r?\n/);
   return {
     entries: Number(entries || 0),
     total_bytes: Number(totalBytes || 0),
+    nested_archives: Number(nestedArchives || 0),
     bad_entry: (badEntry || "").trim() || null
   };
 }
@@ -785,6 +788,10 @@ async function assertSafeArchive(archivePath) {
   const inspection = await inspectZip(archivePath);
   if (inspection.bad_entry) {
     throw new Error("압축파일 안에 허용되지 않는 경로(상위 폴더 탈출·절대 경로)가 있어 검사를 중단했습니다.");
+  }
+  // 체커는 압축 안의 압축을 열지 않는다. 그대로 두면 안쪽 코드가 빠진 채 "점검 완료"가 된다.
+  if (inspection.nested_archives > 0) {
+    throw new Error(`압축파일 안에 다른 압축파일이 ${inspection.nested_archives}개 있어 그 안의 코드는 점검되지 않습니다. 안쪽 압축을 풀어 폴더째 넣고 다시 압축하세요.`);
   }
   if (inspection.entries > MAX_ARCHIVE_ENTRIES) {
     throw new Error(`압축파일 항목이 ${MAX_ARCHIVE_ENTRIES.toLocaleString()}개를 초과해 검사할 수 없습니다.`);

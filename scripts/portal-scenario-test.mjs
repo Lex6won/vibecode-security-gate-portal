@@ -1216,6 +1216,17 @@ try {
   assert.equal(archiveResult.status, "completed");
   assert.equal(archiveResult.summary.scanned_file_count, 1, "uploaded ZIP must reach the checker");
 
+  // 압축 안의 압축은 체커가 열지 않으므로, 안쪽 코드가 빠진 채 "점검 완료"가 되지 않게 막아야 한다.
+  const nestedArchivePath = join(fixture.fixtureDir, "nested-source.zip");
+  const nestedScript = `Compress-Archive -LiteralPath '${escapePowerShellLiteral(fixture.archivePath)}','${escapePowerShellLiteral(fixture.sourceFile)}' -DestinationPath '${escapePowerShellLiteral(nestedArchivePath)}' -Force`;
+  const nestedChild = spawn(powershell, ["-NoProfile", "-Command", nestedScript], { windowsHide: true });
+  const [nestedCode] = await once(nestedChild, "close");
+  assert.equal(nestedCode, 0, "nested ZIP fixture must be created");
+  const nestedUpload = await uploadBrowserTarget("archive", [{ source: nestedArchivePath, path: "nested-source.zip", name: "nested-source.zip" }]);
+  const nestedResult = await startScan("quick", nestedUpload.target_type, nestedUpload.path, nestedUpload.label);
+  assert.equal(nestedResult.status, "failed", "a ZIP containing another archive must not be reported as scanned");
+  assert.match(String(nestedResult.error || ""), /안쪽 압축을 풀어/, "nested-archive rejection must tell the user how to repackage");
+
   const observation = await scenarioAutoObservations(fixture);
   await scenarioAuthAndOwnership(quick);
   await scenarioReviewRequest(observation);
@@ -1239,6 +1250,7 @@ try {
       quick_scan: quick.id,
       standard_scan: standard.id,
       uploaded_zip_scan: archiveResult.id,
+      nested_archive_rejected: true,
       auto_observations: observation.id,
       auth_and_ownership: true,
       review_request: true,
