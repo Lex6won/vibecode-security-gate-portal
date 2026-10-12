@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
-import { jobTag, reportStemForJob } from "../src/report-naming.mjs";
+import { REPORT_EXTENSIONS, isSafeReportFileName, jobTag, reportStemForJob } from "../src/report-naming.mjs";
 
 /**
  * 보고서 이름이 동시 점검에서 겹치지 않는지.
@@ -60,6 +60,21 @@ check("id 꼬리표는 파일 이름에 안전한 글자만 쓴다", () => {
   assert.equal(jobTag("AB-cd:ef/12345678"), "abcdef12");
   assert.equal(jobTag(""), "");
   assert.equal(jobTag(null), "");
+});
+
+check("만든 이름은 내려받기·제출 검사를 항상 통과한다(괄호·특수문자 대상명)", () => {
+  const labels = ["우체국보험 약관검색기(v1)_점검용.zip", "파노라마뷰 웹업로드용(장성주)_점검용.zip", "A&B [최종] #2, v1.0+fix", "..숨김..폴더..", "(((괄호만)))"];
+  for (const [index, label] of labels.entries()) {
+    const stem = reportStemForJob(job(`6666666${index}-0000-4000-8000-000000000006`, { target_type: "browser_archive", target_label: label }), "", { now: fixedNow, exists: nothingExists });
+    for (const extension of [...REPORT_EXTENSIONS, "_보안성검토요청서.html", "_보안성검토제출자료.zip"]) {
+      assert.ok(isSafeReportFileName(`${stem}${extension}`), `${label} → ${stem}${extension}`);
+    }
+  }
+});
+
+check("업로드한 ZIP 이름의 확장자는 보고서 이름에 남지 않는다", () => {
+  const stem = reportStemForJob(job("77777777-0000-4000-8000-000000000007", { target_type: "browser_archive", target_label: "우체국보험 약관검색기(v1)_점검용.zip" }), "", { now: fixedNow, exists: nothingExists });
+  assert.equal(stem, "우체국보험 약관검색기 v1_점검용_2026-09-13_0125_표준점검_77777777");
 });
 
 if (failures.length) {

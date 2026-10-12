@@ -12,13 +12,25 @@ import { basename } from "node:path";
  * 파일이 생기기 전에도 이름이 갈린다. 존재 검사는 그대로 두되 안전망일 뿐이다.
  */
 
+// 보고서 파일 이름에 쓸 수 있는 글자. 이름을 만들 때와 내려받기·제출 때 검사하는
+// 기준이 같아야 한다 — 예전에는 만들 때 괄호를 남기고 검사 때 거부해서,
+// "약관검색기(v1).zip" 같은 대상은 점검은 되는데 제출이 막혔다.
+const REPORT_NAME_DISALLOWED = /[^\p{L}\p{N} ._-]/gu;
+
+export function isSafeReportFileName(fileName) {
+  return /^[\p{L}\p{N} ._-]+$/u.test(fileName) && !fileName.includes("..");
+}
+
 export function safeReportNamePart(value) {
   return String(value || "")
     .normalize("NFKC")
-    .replace(/[<>:"/\\|?*\u0000-\u001F]/g, " ")
+    .replace(REPORT_NAME_DISALLOWED, " ")
+    .replace(/\.{2,}/g, ".")
     .replace(/\s+/g, " ")
+    .replace(/ ?_ ?/g, "_")
     .trim()
-    .slice(0, 48);
+    .slice(0, 48)
+    .trim();
 }
 
 export function koreaReportTimestamp(date = new Date()) {
@@ -59,7 +71,8 @@ export function reportStemForJob(job, targetPath, { now = new Date(), exists = (
       targetName = "";
     }
   }
-  if (!targetName) targetName = safeReportNamePart(job.target_label);
+  // 업로드한 ZIP 이름의 확장자는 보고서 이름에 남기지 않는다("대상.zip_날짜…" 방지).
+  if (!targetName) targetName = safeReportNamePart(String(job.target_label || "").replace(/\.zip$/i, ""));
   if (!targetName) targetName = safeReportNamePart(basename(String(targetPath || "")));
   // 점검 방식을 파일명에 남긴다 — 간편/표준 보고서가 이름부터 구분돼야
   // "차이가 없다"는 오해가 생기지 않는다(실제로는 프로파일·규칙 수가 다르다).

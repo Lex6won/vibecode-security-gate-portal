@@ -16,7 +16,7 @@ import {
   upsertAccountOnLogin, updateAccountProfile, accountSummary
 } from "./account-store.mjs";
 import { writeZipEntries } from "./hwpx-template.mjs";
-import { REPORT_EXTENSIONS, koreaReportTimestamp, reportStemForJob as buildReportStem, safeReportNamePart } from "./report-naming.mjs";
+import { REPORT_EXTENSIONS, isSafeReportFileName, koreaReportTimestamp, reportStemForJob as buildReportStem, safeReportNamePart } from "./report-naming.mjs";
 import {
   dependencyRiskSummary,
   scanDecision,
@@ -433,10 +433,6 @@ function languageCountsFromReport(parsed) {
     if (language) counts[language] = (counts[language] || 0) + 1;
   }
   return counts;
-}
-
-function isSafeReportFileName(fileName) {
-  return /^[\p{L}\p{N} ._-]+$/u.test(fileName) && !fileName.includes("..");
 }
 
 function pathInside(directory, candidate) {
