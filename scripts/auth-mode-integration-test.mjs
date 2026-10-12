@@ -20,7 +20,9 @@ function childEnvironment(port, root, overrides = {}) {
     PORTAL_DRAFT_REPORT_DIR: join(root, "drafts"),
     PORTAL_ACCOUNT_FILE: join(root, "accounts.json"),
     PORTAL_AUTH_AUDIT_FILE: join(root, "auth-audit.jsonl"),
+    PORTAL_ACCOUNT_DIR: join(root, "accounts"),
     ADMIN_AUTH_FILE: join(root, "admin-auth.json"),
+    ADMIN_INITIAL_PASSWORD: "AuthModeFixture!2026",
     PORTAL_EXPECTED_CHECKER_COMMIT: "",
     ...overrides
   };

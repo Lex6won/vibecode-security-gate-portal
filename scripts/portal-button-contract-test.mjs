@@ -3,10 +3,14 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { readFileSync } from "node:fs";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 const port = Number(process.env.PORTAL_BUTTON_TEST_PORT || 8793);
 const baseUrl = `http://127.0.0.1:${port}`;
 const localApiToken = "portal-button-contract-token";
+const checkerCommit = readFileSync(new URL("../config/checker.commit", import.meta.url), "utf8").trim();
 
 const pages = [
   "/",
@@ -362,9 +366,29 @@ function assertHomeHeadlineSurface() {
   "the security headline must keep only the suffix in the standard ink color on desktop and mobile");
 }
 
+const dataRoot = await mkdtemp(join(tmpdir(), "portal-button-contract-"));
 const child = spawn(process.execPath, ["src/server.js"], {
   cwd: process.cwd(),
-  env: { ...process.env, PORT: String(port), PORTAL_LOCAL_API_TOKEN: localApiToken, PYTHONUTF8: "1", PYTHONIOENCODING: "utf-8" },
+  env: {
+    ...process.env,
+    PORT: String(port),
+    PORTAL_BIND_HOST: "127.0.0.1",
+    PORTAL_DEPLOYMENT_MODE: "local",
+    PORTAL_AUTH_PROVIDER: "local-dev",
+    PORTAL_AUTH_MODE: "",
+    PORTAL_EXPECTED_CHECKER_COMMIT: checkerCommit,
+    PORTAL_LOCAL_API_TOKEN: localApiToken,
+    PORTAL_ACCOUNT_DIR: join(dataRoot, "accounts"),
+    PORTAL_SCAN_HISTORY_FILE: join(dataRoot, "scan-history.jsonl"),
+    PORTAL_OBSERVATION_DIR: join(dataRoot, "observations"),
+    PORTAL_WHITELIST_DIR: join(dataRoot, "whitelist"),
+    PORTAL_REPORT_DIR: join(dataRoot, "reports"),
+    PORTAL_DRAFT_REPORT_DIR: join(dataRoot, "draft-reports"),
+    ADMIN_AUTH_FILE: join(dataRoot, "admin-auth.json"),
+    ADMIN_INITIAL_PASSWORD: "ButtonContractFixture!2026",
+    PYTHONUTF8: "1",
+    PYTHONIOENCODING: "utf-8"
+  },
   stdio: ["ignore", "pipe", "pipe"],
   windowsHide: true
 });
@@ -401,6 +425,7 @@ try {
 } finally {
   if (child.exitCode === null) child.kill();
   await Promise.race([once(child, "exit"), wait(2000)]);
+  await rm(dataRoot, { recursive: true, force: true });
 }
 
 process.exit(process.exitCode || 0);

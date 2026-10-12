@@ -44,6 +44,9 @@ async function runCase(expectedCommit) {
       ...process.env,
       PORT: String(port),
       PORTAL_BIND_HOST: "127.0.0.1",
+      PORTAL_DEPLOYMENT_MODE: "local",
+      PORTAL_AUTH_PROVIDER: "local-dev",
+      PORTAL_AUTH_MODE: "",
       PORTAL_EXPECTED_CHECKER_COMMIT: expectedCommit,
       PORTAL_ACCOUNT_DIR: join(dataRoot, "accounts"),
       PORTAL_SCAN_HISTORY_FILE: join(dataRoot, "scan-history.jsonl"),
@@ -51,7 +54,8 @@ async function runCase(expectedCommit) {
       PORTAL_WHITELIST_DIR: join(dataRoot, "whitelist"),
       PORTAL_REPORT_DIR: join(dataRoot, "reports"),
       PORTAL_DRAFT_REPORT_DIR: join(dataRoot, "draft-reports"),
-      ADMIN_AUTH_FILE: join(dataRoot, "admin-auth.json")
+      ADMIN_AUTH_FILE: join(dataRoot, "admin-auth.json"),
+      ADMIN_INITIAL_PASSWORD: "CheckerIdentityFixture!2026"
     },
     stdio: ["ignore", "pipe", "pipe"]
   });

@@ -80,7 +80,10 @@ jobs:
       - name: 체커(gvskb) 설치
         run: |
           python -m pip install --upgrade pip
-          python -m pip install "${RUNNER_TEMP}/checker"
+          checker_commit="$(git -C "${RUNNER_TEMP}/checker" rev-parse HEAD)"
+          python "${RUNNER_TEMP}/checker/scripts/build_wheel.py" \
+            --commit "${checker_commit}" --out "${RUNNER_TEMP}/checker-wheel"
+          python -m pip install "${RUNNER_TEMP}/checker-wheel/"*.whl
 
       # 설치됐다고 말만 하고 넘어가지 않는다 — 실제로 실행해 버전을 찍는다.
       - name: 체커 설치 확인
