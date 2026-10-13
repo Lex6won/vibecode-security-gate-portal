@@ -63,13 +63,14 @@
   "external_surface": [],
   "scan_mode": null,
   "reproduce_command": null,
-  "engine_version": "0.4.0",
-  "generated_at": "2026-10-13T10:47:08+00:00",
-  "ruleset_version": "2026.10.13b",
-  "ruleset_digest": "d429f123b7894067caf17c96b90d330d",
+  "engine_version": "0.4.6",
+  "generated_at": "2026-10-13T16:06:41+00:00",
+  "ruleset_version": "2026.10.14a",
+  "ruleset_digest": "f1f830dd7c90ec9bd8a79bb7d49270f4",
   "ruleset_drift": null,
   "ruleset_note": null,
   "intel_freshness": null,
+  "checker_update": null,
   "dependency_audit": {
     "audits": [
       {
@@ -106,7 +107,8 @@
         "labels": [
           "CISA KEV 등재 — 실제로 악용되고 있음"
         ],
-        "recommended_version": null
+        "recommended_version": null,
+        "latest_version": null
       }
     ],
     "conditional_criteria": [
@@ -127,6 +129,7 @@
     "dependency_unchecked": 0,
     "dependency_not_found": 0,
     "coverage_gap": "",
+    "license_review": [],
     "reason": "배포 불가 — CISA KEV 등재 — 실제로 악용되고 있음에 해당하는 패키지가 있습니다(kevpkg 1.0.0). 사유 기록으로 넘길 수 없는 등급입니다."
   },
   "posture_notes": [],
