@@ -64,7 +64,7 @@
   "scan_mode": null,
   "reproduce_command": null,
   "engine_version": "0.4.0",
-  "generated_at": "2026-10-13T10:03:43+00:00",
+  "generated_at": "2026-10-13T10:28:41+00:00",
   "ruleset_version": "2026.10.13a",
   "ruleset_digest": "e3b3d5fcfe54c6b53d80318e8b4528f6",
   "ruleset_drift": null,
