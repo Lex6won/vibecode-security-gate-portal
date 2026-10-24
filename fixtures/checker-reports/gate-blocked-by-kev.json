@@ -64,10 +64,10 @@
   "external_surface": [],
   "scan_mode": null,
   "reproduce_command": null,
-  "engine_version": "0.5.4",
-  "generated_at": "2026-10-15T13:41:08+00:00",
-  "ruleset_version": "2026.10.15a",
-  "ruleset_digest": "eadbd0c6341a27ff4d93b6c7cebc0941",
+  "engine_version": "0.5.6",
+  "generated_at": "2026-10-24T14:00:23+00:00",
+  "ruleset_version": "2026.10.24b",
+  "ruleset_digest": "7a29c9c3c4aecdfcef36ca5ecc448b1d",
   "ruleset_drift": null,
   "ruleset_note": null,
   "intel_freshness": null,
@@ -139,6 +139,7 @@
     "reason": "배포 불가 — CISA KEV 등재 — 실제로 악용되고 있음에 해당하는 패키지가 있습니다(kevpkg 1.0.0). 사유 기록으로 넘길 수 없는 등급입니다."
   },
   "posture_notes": [],
+  "autoexec_surface": [],
   "duplicate_files": [],
   "profile_fallback": null,
   "vendor_bundles": [],
@@ -159,7 +160,8 @@
     "used": [
       "regex",
       "python-ast",
-      "js-taint"
+      "js-taint",
+      "hidden-text"
     ],
     "unavailable": [
       {
