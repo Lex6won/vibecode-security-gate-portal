@@ -64,8 +64,8 @@
   "external_surface": [],
   "scan_mode": null,
   "reproduce_command": null,
-  "engine_version": "0.5.9",
-  "generated_at": "2026-10-25T01:48:59+00:00",
+  "engine_version": "0.5.10",
+  "generated_at": "2026-10-25T04:05:04+00:00",
   "ruleset_version": "2026.10.25b",
   "ruleset_digest": "51dddb76026d70b045f0c0bf01b5de02",
   "ruleset_drift": null,
@@ -135,6 +135,7 @@
     "coverage_gap": "",
     "license_review": [],
     "unpinned": [],
+    "trust_signals": [],
     "dependency_vulnerable_assumed": 0,
     "reason": "배포 불가 — CISA KEV 등재 — 실제로 악용되고 있음에 해당하는 패키지가 있습니다(kevpkg 1.0.0). 사유 기록으로 넘길 수 없는 등급입니다."
   },
