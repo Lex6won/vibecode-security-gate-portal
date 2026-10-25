@@ -64,10 +64,10 @@
   "external_surface": [],
   "scan_mode": null,
   "reproduce_command": null,
-  "engine_version": "0.5.6",
-  "generated_at": "2026-10-24T14:00:23+00:00",
-  "ruleset_version": "2026.10.24b",
-  "ruleset_digest": "7a29c9c3c4aecdfcef36ca5ecc448b1d",
+  "engine_version": "0.5.8",
+  "generated_at": "2026-10-25T00:17:09+00:00",
+  "ruleset_version": "2026.10.25a",
+  "ruleset_digest": "66626df7237ef0346ec90c905928ae6a",
   "ruleset_drift": null,
   "ruleset_note": null,
   "intel_freshness": null,
@@ -161,7 +161,8 @@
       "regex",
       "python-ast",
       "js-taint",
-      "hidden-text"
+      "hidden-text",
+      "agent-surface"
     ],
     "unavailable": [
       {
